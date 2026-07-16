@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "训练结果",
   "navigationBarBackgroundColor": "#007aff",
-  "navigationBarTextStyle": "white"
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "radar-chart": "../../components/radar-chart/radar-chart"
+  }
 }

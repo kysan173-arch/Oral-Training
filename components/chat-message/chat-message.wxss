@@ -1,1 +1,121 @@
-/* components/chat-message/chat-message.wxss */
+.chat-message {
+  display: flex;
+  margin-bottom: 20rpx;
+  padding: 0 20rpx;
+}
+
+.chat-message.msg-user {
+  flex-direction: row-reverse;
+}
+
+.chat-message.msg-system {
+  justify-content: center;
+}
+
+.msg-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.msg-user .msg-avatar {
+  background: #1677e8;
+  margin-left: 16rpx;
+}
+
+.msg-patient .msg-avatar {
+  background: #52c41a;
+  margin-right: 16rpx;
+}
+
+.msg-system .msg-avatar {
+  background: transparent;
+  font-size: 32rpx;
+  margin-right: 8rpx;
+}
+
+.msg-body {
+  max-width: 72%;
+  display: flex;
+  flex-direction: column;
+}
+
+.msg-user .msg-body {
+  align-items: flex-end;
+}
+
+.msg-patient .msg-body {
+  align-items: flex-start;
+}
+
+.msg-system .msg-body {
+  align-items: center;
+  max-width: 90%;
+}
+
+.msg-bubble {
+  padding: 16rpx 24rpx;
+  border-radius: 16rpx;
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+.msg-user .msg-bubble {
+  background: #1677e8;
+  color: #fff;
+  border-bottom-right-radius: 4rpx;
+}
+
+.msg-patient .msg-bubble {
+  background: #fff;
+  color: #333;
+  border: 1rpx solid #e8e8e8;
+  border-bottom-left-radius: 4rpx;
+}
+
+.msg-system .msg-bubble {
+  background: #fff7e6;
+  color: #ad6800;
+  border: 1rpx solid #ffd591;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+}
+
+.msg-content {
+  font-size: 28rpx;
+}
+
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 8rpx;
+}
+
+.msg-time {
+  font-size: 20rpx;
+  color: #999;
+}
+
+/* Emotion tags - same colors as training.wxss */
+.emotion-tag {
+  font-size: 20rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  background: #f5f5f5;
+  color: #666;
+}
+
+.emotion-doubt { background: #fff7e6; color: #fa8c16; }
+.emotion-accept { background: #f6ffed; color: #52c41a; }
+.emotion-price { background: #e6f7ff; color: #1677e8; }
+.emotion-anxiety { background: #fff1f0; color: #ff4d4f; }
+.emotion-angry { background: #fff0f6; color: #c41d7f; }
+.emotion-cooperate { background: #e6f7ff; color: #1677e8; }
+.emotion-hesitate { background: #f9f0ff; color: #722ed1; }

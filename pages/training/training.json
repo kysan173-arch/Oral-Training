@@ -2,5 +2,8 @@
   "navigationBarTitleText": "AI模拟训练",
   "navigationBarBackgroundColor": "#667eea",
   "navigationBarTextStyle": "white",
-  "backgroundColor": "#f5f5f5"
+  "backgroundColor": "#f5f5f5",
+  "usingComponents": {
+    "chat-message": "../../components/chat-message/chat-message"
+  }
 }

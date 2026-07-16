@@ -16,14 +16,32 @@
   </view>
 
   <block wx:if="{{status === 'ready' && evaluation}}">
-    <view class="score-card {{passed ? 'pass' : 'fail'}}">
-      <text class="score-value">{{score}}</text>
-      <text class="score-label">{{passed ? '通过' : '未通过'}}</text>
+    <view class="score-section">
+      <view class="score-card {{passed ? 'pass' : 'fail'}}">
+        <text class="score-value">{{score}}</text>
+        <text class="score-label">{{passed ? '通过' : '未通过'}}</text>
+      </view>
+      <view class="level-badge level-{{level}}">
+        <text class="level-text">{{levelText}}</text>
+      </view>
     </view>
 
     <view class="section-card">
       <text class="section-title">综合评价</text>
       <text class="summary-text">{{evaluation.summary}}</text>
+    </view>
+
+    <!-- Recommended golden phrases -->
+    <view class="section-card" wx:if="{{recommendedPhrases.length}}">
+      <text class="section-title">最佳话术推荐</text>
+      <view class="phrase-item" wx:for="{{recommendedPhrases}}" wx:key="index">
+        <view class="phrase-round">
+          <text class="phrase-star">⭐</text>
+          <text class="phrase-label">第 {{item.round}} 轮</text>
+        </view>
+        <text class="phrase-content">"{{item.content}}"</text>
+        <text class="phrase-reason" wx:if="{{item.reason}}">{{item.reason}}</text>
+      </view>
     </view>
 
     <view class="section-card" wx:if="{{messages.length}}">
@@ -37,7 +55,7 @@
 
     <view class="section-card radar-section">
       <text class="section-title">五维评分</text>
-      <canvas type="2d" id="radarCanvas" class="radar-canvas"></canvas>
+      <radar-chart data="{{radarData}}" size="520"></radar-chart>
       <view class="dimension-list">
         <view class="dimension-item" wx:for="{{dimensions}}" wx:key="name">
           <view class="dimension-head">
@@ -72,7 +90,7 @@
       <text class="section-title danger-title">严重违规与风险提示</text>
       <view class="violation-item" wx:for="{{evaluation.violations}}" wx:key="index">
         <text class="violation-type">{{item.type}} · 扣 {{item.deduction}} 分</text>
-        <text class="quote">“{{item.originalQuote}}”</text>
+        <text class="quote">"{{item.originalQuote}}"</text>
         <text class="reason">{{item.reason}}</text>
         <text class="rewrite">建议改写：{{item.recommendedRewrite}}</text>
       </view>
@@ -88,8 +106,10 @@
     </view>
 
     <view class="action-list">
-      <button class="primary-button" bindtap="retryTraining">重新训练</button>
-      <button class="secondary-button" bindtap="backToScenarios">返回场景列表</button>
+      <button class="primary-button" bindtap="goNextLevel" wx:if="{{nextScenarioId}}">下一关 · {{nextScenarioName}}</button>
+      <button class="primary-button outline-primary" bindtap="retryTraining">重新训练</button>
+      <button class="secondary-button" bindtap="shareResult">分享成绩</button>
+      <button class="outline-button" bindtap="backToScenarios">返回场景列表</button>
       <button class="outline-button" bindtap="viewHistory">查看历史记录</button>
     </view>
   </block>

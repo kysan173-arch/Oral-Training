@@ -4,11 +4,27 @@
     <text class="page-desc">查看训练状态、对话记录和评分报告。</text>
   </view>
 
+  <!-- Status filter -->
   <view class="filter-bar">
-    <view class="filter-item {{statusFilter === 'all' ? 'active' : ''}}" data-status="all" bindtap="changeFilter">全部</view>
-    <view class="filter-item {{statusFilter === 'in_progress' ? 'active' : ''}}" data-status="in_progress" bindtap="changeFilter">进行中</view>
-    <view class="filter-item {{statusFilter === 'completed' ? 'active' : ''}}" data-status="completed" bindtap="changeFilter">已完成</view>
-    <view class="filter-item {{statusFilter === 'abandoned' ? 'active' : ''}}" data-status="abandoned" bindtap="changeFilter">已放弃</view>
+    <view class="filter-item {{statusFilter === 'all' ? 'active' : ''}}" data-status="all" bindtap="changeStatusFilter">全部</view>
+    <view class="filter-item {{statusFilter === 'in_progress' ? 'active' : ''}}" data-status="in_progress" bindtap="changeStatusFilter">进行中</view>
+    <view class="filter-item {{statusFilter === 'completed' ? 'active' : ''}}" data-status="completed" bindtap="changeStatusFilter">已完成</view>
+    <view class="filter-item {{statusFilter === 'abandoned' ? 'active' : ''}}" data-status="abandoned" bindtap="changeStatusFilter">已放弃</view>
+  </view>
+
+  <!-- Pass/category filter -->
+  <view class="sub-filter-bar">
+    <view class="sub-filter-item {{passFilter === 'all' ? 'active' : ''}}" data-pass="all" bindtap="changePassFilter">全部</view>
+    <view class="sub-filter-item {{passFilter === 'passed' ? 'active' : ''}}" data-pass="passed" bindtap="changePassFilter">已通过</view>
+    <view class="sub-filter-item {{passFilter === 'failed' ? 'active' : ''}}" data-pass="failed" bindtap="changePassFilter">未通过</view>
+    <view class="sub-filter-item {{categoryFilter === 'all' ? 'active' : ''}}" data-category="all" bindtap="changeCategoryFilter">全部分类</view>
+    <view
+      class="sub-filter-item {{categoryFilter === item ? 'active' : ''}}"
+      wx:for="{{categories}}"
+      wx:key="*this"
+      data-category="{{item}}"
+      bindtap="changeCategoryFilter"
+    >{{item}}</view>
   </view>
 
   <view wx:if="{{errorMessage}}" class="error-card">
@@ -17,20 +33,57 @@
   </view>
 
   <view wx:if="{{!loading && !errorMessage}}" class="session-list">
-    <view class="session-card" wx:for="{{sessions}}" wx:key="id" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="viewSession">
-      <view class="session-main">
-        <text class="session-name">{{item.scenarioName}}</text>
-        <text class="session-time">{{item.updatedAt}}</text>
+    <view class="session-card-wrapper" wx:for="{{filteredSessions}}" wx:key="id">
+      <view class="session-card" data-id="{{item.id}}" data-status="{{item.status}}" data-index="{{index}}" bindtap="toggleExpand">
+        <view class="session-main">
+          <text class="session-name">{{item.scenarioName}}</text>
+          <text class="session-category-tag" wx:if="{{item.category}}">{{item.category}}</text>
+          <text class="session-time">{{item.updatedAt}}</text>
+        </view>
+        <view class="session-meta">
+          <view class="session-status-group">
+            <text class="status-tag status-{{item.status}}">{{item.status === 'in_progress' ? '进行中' : (item.status === 'completed' ? '已完成' : '已放弃')}}</text>
+            <text class="pass-tag {{item.passed ? 'pass-tag-yes' : ''}}" wx:if="{{item.status === 'completed' && item.totalScore !== null}}">{{item.passed ? '✓ 通过' : '未通过'}}</text>
+          </view>
+          <text class="round-count">{{item.currentRound}} / {{item.maxRounds}} 轮</text>
+          <text wx:if="{{item.totalScore !== null && item.totalScore !== undefined}}" class="session-score">{{item.totalScore}}分</text>
+          <text wx:else class="session-score muted">查看详情 ›</text>
+        </view>
       </view>
-      <view class="session-meta">
-        <text class="status-tag status-{{item.status}}">{{item.status === 'in_progress' ? '进行中' : (item.status === 'completed' ? '已完成' : '已放弃')}}</text>
-        <text class="round-count">{{item.currentRound}} / {{item.maxRounds}} 轮</text>
-        <text wx:if="{{item.totalScore !== null && item.totalScore !== undefined}}" class="session-score">{{item.totalScore}}分</text>
-        <text wx:else class="session-score muted">查看详情 ›</text>
+
+      <!-- Expanded detail -->
+      <view wx:if="{{item.expanded && item.status === 'completed' && item.dimensionScores}}" class="expand-panel">
+        <view class="expand-score">
+          <text class="expand-score-value">{{item.totalScore}}</text>
+          <text class="expand-score-label">总分</text>
+          <text class="expand-pass-tag {{item.passed ? 'pass-yes' : 'pass-no'}}">{{item.passed ? '✓ 通过' : '未通过'}}</text>
+        </view>
+        <radar-chart wx:if="{{item.displayDimensions.length}}" data="{{item.displayDimensions}}" size="400"></radar-chart>
+        <view class="expand-dimensions">
+          <view class="expand-dim-item" wx:for="{{item.displayDimensions}}" wx:for-item="dim" wx:key="name">
+            <text class="expand-dim-name">{{dim.name}}</text>
+            <view class="expand-dim-bar">
+              <view class="expand-dim-fill" style="width: {{dim.value}}%; background: {{dim.color}};"></view>
+            </view>
+            <text class="expand-dim-value">{{dim.value}}分</text>
+          </view>
+        </view>
+        <view class="expand-actions">
+          <button class="expand-btn" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="viewSession">查看完整报告</button>
+        </view>
       </view>
     </view>
   </view>
 
-  <view wx:if="{{loading}}" class="loading-state">加载历史记录中...</view>
-  <view wx:if="{{!loading && !errorMessage && sessions.length === 0}}" class="empty-state">暂无训练记录</view>
+  <view wx:if="{{loading}}" class="skeleton-list">
+    <view class="skeleton-card" wx:for="{{4}}" wx:key="*this">
+      <view class="skeleton-line title"></view>
+      <view class="skeleton-line subtitle"></view>
+      <view class="skeleton-line score"></view>
+    </view>
+  </view>
+  <view wx:if="{{!loading && !errorMessage && filteredSessions.length === 0}}" class="empty-state">
+    <text wx:if="{{sessions.length === 0}}">暂无训练记录</text>
+    <text wx:else>当前筛选条件下无匹配记录</text>
+  </view>
 </view>

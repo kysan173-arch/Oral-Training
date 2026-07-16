@@ -1,12 +1,14 @@
 .training-page {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   flex-direction: column;
+  overflow: hidden;
   background: #f5f7fb;
 }
 
 .session-header {
   display: flex;
+  flex-shrink: 0;
   align-items: flex-start;
   justify-content: space-between;
   padding: 28rpx 24rpx;
@@ -51,9 +53,12 @@
 
 .chat-area {
   flex: 1;
-  height: 0;
-  padding: 24rpx;
+  min-height: 0;
   box-sizing: border-box;
+}
+
+.chat-inner {
+  padding: 24rpx;
 }
 
 .message-item,
@@ -113,11 +118,103 @@
   word-break: break-all;
 }
 
+.message-meta {
+  margin-top: 8rpx;
+  text-align: left;
+}
+
+.emotion-tag {
+  display: inline-block;
+  padding: 4rpx 14rpx;
+  border-radius: 16rpx;
+  font-size: 21rpx;
+}
+
+.emotion-doubt {
+  color: #ad6b00;
+  background: #fff4d6;
+}
+
+.emotion-accept {
+  color: #188451;
+  background: #e8f8ef;
+}
+
+.emotion-price {
+  color: #1677e8;
+  background: #eaf3ff;
+}
+
+.emotion-anxiety {
+  color: #d94f58;
+  background: #fff0f0;
+}
+
+.emotion-angry {
+  color: #c41d1d;
+  background: #fff1f1;
+}
+
+.emotion-cooperate {
+  color: #1677e8;
+  background: #eaf3ff;
+}
+
+.emotion-hesitate {
+  color: #8a5cf5;
+  background: #f0ecff;
+}
+
 .message-time {
   display: block;
   margin-top: 8rpx;
   color: #9aa7b7;
   font-size: 20rpx;
+}
+
+/* System hint message */
+.message-item .message-bubble .message-content {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Golden phrase bar */
+.golden-phrase-bar {
+  margin-bottom: 26rpx;
+  padding: 20rpx 24rpx;
+  background: linear-gradient(135deg, #fef9e7, #fdf2d6);
+  border-radius: 18rpx;
+  border: 1rpx solid #f5e6a8;
+}
+
+.golden-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.golden-icon {
+  font-size: 28rpx;
+  margin-right: 10rpx;
+}
+
+.golden-title {
+  flex: 1;
+  color: #ad6b00;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.golden-close {
+  color: #9aa7b7;
+  font-size: 26rpx;
+  padding: 8rpx;
+}
+
+.golden-content {
+  color: #5c4a1e;
+  font-size: 26rpx;
+  line-height: 1.7;
 }
 
 .typing-state {
@@ -131,26 +228,55 @@
 }
 
 .input-area {
+  position: relative;
+  z-index: 10;
   display: flex;
-  align-items: center;
-  padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom));
-  gap: 16rpx;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  gap: 12rpx;
   background: #fff;
   border-top: 1rpx solid #e8edf3;
 }
 
 .input-field {
-  flex: 1;
-  height: 72rpx;
+  width: 100%;
+  height: 80rpx;
   padding: 0 22rpx;
   color: #26364a;
   background: #f3f6fa;
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.button-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.hint-button {
+  flex: 1;
+  height: 72rpx;
+  margin: 0;
+  padding: 0;
+  color: #1677e8;
+  background: #eaf3ff;
   border-radius: 36rpx;
-  font-size: 27rpx;
+  font-size: 24rpx;
+  line-height: 72rpx;
+}
+
+.hint-button::after {
+  border: none;
+}
+
+.hint-button[disabled] {
+  opacity: 0.45;
 }
 
 .send-button {
-  width: 120rpx;
+  flex: 1;
   height: 72rpx;
   margin: 0;
   padding: 0;
@@ -180,6 +306,7 @@
 }
 
 .end-loading {
+  flex-shrink: 0;
   padding: 30rpx 24rpx calc(30rpx + env(safe-area-inset-bottom));
   color: #66778c;
   background: #fff;

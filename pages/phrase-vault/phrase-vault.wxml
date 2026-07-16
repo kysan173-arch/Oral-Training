@@ -1,0 +1,71 @@
+<view class="vault-page">
+  <!-- Search -->
+  <view class="search-bar">
+    <text class="search-icon">🔍</text>
+    <input
+      class="search-input"
+      placeholder="搜索话术（如：种植牙、比价、投诉）"
+      value="{{searchValue}}"
+      bindinput="onSearchInput"
+      confirm-type="search"
+    />
+  </view>
+
+  <!-- Category filter -->
+  <scroll-view class="category-scroll" scroll-x enable-flex>
+    <view
+      class="category-tag {{activeCategory === item.key ? 'active' : ''}}"
+      wx:for="{{categories}}"
+      wx:key="key"
+      data-key="{{item.key}}"
+      bindtap="changeCategory"
+    >{{item.name}}</view>
+  </scroll-view>
+
+  <!-- Phrase list -->
+  <view class="phrase-list">
+    <view class="phrase-card" wx:for="{{phrases}}" wx:key="id">
+      <view class="phrase-head">
+        <view class="phrase-badges">
+          <text class="badge badge-cat">{{item.categoryName}}</text>
+          <text class="badge badge-type">{{item.patientType}}</text>
+        </view>
+        <view class="phrase-actions">
+          <text
+            class="collect-btn {{item.collected ? 'collected' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="toggleCollect"
+          >{{item.collected ? '★' : '☆'}}</text>
+        </view>
+      </view>
+
+      <text class="phrase-scenario">场景：{{item.scenario}}</text>
+
+      <view class="dialogue-block">
+        <text class="dialogue-label">患者说：</text>
+        <text class="dialogue-content">{{item.patientLine}}</text>
+      </view>
+
+      <view class="dialogue-block response">
+        <text class="dialogue-label">建议回复：</text>
+        <text class="dialogue-content">{{item.response}}</text>
+      </view>
+
+      <view class="phrase-foot">
+        <view class="foot-left">
+          <text class="phrase-rating">⭐ {{item.rating}}分</text>
+          <text class="phrase-tip">{{item.tip}}</text>
+        </view>
+        <button class="copy-btn" data-content="{{item.response}}" bindtap="copyPhrase">复制</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{phrases.length === 0}}" class="empty-state">
+    <text>没有找到匹配的话术</text>
+  </view>
+
+  <view class="bottom-action">
+    <button class="train-btn" bindtap="goTraining">去训练</button>
+  </view>
+</view>

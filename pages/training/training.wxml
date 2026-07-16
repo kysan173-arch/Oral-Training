@@ -26,20 +26,25 @@
     enhanced="{{true}}"
     show-scrollbar="{{false}}"
   >
-    <view class="message-item {{item.role === 'user' ? 'user-message' : 'patient-message'}}" wx:for="{{messages}}" wx:key="id">
-      <view class="message-avatar">{{item.role === 'user' ? '我' : '患'}}</view>
-      <view class="message-body">
-        <view class="message-bubble">
-          <text class="message-content">{{item.content}}</text>
+    <view class="chat-inner">
+      <chat-message wx:for="{{messages}}" wx:key="id" message="{{item}}"></chat-message>
+
+      <!-- Golden phrase recommendation -->
+      <view wx:if="{{goldenPhrase}}" class="golden-phrase-bar">
+        <view class="golden-header">
+          <text class="golden-icon">💡</text>
+          <text class="golden-title">黄金话术推荐</text>
+          <text class="golden-close" bindtap="dismissGoldenPhrase">✕</text>
         </view>
-        <text class="message-time">{{item.createdAt}}</text>
+        <text class="golden-content">{{goldenPhrase}}</text>
       </view>
+
+      <view wx:if="{{sending}}" class="typing-state">
+        <text class="message-avatar">患</text>
+        <text>患者正在输入…</text>
+      </view>
+      <view id="msg-bottom"></view>
     </view>
-    <view wx:if="{{sending}}" class="typing-state">
-      <text class="message-avatar">患</text>
-      <text>患者正在输入…</text>
-    </view>
-    <view id="msg-bottom"></view>
   </scroll-view>
 
   <view wx:if="{{!isTrainingEnd && !errorMessage}}" class="input-area">
@@ -52,10 +57,17 @@
       bindconfirm="sendMessage"
       disabled="{{sending || finishing}}"
     />
-    <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">发送</button>
+    <view class="button-row">
+      <button
+        class="hint-button"
+        bindtap="getHint"
+        disabled="{{sending || finishing || currentRound < 1}}"
+      >提示</button>
+      <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">发送</button>
+    </view>
   </view>
 
-  <view wx:if="{{isTrainingEnd}}" class="end-loading">
+  <view wx:if="{{isTrainingEnd && !isMock}}" class="end-loading">
     <text>训练已结束，正在生成评分报告…</text>
   </view>
 </view>

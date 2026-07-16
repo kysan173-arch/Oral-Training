@@ -1,10 +1,29 @@
 const request = require('../../static/api/request.js');
-const util = require('../../utils/util.js');
+
+const LEVEL_CONFIG = [
+  { min: 85, level: 'excellent', text: '优秀' },
+  { min: 70, level: 'good', text: '良好' },
+  { min: 60, level: 'pass', text: '合格' },
+  { min: 0, level: 'improve', text: '待改进' }
+];
+
+const V5_DIMENSIONS = [
+  { key: 'empathy', name: '同理心与温度', color: '#52c41a', weight: 20 },
+  { key: 'needsDiscovery', name: '需求挖掘力', color: '#fa8c16', weight: 20 },
+  { key: 'valueShaping', name: '价值塑造力', color: '#1677e8', weight: 20 },
+  { key: 'conversion', name: '邀约转化', color: '#722ed1', weight: 20 },
+  { key: 'compliance', name: '合规意识', color: '#eb2f96', weight: 20 }
+];
+
+function calcLevel(score) {
+  return LEVEL_CONFIG.find(item => score >= item.min) || { level: 'improve', text: '待改进' };
+}
 
 Page({
   data: {
     sessionId: '',
     scenarioId: '',
+    scenarioCategory: '',
     scenarioName: '',
     loading: true,
     status: 'generating',
@@ -13,9 +32,14 @@ Page({
     evaluation: null,
     score: 0,
     passed: false,
+    level: 'improve',
+    levelText: '待改进',
     radarData: [],
     dimensions: [],
     messages: [],
+    recommendedPhrases: [],
+    nextScenarioId: '',
+    nextScenarioName: '',
     errorMessage: ''
   },
 
@@ -30,6 +54,16 @@ Page({
       return;
     }
 
+    // 从全局上下文读取训练元信息
+    const ctx = getApp().globalData.currentSession;
+    if (ctx && ctx.id === sessionId) {
+      this.setData({
+        scenarioId: ctx.scenarioId || '',
+        scenarioCategory: ctx.scenarioCategory || '',
+        scenarioName: ctx.scenarioName || ''
+      });
+    }
+
     this.loadSessionMeta();
     this.loadEvaluation();
   },
@@ -40,6 +74,8 @@ Page({
 
   onUnload() {
     if (this.pollTimer) clearTimeout(this.pollTimer);
+    // 清除全局训练上下文
+    getApp().clearCurrentSession();
   },
 
   async loadSessionMeta() {
@@ -48,6 +84,7 @@ Page({
       if (!data || !data.session) return;
       this.setData({
         scenarioId: data.session.scenarioId || '',
+        scenarioCategory: data.session.scenarioCategory || '',
         scenarioName: data.session.scenarioName || '',
         messages: Array.isArray(data.messages) ? data.messages : []
       });
@@ -108,14 +145,31 @@ Page({
       violations: Array.isArray(evaluation.violations) ? evaluation.violations : [],
       roundComments: Array.isArray(evaluation.roundComments) ? evaluation.roundComments : []
     };
+
     const scores = evaluation.dimensionScores || {};
-    const dimensions = [
-      { name: '口腔知识准确性', value: scores.knowledgeAccuracy || 0, color: '#1677e8' },
-      { name: '医疗合规', value: scores.medicalCompliance || 0, color: '#722ed1' },
-      { name: '情绪识别与同理心', value: scores.empathy || 0, color: '#52c41a' },
-      { name: '需求挖掘', value: scores.needsDiscovery || 0, color: '#fa8c16' },
-      { name: '服务礼仪', value: scores.serviceEtiquette || 0, color: '#eb2f96' }
-    ];
+    const totalScore = evaluation.totalScore || 0;
+
+    // Map backend scores to V5 product dimensions
+    // Backend may use different keys; map them to the standard V5 keys
+    const dimensions = V5_DIMENSIONS.map(dim => {
+      let value = scores[dim.key] || 0;
+      // Fallback: try alternative keys from old system
+      if (!value && dim.key === 'empathy') value = scores.empathy || 0;
+      if (!value && dim.key === 'needsDiscovery') value = scores.needsDiscovery || 0;
+      if (!value && dim.key === 'valueShaping') value = scores.valueShaping || scores.knowledgeAccuracy || 0;
+      if (!value && dim.key === 'conversion') value = scores.conversion || 0;
+      if (!value && dim.key === 'compliance') value = scores.compliance || scores.medicalCompliance || 0;
+      return { name: dim.name, value, color: dim.color, weight: dim.weight };
+    });
+
+    const levelInfo = calcLevel(totalScore);
+
+    // Recommended phrases
+    const recommendedPhrases = Array.isArray(evaluation.recommendedPhrases)
+      ? evaluation.recommendedPhrases
+      : (evaluation.strengths && evaluation.strengths.length
+        ? evaluation.strengths.slice(0, 3).map(s => ({ round: s.round, content: s.evidence || '', reason: s.content }))
+        : []);
 
     this.setData({
       loading: false,
@@ -123,108 +177,61 @@ Page({
       retryable: false,
       timedOut: false,
       evaluation,
-      score: evaluation.totalScore || 0,
-      passed: (evaluation.totalScore || 0) >= 60,
+      score: totalScore,
+      passed: totalScore >= 60,
+      level: levelInfo.level,
+      levelText: levelInfo.text,
       dimensions,
+      recommendedPhrases,
       radarData: dimensions.map(item => ({
         name: item.name,
         value: item.value,
-        max: 100
+        max: 100,
+        color: item.color
       }))
-    }, () => {
-      this.drawRadarChart();
     });
+
+    // Try to find next scenario
+    this.findNextScenario();
   },
 
-  drawRadarChart() {
-    const query = wx.createSelectorQuery();
-    query.select('#radarCanvas').fields({ node: true, size: true }).exec((res) => {
-      if (!res[0]) return;
+  async findNextScenario() {
+    try {
+      const data = await request.get('/scenarios');
+      const scenarios = data.items || [];
+      const currentId = String(this.data.scenarioId);
+      const cat = this.data.scenarioCategory;
 
-      const canvas = res[0].node;
-      const ctx = canvas.getContext('2d');
-      const width = res[0].width;
-      const height = res[0].height;
-      canvas.width = width;
-      canvas.height = height;
+      // Find current scenario's index within same category
+      const sameCategory = cat ? scenarios.filter(s => (s.category || 'consultation') === cat) : scenarios;
+      const currentIdx = sameCategory.findIndex(s => String(s.id) === currentId);
 
-      const data = this.data.radarData;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const radius = Math.min(width, height) / 2 - 48;
-      const angleStep = (Math.PI * 2) / data.length;
-
-      ctx.clearRect(0, 0, width, height);
-      ctx.strokeStyle = '#dbe4ef';
-      ctx.lineWidth = 1;
-
-      [0.2, 0.4, 0.6, 0.8, 1].forEach(level => {
-        ctx.beginPath();
-        for (let i = 0; i <= data.length; i++) {
-          const angle = i * angleStep - Math.PI / 2;
-          const r = radius * level;
-          const x = centerX + r * Math.cos(angle);
-          const y = centerY + r * Math.sin(angle);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      });
-
-      ctx.beginPath();
-      data.forEach((item, index) => {
-        const angle = index * angleStep - Math.PI / 2;
-        const x = centerX + radius * Math.cos(angle);
-        const y = centerY + radius * Math.sin(angle);
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-
-      ctx.beginPath();
-      data.forEach((item, index) => {
-        const angle = index * angleStep - Math.PI / 2;
-        const r = radius * Math.min(item.value / 100, 1);
-        const x = centerX + r * Math.cos(angle);
-        const y = centerY + r * Math.sin(angle);
-        if (index === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(22, 119, 232, 0.25)';
-      ctx.fill();
-      ctx.strokeStyle = '#1677e8';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
+      if (currentIdx >= 0 && currentIdx < sameCategory.length - 1) {
+        const next = sameCategory[currentIdx + 1];
+        this.setData({
+          nextScenarioId: next.id,
+          nextScenarioName: next.name
+        });
+      }
+    } catch (error) {
+      console.warn('查找下一关失败', error);
+    }
   },
+
+
 
   async retryEvaluation() {
     try {
       await request.post(this.sessionPath('/evaluation/retry'));
-      this.pollCount = 0;
-      this.setData({
-        loading: true,
-        status: 'generating',
-        retryable: false,
-        timedOut: false,
-        errorMessage: ''
-      });
-      this.loadEvaluation();
     } catch (error) {
-      util.showToast(request.getErrorMessage(error, '重新生成评分失败'));
+      console.warn('重试评分API调用失败，将继续轮询', error);
     }
+    this.setData({ pollCount: 0, loading: true, status: 'generating', retryable: false, timedOut: false, errorMessage: '' });
+    this.loadEvaluation();
   },
 
   refreshEvaluation() {
-    this.pollCount = 0;
-    this.setData({
-      loading: true,
-      status: 'generating',
-      timedOut: false,
-      errorMessage: ''
-    });
-    this.loadEvaluation();
+    this.retryEvaluation();
   },
 
   retryTraining() {
@@ -235,6 +242,29 @@ Page({
     wx.navigateTo({
       url: `/pages/training/training?scenarioId=${encodeURIComponent(this.data.scenarioId)}`
     });
+  },
+
+  goNextLevel() {
+    if (!this.data.nextScenarioId) return;
+    wx.redirectTo({
+      url: `/pages/training/training?scenarioId=${encodeURIComponent(this.data.nextScenarioId)}`
+    });
+  },
+
+  shareResult() {
+    wx.showShareMenu({
+      withShareTicket: true,
+      menus: ['shareAppMessage', 'shareTimeline']
+    });
+  },
+
+  onShareAppMessage() {
+    const score = this.data.score;
+    const levelText = this.data.levelText;
+    return {
+      title: `我在口腔客服陪练中获得${score}分，评级【${levelText}】，一起来挑战吧！`,
+      path: '/pages/index/index'
+    };
   },
 
   viewHistory() {

@@ -1,1 +1,11 @@
-/* components/radar-chart/radar-chart.wxss */
+.radar-chart-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto;
+}
+
+.radar-canvas {
+  width: 100%;
+  height: 100%;
+}

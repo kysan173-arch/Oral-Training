@@ -5,7 +5,8 @@
     "pages/training/training",
     "pages/result/result",
     "pages/report/report",
-    "pages/mine/mine"
+    "pages/mine/mine",
+    "pages/phrase-vault/phrase-vault"
   ],
   "window": {
     "navigationBarBackgroundColor": "#007aff",
@@ -34,13 +35,13 @@
       },
       {
         "pagePath": "pages/report/report",
-        "text": "历史",
+        "text": "报告",
         "iconPath": "static/image/tabbar/report.png",
         "selectedIconPath": "static/image/tabbar/report_selected.png"
       },
       {
         "pagePath": "pages/mine/mine",
-        "text": "数据",
+        "text": "我的",
         "iconPath": "static/image/tabbar/mine.png",
         "selectedIconPath": "static/image/tabbar/mine_selected.png"
       }

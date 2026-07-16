@@ -1,66 +1,43 @@
 // components/chat-message/chat-message.js
-Page({
+// 聊天消息组件，统一处理 user / patient / system 三类消息展示
+// Props:
+//   message: { id, role, content, createdAt, emotionLabel? }
 
-  /**
-   * 页面的初始数据
-   */
+const EMOTION_CLASS_MAP = {
+  '将信将疑': 'emotion-doubt',
+  '开始接受': 'emotion-accept',
+  '价格敏感': 'emotion-price',
+  '焦虑不安': 'emotion-anxiety',
+  '愤怒不满': 'emotion-angry',
+  '积极配合': 'emotion-cooperate',
+  '犹豫不决': 'emotion-hesitate'
+};
+
+Component({
+  properties: {
+    message: {
+      type: Object,
+      value: {},
+      observer: '_onMessageChange'
+    }
+  },
+
   data: {
-
+    roleClass: '',
+    avatar: '',
+    emotionLabel: '',
+    emotionClass: ''
   },
 
-  /**
-   * 生命周期函数--监听页面加载
-   */
-  onLoad(options) {
-
-  },
-
-  /**
-   * 生命周期函数--监听页面初次渲染完成
-   */
-  onReady() {
-
-  },
-
-  /**
-   * 生命周期函数--监听页面显示
-   */
-  onShow() {
-
-  },
-
-  /**
-   * 生命周期函数--监听页面隐藏
-   */
-  onHide() {
-
-  },
-
-  /**
-   * 生命周期函数--监听页面卸载
-   */
-  onUnload() {
-
-  },
-
-  /**
-   * 页面相关事件处理函数--监听用户下拉动作
-   */
-  onPullDownRefresh() {
-
-  },
-
-  /**
-   * 页面上拉触底事件的处理函数
-   */
-  onReachBottom() {
-
-  },
-
-  /**
-   * 用户点击右上角分享
-   */
-  onShareAppMessage() {
-
+  methods: {
+    _onMessageChange(msg) {
+      if (!msg || !msg.role) return;
+      const role = msg.role;
+      const roleClass = role === 'user' ? 'msg-user' : (role === 'system' ? 'msg-system' : 'msg-patient');
+      const avatar = role === 'user' ? '我' : (role === 'system' ? '💡' : '患');
+      const emotionLabel = msg.emotionLabel || '';
+      const emotionClass = EMOTION_CLASS_MAP[emotionLabel] || '';
+      this.setData({ roleClass, avatar, emotionLabel, emotionClass });
+    }
   }
-})
+});

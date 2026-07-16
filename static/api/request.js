@@ -1,5 +1,3 @@
-const app = getApp();
-
 const createError = (code, message, statusCode, data = null) => ({
   code,
   message,
@@ -9,16 +7,21 @@ const createError = (code, message, statusCode, data = null) => ({
 
 const request = (url, options = {}) => {
   return new Promise((resolve, reject) => {
-    const baseUrl = app.globalData.apiBaseUrl.replace(/\/$/, '');
+    const app = getApp();
+    const baseUrl = (app?.globalData?.apiBaseUrl || 'http://localhost:3000/api').replace(/\/$/, '');
     const path = url.startsWith('/') ? url : `/${url}`;
+    const fullUrl = `${baseUrl}${path}`;
+
+    console.log('[request]', options.method || 'GET', fullUrl);
 
     wx.request({
-      url: `${baseUrl}${path}`,
+      url: fullUrl,
       method: options.method || 'GET',
       data: options.data || {},
+      timeout: 30000,
       header: {
         'Content-Type': 'application/json',
-        'X-Demo-User-Id': app.globalData.demoUserId || 'demo-user-001'
+        'X-Demo-User-Id': (app?.globalData?.demoUserId) || 'demo-user-001'
       },
       success: (res) => {
         const body = res.data || {};
@@ -29,6 +32,7 @@ const request = (url, options = {}) => {
           return;
         }
 
+        console.error('[request] 失败', fullUrl, res.statusCode, body);
         reject(createError(
           body.code || `HTTP_${res.statusCode}`,
           body.message || `网络请求失败（${res.statusCode}）`,
@@ -37,7 +41,7 @@ const request = (url, options = {}) => {
         ));
       },
       fail: (err) => {
-        console.error('API 请求失败', err);
+        console.error('[request] 网络错误', fullUrl, err.errMsg);
         reject(createError('NETWORK_ERROR', err.errMsg || '网络请求失败', 0));
       }
     });

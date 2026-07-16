@@ -1,0 +1,3 @@
+✅ LLM 代理已启动 → http://localhost:3000
+   模型: kimi-k2.6  |  接口: /api/llm/opening /chat /hint /evaluate
+[17:29:03] POST /api/llm/evaluate

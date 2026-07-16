@@ -1,6 +1,9 @@
 {
-  "navigationBarTitleText": "历史记录",
+  "navigationBarTitleText": "训练报告",
   "navigationBarBackgroundColor": "#007aff",
   "navigationBarTextStyle": "white",
-  "enablePullDownRefresh": true
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "radar-chart": "/components/radar-chart/radar-chart"
+  }
 }

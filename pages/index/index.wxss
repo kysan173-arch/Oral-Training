@@ -23,17 +23,71 @@
   font-size: 26rpx;
 }
 
-.scenario-card,
-.error-card {
+/* Category accordion */
+.category-block {
   margin-bottom: 20rpx;
-  padding: 28rpx;
+  overflow: hidden;
   border-radius: 24rpx;
   background: #fff;
   box-shadow: 0 6rpx 24rpx rgba(35, 58, 88, 0.05);
 }
 
-.scenario-topline,
-.scenario-footer {
+.category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx;
+}
+
+.category-info {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.category-icon {
+  font-size: 36rpx;
+}
+
+.category-name {
+  color: #26364a;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.category-count {
+  color: #9aa7b7;
+  font-size: 23rpx;
+}
+
+.category-arrow {
+  color: #9aa7b7;
+  font-size: 22rpx;
+  transition: transform 0.25s;
+}
+
+.category-arrow.expanded {
+  transform: rotate(180deg);
+  color: #1677e8;
+}
+
+/* Scenario list inside category */
+.scenario-list {
+  padding: 0 20rpx 20rpx;
+}
+
+.scenario-card {
+  margin-bottom: 16rpx;
+  padding: 24rpx;
+  border-radius: 18rpx;
+  background: #f8fafc;
+}
+
+.scenario-card:last-child {
+  margin-bottom: 0;
+}
+
+.scenario-topline {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -41,7 +95,7 @@
 
 .scenario-name {
   color: #26364a;
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 700;
 }
 
@@ -53,27 +107,111 @@
   font-size: 22rpx;
 }
 
-.scenario-summary,
-.profile-text {
+.difficulty-advanced {
+  color: #d94f58;
+  background: #fff0f0;
+}
+
+.difficulty-intermediate {
+  color: #ad6b00;
+  background: #fff4d6;
+}
+
+.scenario-desc {
   display: block;
-  margin-top: 14rpx;
+  margin-top: 12rpx;
   color: #67778c;
-  font-size: 26rpx;
+  font-size: 25rpx;
   line-height: 1.6;
 }
 
+/* Scenario progress bar */
+.scenario-progress {
+  display: flex;
+  margin-top: 22rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 14rpx;
+  background: #fff;
+  gap: 0;
+}
+
+.progress-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.progress-item + .progress-item {
+  border-left: 1rpx solid #edf1f6;
+}
+
+.progress-label {
+  color: #8a97a8;
+  font-size: 22rpx;
+  margin-bottom: 6rpx;
+}
+
+.progress-value {
+  color: #26364a;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.progress-value.highlight {
+  color: #1677e8;
+}
+
+/* Profile tags */
+.profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 14rpx;
+}
+
+.profile-tag {
+  padding: 4rpx 14rpx;
+  border-radius: 16rpx;
+  font-size: 21rpx;
+}
+
+.tag-personality {
+  color: #1677e8;
+  background: #eaf3ff;
+}
+
+.tag-sensitivity {
+  color: #d94f58;
+  background: #fff0f0;
+}
+
+.tag-emotion {
+  color: #ad6b00;
+  background: #fff4d6;
+}
+
+/* Existing shared styles */
 .profile-block,
 .focus-block {
-  margin-top: 22rpx;
+  margin-top: 18rpx;
   padding: 20rpx;
-  background: #f8fafc;
-  border-radius: 16rpx;
+  background: #fff;
+  border-radius: 14rpx;
 }
 
 .block-label {
   color: #4b5b70;
   font-size: 24rpx;
   font-weight: 600;
+}
+
+.profile-text {
+  display: block;
+  margin-top: 10rpx;
+  color: #67778c;
+  font-size: 25rpx;
+  line-height: 1.6;
 }
 
 .focus-list {
@@ -92,12 +230,10 @@
 }
 
 .scenario-footer {
-  margin-top: 24rpx;
-}
-
-.best-score {
-  color: #8a97a8;
-  font-size: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 20rpx;
 }
 
 .action-group {
@@ -135,6 +271,10 @@
 .error-card {
   display: flex;
   flex-direction: column;
+  margin-bottom: 20rpx;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #fff;
   color: #d64545;
   font-size: 26rpx;
 }
@@ -152,4 +292,47 @@
   color: #8a97a8;
   text-align: center;
   font-size: 26rpx;
+}
+
+/* Skeleton loading */
+@keyframes shimmer {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.skeleton-block {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  box-shadow: 0 6rpx 24rpx rgba(35, 58, 88, 0.05);
+}
+
+.skeleton-row {
+  height: 32rpx;
+  border-radius: 8rpx;
+  background: #e8ecf2;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton-row.skeleton-header {
+  width: 60%;
+  height: 36rpx;
+  margin-bottom: 20rpx;
+}
+
+.skeleton-row.skeleton-card {
+  width: 100%;
+  height: 120rpx;
+  margin-bottom: 12rpx;
+}
+
+.skeleton-row.skeleton-card.short {
+  height: 100rpx;
 }

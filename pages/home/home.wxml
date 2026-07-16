@@ -1,37 +1,68 @@
 <view class="home-page">
+  <!-- Search bar -->
+  <view class="search-bar">
+    <text class="search-icon">🔍</text>
+    <input
+      class="search-input"
+      placeholder="搜索话术（如：种植牙、价格、疼痛）"
+      value="{{searchValue}}"
+      bindinput="onSearchInput"
+      bindconfirm="onSearchConfirm"
+      confirm-type="search"
+    />
+    <text class="search-clear" wx:if="{{searchValue}}" bindtap="onClearSearch">✕</text>
+  </view>
+
+  <!-- Hero banner -->
   <view class="hero-card">
-    <text class="eyebrow">MVP 演示版</text>
     <text class="hero-title">AI 口腔客服陪练</text>
-    <text class="hero-desc">和 AI 模拟患者进行多轮文字对练，训练沟通、需求挖掘和医疗合规表达。</text>
-    <button class="primary-button" bindtap="goTraining">开始训练</button>
+    <text class="hero-desc">模拟真实患者对话，训练沟通、挖掘需求、提升转化，零压力反复练习。</text>
+    <button class="hero-btn" bindtap="goTraining">开始训练</button>
   </view>
 
-  <view class="demo-notice">
-    <text class="notice-title">固定演示用户</text>
-    <text class="notice-desc">当前使用演示数据，不需要微信授权登录，也不会处理真实患者信息。</text>
+  <!-- Hot phrases swiper -->
+  <view class="section-header">
+    <text class="section-title">热门话术</text>
+    <view class="swiper-dots">
+      <view class="dot {{index === currentSwiper ? 'active' : ''}}" wx:for="{{phrases}}" wx:key="id"></view>
+    </view>
   </view>
 
+  <swiper
+    wx:if="{{phrases.length > 0}}"
+    class="phrase-swiper"
+    current="{{currentSwiper}}"
+    bindchange="onSwiperChange"
+    indicator-dots="{{false}}"
+    autoplay="{{true}}"
+    interval="{{4000}}"
+    circular="{{true}}"
+  >
+    <swiper-item wx:for="{{phrases}}" wx:key="id">
+      <view class="phrase-card">
+        <view class="phrase-tag tag-{{item.tagClass}}">{{item.scenario}}</view>
+        <text class="phrase-title">{{item.title}}</text>
+      </view>
+    </swiper-item>
+  </swiper>
+
+  <view wx:if="{{phrases.length === 0}}" class="empty-state">没有找到匹配的话术</view>
+
+  <!-- Quick entry cards -->
   <view class="entry-list">
-    <view class="entry-card" bindtap="goHistory">
-      <view class="entry-icon">↺</view>
-      <view class="entry-copy">
-        <text class="entry-title">历史记录</text>
-        <text class="entry-desc">查看训练状态、完整对话和评分报告</text>
-      </view>
-      <text class="entry-arrow">›</text>
-    </view>
-    <view class="entry-card" bindtap="goDashboard">
-      <view class="entry-icon">▥</view>
-      <view class="entry-copy">
-        <text class="entry-title">演示数据</text>
-        <text class="entry-desc">查看训练次数、场景统计和五维平均分</text>
+    <view class="entry-card" bindtap="goPhraseVault">
+      <view class="entry-icon icon-gold">★</view>
+      <view class="entry-info">
+        <text class="entry-name">话术锦囊</text>
+        <text class="entry-desc">浏览高转化话术，支持按场景筛选和收藏</text>
       </view>
       <text class="entry-arrow">›</text>
     </view>
   </view>
 
+  <!-- Boundary notice -->
   <view class="boundary-card">
     <text class="boundary-title">使用边界</text>
-    <text class="boundary-text">AI 只扮演模拟患者，评分仅用于演示和训练反馈，不构成医疗建议或正式考核。</text>
+    <text class="boundary-text">AI 仅模拟患者角色进行沟通训练，评分用于学习反馈，不构成医疗建议或正式考核。</text>
   </view>
 </view>
