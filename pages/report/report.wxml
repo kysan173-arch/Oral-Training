@@ -1,89 +1,15 @@
-<view class="history-page">
-  <view class="page-intro">
-    <text class="page-title">历史记录</text>
-    <text class="page-desc">查看训练状态、对话记录和评分报告。</text>
-  </view>
-
-  <!-- Status filter -->
-  <view class="filter-bar">
-    <view class="filter-item {{statusFilter === 'all' ? 'active' : ''}}" data-status="all" bindtap="changeStatusFilter">全部</view>
-    <view class="filter-item {{statusFilter === 'in_progress' ? 'active' : ''}}" data-status="in_progress" bindtap="changeStatusFilter">进行中</view>
-    <view class="filter-item {{statusFilter === 'completed' ? 'active' : ''}}" data-status="completed" bindtap="changeStatusFilter">已完成</view>
-    <view class="filter-item {{statusFilter === 'abandoned' ? 'active' : ''}}" data-status="abandoned" bindtap="changeStatusFilter">已放弃</view>
-  </view>
-
-  <!-- Pass/category filter -->
-  <view class="sub-filter-bar">
-    <view class="sub-filter-item {{passFilter === 'all' ? 'active' : ''}}" data-pass="all" bindtap="changePassFilter">全部</view>
-    <view class="sub-filter-item {{passFilter === 'passed' ? 'active' : ''}}" data-pass="passed" bindtap="changePassFilter">已通过</view>
-    <view class="sub-filter-item {{passFilter === 'failed' ? 'active' : ''}}" data-pass="failed" bindtap="changePassFilter">未通过</view>
-    <view class="sub-filter-item {{categoryFilter === 'all' ? 'active' : ''}}" data-category="all" bindtap="changeCategoryFilter">全部分类</view>
-    <view
-      class="sub-filter-item {{categoryFilter === item ? 'active' : ''}}"
-      wx:for="{{categories}}"
-      wx:key="*this"
-      data-category="{{item}}"
-      bindtap="changeCategoryFilter"
-    >{{item}}</view>
-  </view>
-
-  <view wx:if="{{errorMessage}}" class="error-card">
-    <text>{{errorMessage}}</text>
-    <button bindtap="retryLoad">重新加载</button>
-  </view>
-
-  <view wx:if="{{!loading && !errorMessage}}" class="session-list">
-    <view class="session-card-wrapper" wx:for="{{filteredSessions}}" wx:key="id">
-      <view class="session-card" data-id="{{item.id}}" data-status="{{item.status}}" data-index="{{index}}" bindtap="toggleExpand">
-        <view class="session-main">
-          <text class="session-name">{{item.scenarioName}}</text>
-          <text class="session-category-tag" wx:if="{{item.category}}">{{item.category}}</text>
-          <text class="session-time">{{item.updatedAt}}</text>
-        </view>
-        <view class="session-meta">
-          <view class="session-status-group">
-            <text class="status-tag status-{{item.status}}">{{item.status === 'in_progress' ? '进行中' : (item.status === 'completed' ? '已完成' : '已放弃')}}</text>
-            <text class="pass-tag {{item.passed ? 'pass-tag-yes' : ''}}" wx:if="{{item.status === 'completed' && item.totalScore !== null}}">{{item.passed ? '✓ 通过' : '未通过'}}</text>
-          </view>
-          <text class="round-count">{{item.currentRound}} / {{item.maxRounds}} 轮</text>
-          <text wx:if="{{item.totalScore !== null && item.totalScore !== undefined}}" class="session-score">{{item.totalScore}}分</text>
-          <text wx:else class="session-score muted">查看详情 ›</text>
-        </view>
-      </view>
-
-      <!-- Expanded detail -->
-      <view wx:if="{{item.expanded && item.status === 'completed' && item.dimensionScores}}" class="expand-panel">
-        <view class="expand-score">
-          <text class="expand-score-value">{{item.totalScore}}</text>
-          <text class="expand-score-label">总分</text>
-          <text class="expand-pass-tag {{item.passed ? 'pass-yes' : 'pass-no'}}">{{item.passed ? '✓ 通过' : '未通过'}}</text>
-        </view>
-        <radar-chart wx:if="{{item.displayDimensions.length}}" data="{{item.displayDimensions}}" size="400"></radar-chart>
-        <view class="expand-dimensions">
-          <view class="expand-dim-item" wx:for="{{item.displayDimensions}}" wx:for-item="dim" wx:key="name">
-            <text class="expand-dim-name">{{dim.name}}</text>
-            <view class="expand-dim-bar">
-              <view class="expand-dim-fill" style="width: {{dim.value}}%; background: {{dim.color}};"></view>
-            </view>
-            <text class="expand-dim-value">{{dim.value}}分</text>
-          </view>
-        </view>
-        <view class="expand-actions">
-          <button class="expand-btn" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="viewSession">查看完整报告</button>
-        </view>
-      </view>
+<view class="page-shell history-page">
+  <view class="history-header"><text class="eyebrow">STEP 05 / HISTORY</text><text class="page-title">历史记录</text><text class="page-intro">两种训练模式独立保存，评分与患者模拟复盘不会混在一起。</text></view>
+  <view class="history-mode-switch"><view class="history-mode {{historyMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="customer_service">客服训练</view><view class="history-mode {{historyMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="patient_simulation">患者模拟</view></view>
+  <view class="history-tip"><text>状态说明：</text><text>{{historyMode === 'patient_simulation' ? '进行中可续练，已完成可查看学习复盘，已放弃记录仅用于回看。' : '进行中可续练，已完成可查看报告，已放弃记录仅用于回看。'}}</text></view>
+  <view class="empty-history card" wx:if="{{sessions.length === 0}}"><text class="empty-icon">↺</text><text class="empty-title">还没有{{historyMode === 'patient_simulation' ? '患者模拟' : '客服训练'}}记录</text><text class="empty-text">完成一次{{historyMode === 'patient_simulation' ? '患者模拟' : '训练'}}后，完整对话会自动出现在这里。</text></view>
+  <view class="history-list" wx:else>
+    <view class="history-card card" wx:for="{{sessions}}" wx:key="id">
+      <view class="history-card-top"><view><text class="history-scene">{{item.scenarioName}}</text><text class="history-mode-label">{{item.isRoleplay ? '患者模拟' : '客服训练'}}</text></view><text class="status {{item.statusClass}}">{{item.statusText}}</text></view>
+      <view class="history-meta"><text>{{item.updatedAt}}</text><text>{{item.currentRound}} / {{item.maxRounds}} 轮</text><text wx:if="{{item.evaluation}}">{{item.evaluation.totalScore}} 分</text><text wx:elif="{{item.isRoleplay}}">{{item.summaryStatus === 'ready' ? '已复盘' : item.summaryStatus === 'failed' ? '复盘待重试' : '复盘生成中'}}</text><text wx:else>未评分</text></view>
+      <view class="history-actions"><text class="conversation-link" bindtap="toggleConversation" data-id="{{item.id}}">{{expandedId === item.id ? '收起对话' : '查看完整对话'}} ›</text><button class="history-button {{item.statusClass}}" bindtap="handleAction" data-id="{{item.id}}">{{item.actionText}}</button></view>
+      <view class="conversation" wx:if="{{expandedId === item.id}}"><view class="conversation-row {{message.role === 'user' || message.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{item.messages}}" wx:for-item="message" wx:key="id"><text class="conversation-role">{{message.role === 'user' ? '客服' : message.role === 'patient' ? '患者' : message.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}}</text><text class="conversation-text">{{message.content}}</text><view class="history-learning" wx:if="{{message.role === 'standard_customer' && message.learningPoints.length}}"><text wx:for="{{message.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text><text wx:if="{{message.complianceBoundary}}" class="history-boundary">合规边界：{{message.complianceBoundary}}</text></view></view></view>
     </view>
   </view>
-
-  <view wx:if="{{loading}}" class="skeleton-list">
-    <view class="skeleton-card" wx:for="{{4}}" wx:key="*this">
-      <view class="skeleton-line title"></view>
-      <view class="skeleton-line subtitle"></view>
-      <view class="skeleton-line score"></view>
-    </view>
-  </view>
-  <view wx:if="{{!loading && !errorMessage && filteredSessions.length === 0}}" class="empty-state">
-    <text wx:if="{{sessions.length === 0}}">暂无训练记录</text>
-    <text wx:else>当前筛选条件下无匹配记录</text>
-  </view>
+  <text class="disclaimer">完整对话仅保存在当前演示环境，不包含真实患者信息。</text>
 </view>

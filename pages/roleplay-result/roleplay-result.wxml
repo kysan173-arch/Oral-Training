@@ -1,0 +1,29 @@
+<view class="page-shell roleplay-result-page" wx:if="{{!loading}}">
+  <view class="result-hero">
+    <text class="result-kicker">患者模拟完成 · {{scenario.name}}</text>
+    <view class="hero-icon">✓</view>
+    <text class="hero-title">学习复盘已生成</text>
+    <text class="result-time">{{session.startedAt}} — {{session.finishedAt}}</text>
+  </view>
+
+  <view class="notice-box"><text class="notice-icon">i</text><text>本复盘用于帮助新人理解标准客服的沟通结构与合规边界，不含数值评分，不构成医疗建议。</text></view>
+
+  <view class="section-title-row"><text class="section-title">整体接待总结</text></view>
+  <view class="summary-card card"><text>{{summary.summary}}</text></view>
+
+  <view class="section-title-row"><text class="section-title">已覆盖的问题</text><text class="section-caption">{{summary.coveredTopics.length}} 项</text></view>
+  <view class="list-card card"><text class="list-item" wx:for="{{summary.coveredTopics}}" wx:key="*this">• {{item}}</text></view>
+
+  <view class="section-title-row"><text class="section-title">关键服务原则</text></view>
+  <view class="principle-card card" wx:for="{{summary.keyPrinciples}}" wx:key="*this"><text class="principle-index">{{index + 1}}</text><text class="principle-text">{{item}}</text></view>
+
+  <view class="section-title-row"><text class="section-title">后续练习建议</text></view>
+  <view class="list-card card practice-card"><text class="list-item" wx:for="{{summary.nextPracticeSuggestions}}" wx:key="*this">• {{item}}</text></view>
+
+  <view class="result-actions"><button class="primary-button" bindtap="viewScenes">再练一个场景</button><button class="secondary-button action-button" bindtap="viewHistory">查看历史记录</button></view>
+  <text class="disclaimer">AI模拟训练，不构成医疗建议。</text>
+</view>
+
+<view class="page-shell roleplay-result-page loading-result" wx:if="{{loading}}">
+  <view class="loading-card card"><text class="loading-title">{{loadingText}}</text><text class="loading-text">复盘会读取完整问答并整理学习重点，请勿关闭页面。</text><button wx:if="{{retryable}}" class="primary-button retry-button" bindtap="retrySummary">重新生成复盘</button></view>
+</view>

@@ -1,0 +1,16 @@
+<view class="page-shell data-page">
+  <view class="data-header"><text class="eyebrow">STEP 06 / DATA</text><text class="page-title">演示数据</text><text class="page-intro">只展示固定演示账号的训练汇总，不包含人员管理和权限。</text></view>
+  <view class="summary-cards">
+    <view class="summary-card card"><text class="summary-value">{{dashboard.totalCount}}</text><text class="summary-label">总训练次数</text><text class="summary-note">不含已放弃</text></view>
+    <view class="summary-card card"><text class="summary-value">{{dashboard.completedCount}}</text><text class="summary-label">已完成次数</text><text class="summary-note">已生成报告</text></view>
+    <view class="summary-card card"><text class="summary-value">{{dashboard.averageScore}}</text><text class="summary-label">平均得分</text><text class="summary-note">完成训练平均</text></view>
+  </view>
+  <view class="section-title-row"><text class="section-title">各场景训练次数</text><text class="section-caption">四个固定场景</text></view>
+  <view class="chart-card card"><view class="scene-stat" wx:for="{{dashboard.sceneStats}}" wx:key="id"><view class="scene-stat-head"><text>{{item.name}}</text><text class="scene-count">{{item.count}} 次</text></view><view class="scene-bar"><view class="scene-fill" style="width: {{item.barWidth}}%;"></view></view></view></view>
+  <view class="section-title-row"><text class="section-title">五维平均得分</text><text class="section-caption">仅统计已完成训练</text></view>
+  <view class="dimension-card card"><view class="dimension-row" wx:for="{{dashboard.dimensionAverages}}" wx:key="key"><view class="dimension-head"><text>{{item.name}}</text><text>{{item.value}}</text></view><view class="dimension-bar"><view class="dimension-fill" style="width: {{item.value}}%;"></view></view></view></view>
+  <view class="section-title-row"><text class="section-title">最近训练</text><text class="section-caption">最多显示5条</text></view>
+  <view class="recent-card card"><view class="recent-row" wx:for="{{dashboard.recentSessions}}" wx:key="id"><view class="recent-copy"><text class="recent-name">{{item.scenarioName}}</text><text class="recent-time">{{item.updatedAt}} · {{item.currentRound}}轮</text></view><text class="recent-score" wx:if="{{item.evaluation}}">{{item.evaluation.totalScore}}分</text><text class="recent-status" wx:else>{{item.status === 'in_progress' ? '进行中' : '已放弃'}}</text></view><view class="no-recent" wx:if="{{dashboard.recentSessions.length === 0}}">完成一次训练后，这里会展示最近记录。</view></view>
+  <view class="not-included"><text class="not-included-title">MVP 数据边界</text><text>不包含成员列表、团队权限、任务发布、排行榜、薄弱项预警、报表导出和多门店数据。</text></view>
+  <text class="disclaimer">数据来自当前演示环境的本地训练记录。</text>
+</view>

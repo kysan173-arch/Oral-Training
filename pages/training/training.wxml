@@ -1,73 +1,33 @@
-<view class="training-page">
-  <view class="session-header">
-    <view class="session-copy">
-      <text class="scenario-name">{{scenarioName}}</text>
-      <text class="patient-profile">{{patientProfile || 'AI 模拟患者正在准备中'}}</text>
-      <text class="round-text">第 {{currentRound}} / {{maxRounds}} 轮 · 剩余 {{remainingRounds}} 轮</text>
-    </view>
-    <button
-      wx:if="{{!isTrainingEnd}}"
-      class="finish-button"
-      data-reason="manual"
-      bindtap="finishTraining"
-      disabled="{{sending || finishing}}"
-    >结束训练</button>
+<view class="page-shell training-page">
+  <view class="training-header">
+    <view class="patient-title"><view class="patient-dot"></view><view><text class="patient-name">模拟患者</text><text class="patient-subtitle">{{scenario.name}}</text></view></view>
+    <view class="round-counter"><text class="round-value">{{currentRound}}</text><text class="round-total">/ {{maxRounds}}轮</text></view>
+  </view>
+  <view class="profile-strip">
+    <text class="strip-label">公开画像</text>
+    <text class="strip-text">{{scenario.patientAge}} · {{scenario.patientConcern}} · {{scenario.patientEmotion}}</text>
   </view>
 
-  <view wx:if="{{errorMessage}}" class="error-panel">
-    <text>{{errorMessage}}</text>
-  </view>
-
-  <scroll-view
-    wx:if="{{!errorMessage}}"
-    class="chat-area"
-    scroll-y
-    scroll-into-view="{{scrollToView}}"
-    enhanced="{{true}}"
-    show-scrollbar="{{false}}"
-  >
-    <view class="chat-inner">
-      <chat-message wx:for="{{messages}}" wx:key="id" message="{{item}}"></chat-message>
-
-      <!-- Golden phrase recommendation -->
-      <view wx:if="{{goldenPhrase}}" class="golden-phrase-bar">
-        <view class="golden-header">
-          <text class="golden-icon">💡</text>
-          <text class="golden-title">黄金话术推荐</text>
-          <text class="golden-close" bindtap="dismissGoldenPhrase">✕</text>
-        </view>
-        <text class="golden-content">{{goldenPhrase}}</text>
+  <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
+    <view class="chat-intro">本次训练最多10轮。请以普通客服身份沟通，不提供快捷话术或实时提示。</view>
+    <view class="message-item {{item.role === 'user' ? 'user-message' : 'patient-message'}}" wx:for="{{messages}}" wx:key="id">
+      <view class="message-avatar">{{item.role === 'user' ? '我' : '患'}}</view>
+      <view class="message-body">
+        <text class="message-role">{{item.role === 'user' ? '客服' : '患者'}} · {{item.time}}</text>
+        <view class="message-bubble"><text>{{item.content}}</text></view>
       </view>
-
-      <view wx:if="{{sending}}" class="typing-state">
-        <text class="message-avatar">患</text>
-        <text>患者正在输入…</text>
-      </view>
-      <view id="msg-bottom"></view>
     </view>
+    <view class="typing" wx:if="{{sending}}"><view class="typing-dot"></view><text>患者正在输入…</text></view>
+    <view id="message-bottom"></view>
   </scroll-view>
 
-  <view wx:if="{{!isTrainingEnd && !errorMessage}}" class="input-area">
-    <input
-      class="input-field"
-      placeholder="输入你的回复..."
-      value="{{inputValue}}"
-      bindinput="onInputChange"
-      confirm-type="send"
-      bindconfirm="sendMessage"
-      disabled="{{sending || finishing}}"
-    />
-    <view class="button-row">
-      <button
-        class="hint-button"
-        bindtap="getHint"
-        disabled="{{sending || finishing || currentRound < 1}}"
-      >提示</button>
-      <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">发送</button>
-    </view>
+  <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
+  <view class="input-area">
+    <input class="input-field" placeholder="输入你的回复…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing}}" />
+    <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>
   </view>
-
-  <view wx:if="{{isTrainingEnd && !isMock}}" class="end-loading">
-    <text>训练已结束，正在生成评分报告…</text>
+  <view class="training-footer">
+    <text class="leave-link" bindtap="leaveTraining">暂存并退出</text>
+    <view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishTraining" aria-role="button">{{finishing ? '生成报告中…' : '结束训练'}}</view>
   </view>
 </view>

@@ -1,5 +1,4 @@
-const request = require('../../static/api/request.js');
-const util = require('../../utils/util.js');
+const api = require('../../utils/api.js');
 
 const CATEGORY_CONFIG = {
   consultation: { name: '咨询解答', icon: '💬' },
@@ -137,147 +136,101 @@ function buildCategories(scenarios) {
 
 Page({
   data: {
-    categories: [],
-    loading: true,
-    errorMessage: ''
+    scenarios: [],
+    expandedId: '',
+    trainingMode: 'customer_service'
   },
 
-  _flatScenarios: [],
+  onShow() { this.loadScenarios(); },
 
-  onLoad() {
-    this.loadScenarios();
+  loadScenarios() {
+    const isRoleplay = this.data.trainingMode === 'patient_simulation';
+    const request = isRoleplay ? api.getRoleplayScenarios() : api.getScenarios();
+    request.then(data => {
+      const scenarios = data.items.map(item => Object.assign({}, item, {
+        difficulty: item.difficulty === 'advanced' ? '进阶' : '基础',
+        patientAge: `${item.patientProfile.age}岁`,
+        patientConcern: item.patientProfile.description,
+        patientEmotion: isRoleplay ? '由你自由提问' : '需通过对话了解',
+        actionText: item.activeSession
+          ? (isRoleplay ? '继续模拟' : '继续训练')
+          : (isRoleplay ? '开始模拟' : '开始训练'),
+        suggestedQuestions: item.suggestedQuestions || []
+      }));
+      this.setData({ scenarios, expandedId: '' });
+    }).catch(error => wx.showToast({ title: error.message || '场景加载失败', icon: 'none' }));
   },
 
-  onShow() {
-    if (this._flatScenarios.length > 0) {
-      this.loadScenarios();
-    }
+  switchMode(e) {
+    const mode = e.currentTarget.dataset.mode;
+    if (!mode || mode === this.data.trainingMode) return;
+    this.setData({ trainingMode: mode, scenarios: [], expandedId: '' }, () => this.loadScenarios());
   },
 
-  async loadScenarios() {
-    this.setData({ loading: true, errorMessage: '' });
-    try {
-      const data = await request.get('/scenarios');
-      const flat = data.items || [];
-      this._flatScenarios = flat;
-      const categories = buildCategories(flat);
-      this.setData({ categories, loading: false });
-    } catch (error) {
-      console.warn('加载场景失败，使用 Mock 数据', error);
-      const flat = MOCK_SCENARIOS;
-      this._flatScenarios = flat;
-      const categories = buildCategories(flat);
-      this.setData({ categories, loading: false });
-    }
+  toggleProfile(e) {
+    const id = e.currentTarget.dataset.id;
+    this.setData({ expandedId: this.data.expandedId === id ? '' : id });
   },
 
-  toggleCategory(e) {
-    const index = e.currentTarget.dataset.index;
-    const categories = this.data.categories.map((cat, i) => ({
-      ...cat,
-      expanded: i === index ? !cat.expanded : cat.expanded
-    }));
-    this.setData({ categories });
-  },
-
-  findScenario(id) {
-    return this._flatScenarios.find(item => String(item.id) === String(id));
-  },
-
-  goToTraining(sessionId, scenarioId) {
-    if (!sessionId) return;
-    let url = `/pages/training/training?sessionId=${encodeURIComponent(sessionId)}`;
-    if (scenarioId) url += `&scenarioId=${encodeURIComponent(scenarioId)}`;
-    wx.navigateTo({ url });
-  },
-
-  async startTraining(e) {
-    const scenarioId = e.currentTarget.dataset.id;
-    const scenario = this.findScenario(scenarioId);
+  openTraining(e) {
+    const { id, mode } = e.currentTarget.dataset;
+    const scenario = this.data.scenarios.find(item => item.id === id);
     if (!scenario) return;
-
-    if (scenario.activeSession) {
-      this.goToTraining(scenario.activeSession.id, scenarioId);
+    if (this.data.trainingMode === 'patient_simulation') {
+      this.openRoleplay(scenario, mode, '');
       return;
     }
-
-    util.showLoading('创建训练中...');
-    try {
-      const data = await request.post('/sessions', { scenarioId });
-      util.hideLoading();
-      if (!data || !data.session || !data.session.id) {
-        throw new Error('服务端未返回有效训练会话');
-      }
-      const app = getApp();
-      app.setCurrentSession({
-        id: data.session.id,
-        scenarioId,
-        scenarioName: scenario.name,
-        scenarioCategory: scenario.category
-      });
-      this.goToTraining(data.session.id, scenarioId);
-    } catch (error) {
-      util.hideLoading();
-      const existingSessionId = error.data && (error.data.sessionId || error.data.id);
-      if (error.code === 'SESSION_IN_PROGRESS' && existingSessionId) {
-        this.goToTraining(existingSessionId, scenarioId);
-        return;
-      }
-      // Mock 降级：生成模拟会话ID，传递完整场景数据
-      const mockSessionId = `mock-session-${scenarioId}-${Date.now()}`;
-      const app = getApp();
-      app.setCurrentSession({
-        id: mockSessionId,
-        scenarioId,
-        scenarioName: scenario.name,
-        scenarioCategory: scenario.category,
-        scenarioData: scenario,
-        isMock: true
-      });
-      this.goToTraining(mockSessionId, scenarioId);
+    if (mode === 'continue' && scenario.activeSession) {
+      this.goTraining(scenario.activeSession.id);
+      return;
     }
+    api.createSession(id).then(data => this.goTraining(data.session.id))
+      .catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+  },
+
+  openSuggestion(e) {
+    const scenario = this.data.scenarios.find(item => item.id === e.currentTarget.dataset.id);
+    if (!scenario) return;
+    this.openRoleplay(scenario, scenario.activeSession ? 'continue' : 'new', e.currentTarget.dataset.prompt || '');
+  },
+
+  openRoleplay(scenario, mode, prompt) {
+    if (mode === 'continue' && scenario.activeSession) {
+      this.goRoleplay(scenario.activeSession.id, prompt);
+      return;
+    }
+    api.createRoleplaySession(scenario.id).then(data => this.goRoleplay(data.session.id, prompt))
+      .catch(error => wx.showToast({ title: error.message, icon: 'none' }));
   },
 
   restartTraining(e) {
-    const sessionId = e.currentTarget.dataset.sessionId;
-    const scenarioId = e.currentTarget.dataset.scenarioId || '';
-    if (!sessionId) return;
-
-    util.showModal({
-      title: '重新开始训练',
-      content: '当前进行中的会话将标记为已放弃，确定重新开始吗？'
-    }).then(async (confirmed) => {
-      if (!confirmed) return;
-      util.showLoading('重新创建中...');
-      try {
-        const data = await request.post(`/sessions/${encodeURIComponent(sessionId)}/restart`);
-        util.hideLoading();
-        if (!data || !data.session || !data.session.id) {
-          throw new Error('服务端未返回有效训练会话');
-        }
-        const app = getApp();
-        app.setCurrentSession({ id: data.session.id });
-        this.goToTraining(data.session.id, scenarioId);
-      } catch (error) {
-        util.hideLoading();
-        // Mock 降级
-        const mockSessionId = `mock-session-${scenarioId}-${Date.now()}`;
-        const scenario = this.findScenario(scenarioId);
-        const app = getApp();
-        app.setCurrentSession({
-          id: mockSessionId,
-          scenarioId,
-          scenarioName: scenario ? scenario.name : '',
-          scenarioCategory: scenario ? scenario.category : '',
-          scenarioData: scenario,
-          isMock: true
-        });
-        this.goToTraining(mockSessionId, scenarioId);
+    const id = e.currentTarget.dataset.id;
+    const isRoleplay = this.data.trainingMode === 'patient_simulation';
+    wx.showModal({
+      title: isRoleplay ? '重新开始患者模拟？' : '重新开始训练？',
+      content: '当前未完成会话会标记为已放弃，历史记录仍会保留。',
+      confirmText: '重新开始',
+      success: result => {
+        if (!result.confirm) return;
+        const scenario = this.data.scenarios.find(item => item.id === id);
+        if (!scenario || !scenario.activeSession) return;
+        const request = isRoleplay
+          ? api.restartRoleplaySession(scenario.activeSession.id)
+          : api.restartSession(scenario.activeSession.id);
+        request.then(data => {
+          if (isRoleplay) this.goRoleplay(data.session.id, '');
+          else this.goTraining(data.session.id);
+        }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
       }
     });
   },
 
-  onPullDownRefresh() {
-    this.loadScenarios().finally(() => wx.stopPullDownRefresh());
+  goTraining(sessionId) {
+    wx.navigateTo({ url: `/pages/training/training?sessionId=${sessionId}` });
+  },
+
+  goRoleplay(sessionId, prompt) {
+    const suffix = prompt ? `&prompt=${encodeURIComponent(prompt)}` : '';
+    wx.navigateTo({ url: `/pages/roleplay/roleplay?sessionId=${sessionId}${suffix}` });
   }
 });

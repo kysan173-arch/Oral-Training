@@ -1,0 +1,28 @@
+.roleplay-result-page { padding-bottom: 48rpx; }
+.result-hero { padding: 38rpx 24rpx 42rpx; color: #fff; background: linear-gradient(135deg, #32a79b, #4389c7); text-align: center; }
+.result-kicker { display: block; color: rgba(255,255,255,.78); font-size: 23rpx; }
+.hero-icon { width: 126rpx; height: 126rpx; line-height: 126rpx; margin: 24rpx auto 16rpx; border: 10rpx solid rgba(255,255,255,.25); border-radius: 50%; font-size: 64rpx; }
+.hero-title { display: block; font-size: 31rpx; font-weight: 700; }
+.result-time { display: block; margin-top: 12rpx; color: rgba(255,255,255,.62); font-size: 20rpx; }
+.notice-box { display: flex; align-items: flex-start; margin: 22rpx 24rpx 30rpx; padding: 20rpx; border-radius: 18rpx; color: #547473; background: #eaf7f5; font-size: 22rpx; line-height: 1.55; }
+.notice-icon { width: 30rpx; height: 30rpx; line-height: 30rpx; flex-shrink: 0; margin-right: 12rpx; border-radius: 50%; text-align: center; color: #fff; background: #36a297; font-size: 20rpx; }
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 28rpx 14rpx; }
+.section-title { font-size: 31rpx; font-weight: 700; }
+.section-caption { color: #aaa; font-size: 21rpx; }
+.summary-card, .list-card, .principle-card { padding: 26rpx; margin: 0 24rpx 26rpx; color: #555; font-size: 25rpx; line-height: 1.7; }
+.list-item { display: block; margin-top: 10rpx; }
+.list-item:first-child { margin-top: 0; }
+.principle-card { display: flex; align-items: flex-start; }
+.principle-index { width: 42rpx; height: 42rpx; line-height: 42rpx; flex-shrink: 0; margin-right: 16rpx; border-radius: 50%; color: #fff; background: #36a297; font-size: 22rpx; text-align: center; }
+.principle-text { flex: 1; }
+.practice-card { color: #61748e; background: #f2f6ff; }
+.result-actions { padding: 0 24rpx; }
+.result-actions button { width: 100%; height: 76rpx; line-height: 76rpx; margin-bottom: 16rpx; padding: 0; }
+.action-button { border: 0; }
+.disclaimer { display: block; color: #aaa; font-size: 21rpx; text-align: center; }
+.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; }
+.loading-card { width: 100%; padding: 48rpx 32rpx; text-align: center; }
+.loading-title, .loading-text { display: block; }
+.loading-title { color: #333; font-size: 31rpx; font-weight: 700; }
+.loading-text { margin-top: 16rpx; color: #999; font-size: 24rpx; line-height: 1.6; }
+.retry-button { width: 100%; margin-top: 30rpx; }

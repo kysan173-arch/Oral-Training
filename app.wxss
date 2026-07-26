@@ -22,6 +22,16 @@ page {
   box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.05);
 }
 
+button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+button::after {
+  border: none;
+}
+
 /* 按钮样式 */
 .btn {
   border-radius: 60rpx;
@@ -31,7 +41,7 @@ page {
 }
 
 .btn-primary {
-  background: #007aff;
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: #fff;
 }
 
@@ -42,6 +52,38 @@ page {
 
 .btn-disabled {
   background: #ccc;
+  color: #999;
+}
+
+.page-shell {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding-bottom: 40rpx;
+  background: #f5f5f5;
+}
+
+.primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border-radius: 46rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.secondary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef3ff;
+  color: #5268c9;
+  border-radius: 40rpx;
+  font-size: 26rpx;
+}
+
+.muted {
   color: #999;
 }
 

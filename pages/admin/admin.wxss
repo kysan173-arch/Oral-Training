@@ -1,0 +1,34 @@
+.data-page { padding: 34rpx 24rpx 48rpx; }
+.data-header { padding: 8rpx 8rpx 26rpx; }
+.eyebrow { display: block; color: #7c86d8; font-size: 20rpx; letter-spacing: 2rpx; }
+.page-title { display: block; margin-top: 14rpx; font-size: 46rpx; font-weight: 700; }
+.page-intro { display: block; margin-top: 14rpx; color: #999; font-size: 25rpx; line-height: 1.5; }
+.summary-cards { display: flex; gap: 14rpx; margin-bottom: 34rpx; }
+.summary-card { flex: 1; min-height: 146rpx; padding: 22rpx 8rpx; text-align: center; }
+.summary-value, .summary-label, .summary-note { display: block; }
+.summary-value { color: #667eea; font-size: 42rpx; font-weight: 700; }
+.summary-label { margin-top: 7rpx; font-size: 22rpx; }
+.summary-note { margin-top: 7rpx; color: #aaa; font-size: 19rpx; }
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 4rpx 14rpx; }
+.section-title { font-size: 31rpx; font-weight: 700; }
+.section-caption { color: #aaa; font-size: 21rpx; }
+.chart-card, .dimension-card, .recent-card { padding: 26rpx; margin-bottom: 28rpx; }
+.scene-stat, .dimension-row { margin-bottom: 24rpx; }
+.scene-stat:last-child, .dimension-row:last-child { margin-bottom: 0; }
+.scene-stat-head, .dimension-head { display: flex; justify-content: space-between; color: #555; font-size: 24rpx; }
+.scene-count, .dimension-head text:last-child { color: #667eea; font-weight: 700; }
+.scene-bar, .dimension-bar { height: 14rpx; margin-top: 11rpx; overflow: hidden; border-radius: 8rpx; background: #f0f0f4; }
+.scene-fill { height: 100%; border-radius: 8rpx; background: linear-gradient(90deg, #667eea, #9d75c7); }
+.dimension-fill { height: 100%; border-radius: 8rpx; background: #667eea; }
+.recent-row { display: flex; align-items: center; padding: 18rpx 0; border-bottom: 1rpx solid #f0f0f3; }
+.recent-row:last-child { border-bottom: 0; }
+.recent-copy { flex: 1; }
+.recent-name, .recent-time { display: block; }
+.recent-name { font-size: 25rpx; }
+.recent-time { margin-top: 6rpx; color: #aaa; font-size: 21rpx; }
+.recent-score { color: #667eea; font-size: 27rpx; font-weight: 700; }
+.recent-status { color: #b58a4a; font-size: 22rpx; }
+.no-recent { padding: 18rpx 0; color: #aaa; font-size: 23rpx; text-align: center; }
+.not-included { padding: 20rpx; margin-bottom: 22rpx; border-radius: 16rpx; color: #888; background: #fff; font-size: 21rpx; line-height: 1.55; }
+.not-included-title { display: block; margin-bottom: 7rpx; color: #667eea; font-size: 23rpx; font-weight: 700; }
+.disclaimer { display: block; color: #aaa; font-size: 21rpx; text-align: center; }

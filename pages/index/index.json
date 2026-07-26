@@ -1,6 +1,6 @@
 {
-  "navigationBarTitleText": "选择训练场景",
-  "enablePullDownRefresh": true,
+  "navigationBarTitleText": "选择场景",
+  "enablePullDownRefresh": false,
   "backgroundColor": "#f5f5f5",
   "backgroundTextStyle": "dark"
 }

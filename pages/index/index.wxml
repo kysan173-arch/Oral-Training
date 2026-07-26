@@ -1,92 +1,41 @@
-<view class="scenario-page">
-  <view class="page-intro">
-    <text class="page-title">选择训练场景</text>
-    <text class="page-desc">阅读患者公开画像，选择一个场景开始文字对练。</text>
+<view class="page-shell scene-page">
+  <view class="scene-header">
+    <text class="eyebrow">STEP 01 / SCENE</text>
+    <text class="page-title">{{trainingMode === 'patient_simulation' ? '选择患者模拟场景' : '选择客服训练场景'}}</text>
+    <text class="page-intro">{{trainingMode === 'patient_simulation' ? '你将扮演患者，向标准口腔客服自由提问并学习其合规答复。' : '先了解患者公开画像，再开始一段不提供提示的真实对练。'}}</text>
   </view>
 
-  <view wx:if="{{errorMessage}}" class="error-card">
-    <text>{{errorMessage}}</text>
-    <button bindtap="loadScenarios">重新加载</button>
+  <view class="mode-switch" aria-label="训练模式切换">
+    <view class="mode-option {{trainingMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchMode" data-mode="customer_service">客服训练</view>
+    <view class="mode-option {{trainingMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchMode" data-mode="patient_simulation">患者模拟</view>
   </view>
 
-  <view wx:if="{{!loading && !errorMessage}}" class="category-list">
-    <view class="category-block" wx:for="{{categories}}" wx:key="id">
-      <view class="category-header" data-index="{{index}}" bindtap="toggleCategory">
-        <view class="category-info">
-          <text class="category-icon">{{item.icon}}</text>
-          <text class="category-name">{{item.name}}</text>
-          <text class="category-count">{{item.scenarios.length}}个情景</text>
-        </view>
-        <text class="category-arrow {{item.expanded ? 'expanded' : ''}}">▼</text>
+  <view class="boundary-tip"><text class="boundary-icon">i</text><text>{{trainingMode === 'patient_simulation' ? '标准客服会展示答复思路与合规边界；不提供诊断、治疗承诺或未经确认的价格信息。' : '患者隐藏信息不会直接展示，训练中请通过提问逐步了解。'}}</text></view>
+
+  <view class="scenario-list">
+    <view class="scenario-card card" wx:for="{{scenarios}}" wx:key="id">
+      <view class="scenario-topline">
+        <text class="scenario-index">0{{index + 1}}</text>
+        <text class="difficulty {{item.difficulty === '进阶' ? 'advanced' : ''}}">{{item.difficulty}}</text>
+        <text class="active-mark" wx:if="{{item.activeSession}}">进行中 · {{item.activeSession.currentRound}}/10轮</text>
       </view>
-
-      <view wx:if="{{item.expanded}}" class="scenario-list">
-        <view class="scenario-card" wx:for="{{item.scenarios}}" wx:for-item="scenario" wx:key="id">
-          <view class="scenario-topline">
-            <text class="scenario-name">{{scenario.name}}</text>
-            <text class="difficulty difficulty-{{scenario.difficulty}}">{{scenario.difficultyText || '初级'}}</text>
-          </view>
-          <text class="scenario-desc" wx:if="{{scenario.description}}">{{scenario.description}}</text>
-
-          <view class="profile-block">
-            <text class="block-label">患者基础画像</text>
-            <text class="profile-text">{{scenario.patientProfile.age}}岁 · {{scenario.patientProfile.description}}</text>
-            <view class="profile-tags" wx:if="{{scenario.patientProfile.personality || scenario.patientProfile.sensitivity || scenario.patientProfile.initialEmotion}}">
-              <text class="profile-tag tag-personality" wx:if="{{scenario.patientProfile.personality}}">{{scenario.patientProfile.personality}}</text>
-              <text class="profile-tag tag-sensitivity" wx:if="{{scenario.patientProfile.sensitivity}}">{{scenario.patientProfile.sensitivity}}</text>
-              <text class="profile-tag tag-emotion" wx:if="{{scenario.patientProfile.initialEmotion}}">初始情绪：{{scenario.patientProfile.initialEmotion}}</text>
-            </view>
-          </view>
-
-          <view class="focus-block">
-            <text class="block-label">训练重点</text>
-            <view class="focus-list">
-              <text class="focus-tag" wx:for="{{scenario.focus}}" wx:for-item="focus" wx:key="*this">{{focus}}</text>
-            </view>
-          </view>
-
-          <view class="scenario-progress">
-            <view class="progress-item">
-              <text class="progress-label">及格分</text>
-              <text class="progress-value">{{scenario.passScore || 60}}分</text>
-            </view>
-            <view class="progress-item">
-              <text class="progress-label">历史最佳</text>
-              <text class="progress-value {{scenario.bestScore > 0 ? 'highlight' : ''}}">{{scenario.bestScore > 0 ? scenario.bestScore + '分' : '--'}}</text>
-            </view>
-            <view class="progress-item">
-              <text class="progress-label">完成进度</text>
-              <text class="progress-value">{{scenario.completedCount || 0}}/{{scenario.totalRounds || 1}}次</text>
-            </view>
-          </view>
-
-          <view class="scenario-footer">
-            <view class="action-group">
-              <button
-                wx:if="{{scenario.activeSession}}"
-                class="secondary-button"
-                data-session-id="{{scenario.activeSession.id}}"
-                data-scenario-id="{{scenario.id}}"
-                bindtap="restartTraining"
-              >重新开始</button>
-              <button
-                class="primary-small-button"
-                data-id="{{scenario.id}}"
-                bindtap="startTraining"
-              >{{scenario.activeSession ? '继续训练' : '开始训练'}}</button>
-            </view>
-          </view>
-        </view>
+      <text class="scenario-name">{{item.name}}</text>
+      <text class="scenario-summary">{{item.summary}}</text>
+      <view class="profile-row">
+        <view class="profile-avatar">{{item.patientAge}}</view>
+        <view class="profile-copy"><text class="profile-label">{{trainingMode === 'patient_simulation' ? '患者提问场景' : '患者基础画像'}}</text><text class="profile-text">{{item.patientConcern}}，{{item.patientEmotion}}</text></view>
+      </view>
+      <view class="focus-row" bindtap="toggleProfile" data-id="{{item.id}}"><text class="focus-label">{{trainingMode === 'patient_simulation' ? '服务学习重点' : '训练重点'}}</text><text class="focus-hint">{{expandedId === item.id ? '收起' : '查看'}} ›</text></view>
+      <view class="focus-list" wx:if="{{expandedId === item.id}}"><text class="focus-tag" wx:for="{{item.focus}}" wx:for-item="focus" wx:key="*this">{{focus}}</text></view>
+      <view class="suggestion-block" wx:if="{{trainingMode === 'patient_simulation' && expandedId === item.id && item.suggestedQuestions.length}}">
+        <text class="suggestion-label">可直接作为患者提问</text>
+        <view class="suggestion-list"><text class="suggestion-chip" wx:for="{{item.suggestedQuestions}}" wx:for-item="question" wx:key="*this" bindtap="openSuggestion" data-id="{{item.id}}" data-prompt="{{question}}">{{question}}</text></view>
+      </view>
+      <view class="scenario-actions">
+        <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{item.id}}" data-mode="{{item.activeSession ? 'continue' : 'new'}}">{{item.actionText}}</button>
+        <text class="restart-link" wx:if="{{item.activeSession}}" bindtap="restartTraining" data-id="{{item.id}}">重新开始</text>
       </view>
     </view>
   </view>
-
-  <view wx:if="{{loading}}" class="skeleton-list">
-    <view class="skeleton-block" wx:for="{{3}}" wx:key="*this">
-      <view class="skeleton-row skeleton-header"></view>
-      <view class="skeleton-row skeleton-card"></view>
-      <view class="skeleton-row skeleton-card short"></view>
-    </view>
-  </view>
-  <view wx:if="{{!loading && !errorMessage && !categories.length}}" class="empty-state">暂无可用训练场景</view>
+  <text class="disclaimer">AI模拟训练，不构成医疗建议；客服不替代医生进行诊断或确定治疗方案。</text>
 </view>

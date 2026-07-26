@@ -1,0 +1,33 @@
+<view class="page-shell roleplay-page">
+  <view class="roleplay-header">
+    <view class="customer-title"><view class="customer-dot"></view><view><text class="customer-name">标准客服</text><text class="customer-subtitle">{{scenario.name}}</text></view></view>
+    <view class="round-counter"><text class="round-value">{{currentRound}}</text><text class="round-total">/ {{maxRounds}}轮</text></view>
+  </view>
+  <view class="profile-strip"><text class="strip-label">你扮演患者</text><text class="strip-text">{{scenario.patientAge}} · {{scenario.patientConcern}}</text></view>
+
+  <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
+    <view class="chat-intro">每轮会展示标准客服答复、学习要点和合规边界。最多10轮，不进行数值评分。</view>
+    <view class="suggestion-panel" wx:if="{{suggestions.length}}"><text class="suggestion-title">可以这样提问</text><view class="suggestion-list"><text class="suggestion-chip" wx:for="{{suggestions}}" wx:key="*this" bindtap="useSuggestion" data-prompt="{{item}}">{{item}}</text></view></view>
+    <view class="message-item {{item.role === 'learner_patient' ? 'learner-message' : 'customer-message'}}" wx:for="{{messages}}" wx:key="id">
+      <view class="message-avatar">{{item.role === 'learner_patient' ? '我' : '客'}}</view>
+      <view class="message-body">
+        <text class="message-role">{{item.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}} · {{item.time}}</text>
+        <view class="message-bubble"><text>{{item.content}}</text></view>
+        <view class="learning-card" wx:if="{{item.role === 'standard_customer'}}">
+          <text class="learning-title">学习要点</text>
+          <text class="learning-point" wx:for="{{item.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text>
+          <view class="boundary-box" wx:if="{{item.complianceBoundary}}"><text class="boundary-label">合规边界</text><text>{{item.complianceBoundary}}</text></view>
+        </view>
+      </view>
+    </view>
+    <view class="typing" wx:if="{{sending}}"><view class="typing-dot"></view><text>标准客服正在输入…</text></view>
+    <view id="message-bottom"></view>
+  </scroll-view>
+
+  <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
+  <view class="input-area">
+    <input class="input-field" placeholder="以患者身份输入问题…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing}}" />
+    <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '提问'}}</button>
+  </view>
+  <view class="roleplay-footer"><text class="leave-link" bindtap="leaveRoleplay">暂存并退出</text><view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishRoleplay" aria-role="button">{{finishing ? '生成复盘中…' : '结束并复盘'}}</view></view>
+</view>

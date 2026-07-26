@@ -381,12 +381,13 @@ GET /api/sessions/{sessionId}
       "totalScore": null,
       "evaluationStatus": "not_started"
     },
-    "messages": []
+    "messages": [],
+    "pendingMessage": null
   }
 }
 ```
 
-接口返回完整消息，供“继续训练”和历史详情使用。不要返回隐藏信息、Prompt、情绪内部状态或模型原始响应。
+接口返回完整消息，供“继续训练”和历史详情使用。模型超时且用户消息已经保存时，`pendingMessage` 返回 `{ clientMessageId, content, round }`，前端必须使用相同的 `clientMessageId` 和内容重试；没有待回复消息时为 `null`。不要返回隐藏信息、Prompt、情绪内部状态或模型原始响应。
 
 ### 6.4 发送用户消息
 
@@ -733,5 +734,44 @@ MVP 至少需要四张表或等价的数据对象：
 | `evaluations` | 五维得分、总分、总结、优势、改进、违规、逐轮点评、模型版本 |
 
 服务端必须保存患者内部状态：`emotion`、`emotionLevel`、`trustLevel`、`revealedInformation`、`riskTriggered`、`currentRound`。这些字段仅供患者 Prompt 和续练使用，不返回给用户。
+
+## 14. 患者模拟（角色互换）接口
+
+患者模拟与客服训练完全隔离：学员扮演患者，模型扮演标准客服。它复用四个场景，但不写入 `sessions`、`evaluations` 或数据看板，也不生成五维分数。
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `GET` | `/roleplay/scenarios` | 获取场景、建议患者提问和角色互换进行中会话 |
+| `POST` / `GET` | `/roleplay/sessions` | 创建或查询患者模拟历史 |
+| `GET` | `/roleplay/sessions/{id}` | 获取会话、完整问答和待重试消息 |
+| `POST` | `/roleplay/sessions/{id}/restart` | 放弃未完成会话并重新开始 |
+| `POST` | `/roleplay/sessions/{id}/messages` | 提交患者问题并获取标准客服答复 |
+| `POST` | `/roleplay/sessions/{id}/finish` | 结束练习并异步生成复盘 |
+| `GET` | `/roleplay/sessions/{id}/summary` | 获取复盘状态或内容 |
+| `POST` | `/roleplay/sessions/{id}/summary/retry` | 复盘失败后重试 |
+
+角色互换的消息 `role` 只能为 `learner_patient` 或 `standard_customer`。标准客服消息在 `content` 外还返回：
+
+```json
+{
+  "learningPoints": ["先回应患者的核心担忧，再说明可提供的服务协助。"],
+  "complianceBoundary": "客服仅提供流程与预约协助，具体诊疗判断需由医生结合检查评估。"
+}
+```
+
+每次会话最多 10 轮，至少完成 1 轮才能结束。提交消息继续使用 `clientMessageId` 保证幂等；模型失败时，已保存的患者问题通过 `pendingMessage` 返回，前端必须使用相同 ID 和内容重试。
+
+复盘状态为 `generating`、`ready` 或 `failed`。`ready` 时返回以下无分数结构：
+
+```json
+{
+  "summary": "整体接待总结",
+  "coveredTopics": ["已覆盖问题"],
+  "keyPrinciples": ["关键服务原则"],
+  "nextPracticeSuggestions": ["后续练习建议"]
+}
+```
+
+对应 PostgreSQL 表为 `roleplay_sessions`、`roleplay_messages` 和 `roleplay_summaries`；`scenarios.roleplay_config` 中的 `serviceGuidance` 仅供后端 Prompt 使用，接口只公开 `suggestedQuestions`。
 
 — API 契约结束 —

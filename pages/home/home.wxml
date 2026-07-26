@@ -1,68 +1,50 @@
-<view class="home-page">
-  <!-- Search bar -->
-  <view class="search-bar">
-    <text class="search-icon">🔍</text>
-    <input
-      class="search-input"
-      placeholder="搜索话术（如：种植牙、价格、疼痛）"
-      value="{{searchValue}}"
-      bindinput="onSearchInput"
-      bindconfirm="onSearchConfirm"
-      confirm-type="search"
-    />
-    <text class="search-clear" wx:if="{{searchValue}}" bindtap="onClearSearch">✕</text>
-  </view>
-
-  <!-- Hero banner -->
+<view class="page-shell home-page">
   <view class="hero-card">
-    <text class="hero-title">AI 口腔客服陪练</text>
-    <text class="hero-desc">模拟真实患者对话，训练沟通、挖掘需求、提升转化，零压力反复练习。</text>
-    <button class="hero-btn" bindtap="goTraining">开始训练</button>
+    <view class="hero-decoration decoration-one"></view>
+    <view class="hero-decoration decoration-two"></view>
+    <text class="eyebrow">AI ORAL CARE TRAINING · MVP DEMO</text>
+    <text class="hero-title">口腔客服智能陪练</text>
+    <text class="hero-subtitle">客服训练 · 患者模拟 · 结构化复盘</text>
+    <text class="hero-description">面向新入口腔客服的低风险练习空间，帮助你在典型场景中练习沟通、服务表达和合规边界。</text>
+    <button class="primary-button hero-button" bindtap="startTraining">开始训练</button>
   </view>
 
-  <!-- Hot phrases swiper -->
-  <view class="section-header">
-    <text class="section-title">热门话术</text>
-    <view class="swiper-dots">
-      <view class="dot {{index === currentSwiper ? 'active' : ''}}" wx:for="{{phrases}}" wx:key="id"></view>
+  <view class="model-key-card card">
+    <text class="model-key-title">DeepSeek 模型密钥（本地演示）</text>
+    <text class="model-key-text">密钥仅提交给当前后端进程，不写入小程序缓存、数据库或代码仓库。已通过环境变量配置时无需填写。</text>
+    <view class="key-input-row">
+      <input class="key-input" password placeholder="输入 DeepSeek API Key" value="{{apiKey}}" bindinput="onKeyInput" disabled="{{savingKey}}" />
+      <button class="key-save-button" bindtap="saveApiKey" disabled="{{savingKey || !apiKey}}">{{savingKey ? '配置中' : '配置'}}</button>
     </view>
+    <text class="key-status" wx:if="{{keyStatus}}">{{keyStatus}}</text>
   </view>
 
-  <swiper
-    wx:if="{{phrases.length > 0}}"
-    class="phrase-swiper"
-    current="{{currentSwiper}}"
-    bindchange="onSwiperChange"
-    indicator-dots="{{false}}"
-    autoplay="{{true}}"
-    interval="{{4000}}"
-    circular="{{true}}"
-  >
-    <swiper-item wx:for="{{phrases}}" wx:key="id">
-      <view class="phrase-card">
-        <view class="phrase-tag tag-{{item.tagClass}}">{{item.scenario}}</view>
-        <text class="phrase-title">{{item.title}}</text>
-      </view>
-    </swiper-item>
-  </swiper>
-
-  <view wx:if="{{phrases.length === 0}}" class="empty-state">没有找到匹配的话术</view>
-
-  <!-- Quick entry cards -->
-  <view class="entry-list">
-    <view class="entry-card" bindtap="goPhraseVault">
-      <view class="entry-icon icon-gold">★</view>
-      <view class="entry-info">
-        <text class="entry-name">话术锦囊</text>
-        <text class="entry-desc">浏览高转化话术，支持按场景筛选和收藏</text>
-      </view>
-      <text class="entry-arrow">›</text>
-    </view>
+  <view class="section-heading">
+    <view><text class="section-title">训练闭环</text><text class="section-caption">从场景选择到报告回顾</text></view>
+    <text class="mvp-badge">MVP</text>
+  </view>
+  <view class="flow-card card">
+    <view class="flow-item"><text class="flow-number">01</text><text>选择场景</text></view>
+    <text class="flow-arrow">›</text>
+    <view class="flow-item"><text class="flow-number">02</text><text>双模式对话</text></view>
+    <text class="flow-arrow">›</text>
+    <view class="flow-item"><text class="flow-number">03</text><text>查看报告/复盘</text></view>
   </view>
 
-  <!-- Boundary notice -->
-  <view class="boundary-card">
-    <text class="boundary-title">使用边界</text>
-    <text class="boundary-text">AI 仅模拟患者角色进行沟通训练，评分用于学习反馈，不构成医疗建议或正式考核。</text>
+  <view class="section-heading stats-heading">
+    <view><text class="section-title">我的演示数据</text><text class="section-caption">完成训练后自动更新</text></view>
+    <text class="section-link" bindtap="viewDashboard">查看数据 ›</text>
   </view>
+  <view class="stats-grid">
+    <view class="stat-card card"><text class="stat-value">{{dashboard.totalCount}}</text><text class="stat-label">总训练次数</text></view>
+    <view class="stat-card card"><text class="stat-value">{{dashboard.completedCount}}</text><text class="stat-label">已完成次数</text></view>
+    <view class="stat-card card"><text class="stat-value">{{dashboard.averageScore}}</text><text class="stat-label">平均得分</text></view>
+  </view>
+
+  <view class="quick-links">
+    <view class="quick-link card" bindtap="startTraining"><text class="quick-icon">✦</text><view><text class="quick-title">开始一次新的练习</text><text class="quick-text">四个固定场景可选</text></view><text class="quick-arrow">›</text></view>
+    <view class="quick-link card" bindtap="viewHistory"><text class="quick-icon">↺</text><view><text class="quick-title">回看历史记录</text><text class="quick-text">继续未完成训练或查看报告</text></view><text class="quick-arrow">›</text></view>
+  </view>
+
+  <text class="disclaimer">AI模拟训练，不构成医疗建议；评分不替代医生、客服专家或正式培训考核。</text>
 </view>

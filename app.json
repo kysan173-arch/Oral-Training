@@ -3,14 +3,15 @@
     "pages/home/home",
     "pages/index/index",
     "pages/training/training",
+    "pages/roleplay/roleplay",
     "pages/result/result",
+    "pages/roleplay-result/roleplay-result",
     "pages/report/report",
-    "pages/mine/mine",
-    "pages/phrase-vault/phrase-vault"
+    "pages/admin/admin"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#007aff",
-    "navigationBarTitleText": "AI口腔客服陪练",
+    "navigationBarBackgroundColor": "#667eea",
+    "navigationBarTitleText": "口腔客服智能陪练",
     "navigationBarTextStyle": "white",
     "backgroundColor": "#f5f5f5",
     "backgroundTextStyle": "dark"
@@ -35,13 +36,13 @@
       },
       {
         "pagePath": "pages/report/report",
-        "text": "报告",
+        "text": "历史",
         "iconPath": "static/image/tabbar/report.png",
         "selectedIconPath": "static/image/tabbar/report_selected.png"
       },
       {
-        "pagePath": "pages/mine/mine",
-        "text": "我的",
+        "pagePath": "pages/admin/admin",
+        "text": "数据",
         "iconPath": "static/image/tabbar/mine.png",
         "selectedIconPath": "static/image/tabbar/mine_selected.png"
       }

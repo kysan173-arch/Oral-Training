@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>口腔客服智能陪练｜MVP 版本功能说明</title>
+  <style>
+    :root {
+      --ink: #162033;
+      --muted: #647087;
+      --line: #e5e9f2;
+      --paper: #ffffff;
+      --canvas: #f4f6fb;
+      --primary: #6579e8;
+      --primary-deep: #6650a8;
+      --primary-soft: #eef0ff;
+      --success: #218568;
+      --warning: #b66c25;
+      --danger: #bd4d5d;
+      --shadow: 0 18px 50px rgba(33, 45, 84, .10);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 7% 3%, rgba(101, 121, 232, .14), transparent 25rem),
+        radial-gradient(circle at 93% 16%, rgba(118, 75, 162, .12), transparent 27rem),
+        var(--canvas);
+      font: 15px/1.75 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    a { color: inherit; }
+    .page { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(229, 233, 242, .85);
+      background: rgba(255, 255, 255, .88);
+      backdrop-filter: blur(14px);
+    }
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 62px;
+      gap: 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 750; }
+    .brand-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 11px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-deep));
+      box-shadow: 0 8px 20px rgba(101, 121, 232, .25);
+    }
+    .nav { display: flex; flex-wrap: wrap; gap: 18px; color: var(--muted); font-size: 13px; }
+    .nav a { text-decoration: none; }
+    .nav a:hover { color: var(--primary); }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      margin-top: 34px;
+      padding: 64px;
+      border-radius: 30px;
+      color: #fff;
+      background: linear-gradient(135deg, #5f75e5 0%, #7150aa 100%);
+      box-shadow: var(--shadow);
+    }
+    .hero::before, .hero::after {
+      position: absolute;
+      content: "";
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .09);
+    }
+    .hero::before { width: 310px; height: 310px; top: -190px; right: -60px; }
+    .hero::after { width: 190px; height: 190px; right: 190px; bottom: -125px; }
+    .hero-content { position: relative; z-index: 1; max-width: 780px; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border: 1px solid rgba(255, 255, 255, .22);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .10);
+      font-size: 12px;
+      letter-spacing: .08em;
+    }
+    h1 { margin: 20px 0 14px; font-size: clamp(34px, 5vw, 58px); line-height: 1.15; letter-spacing: -.04em; }
+    .hero p { max-width: 720px; margin: 0; color: rgba(255, 255, 255, .82); font-size: 17px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+    .meta span { padding: 8px 13px; border-radius: 10px; background: rgba(255, 255, 255, .12); font-size: 13px; }
+
+    main { padding: 50px 0 70px; }
+    section { scroll-margin-top: 88px; margin-bottom: 56px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .kicker { margin-bottom: 5px; color: var(--primary); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: 29px; line-height: 1.3; letter-spacing: -.02em; }
+    h3 { margin: 0 0 10px; font-size: 18px; }
+    .section-note { max-width: 520px; margin: 0; color: var(--muted); text-align: right; }
+    .card {
+      border: 1px solid rgba(229, 233, 242, .9);
+      border-radius: 20px;
+      background: var(--paper);
+      box-shadow: 0 10px 32px rgba(33, 45, 84, .055);
+    }
+
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat { padding: 24px; }
+    .stat-value { display: block; color: var(--primary); font-size: 32px; font-weight: 800; line-height: 1.2; }
+    .stat-label { display: block; margin-top: 6px; color: var(--muted); }
+
+    .overview { display: grid; grid-template-columns: 1.25fr .75fr; gap: 18px; }
+    .overview .card { padding: 28px; }
+    .clean-list { display: grid; gap: 11px; padding: 0; margin: 18px 0 0; list-style: none; }
+    .clean-list li { display: flex; align-items: flex-start; gap: 11px; }
+    .check {
+      display: grid;
+      flex: 0 0 23px;
+      height: 23px;
+      place-items: center;
+      margin-top: 2px;
+      border-radius: 8px;
+      color: var(--success);
+      background: #e9f7f2;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .boundary { border-left: 4px solid var(--warning); }
+    .boundary strong { color: var(--warning); }
+
+    .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .flow-step { position: relative; min-height: 175px; padding: 22px 18px; }
+    .flow-step:not(:last-child)::after {
+      position: absolute;
+      top: 44px;
+      right: -11px;
+      z-index: 2;
+      content: "›";
+      color: #a8b0c3;
+      font-size: 25px;
+    }
+    .step-no { color: var(--primary); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+    .flow-step h3 { margin-top: 14px; }
+    .flow-step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .feature { padding: 26px; }
+    .icon {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      margin-bottom: 18px;
+      border-radius: 14px;
+      color: var(--primary);
+      background: var(--primary-soft);
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .feature p { margin: 0; color: var(--muted); }
+    .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+    .tag { padding: 4px 9px; border-radius: 999px; color: #5262bd; background: #f0f2ff; font-size: 12px; }
+
+    .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 17px 18px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: #f8f9fc; font-size: 12px; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: 0; }
+    .level { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+    .basic { color: var(--success); background: #eaf7f2; }
+    .advanced { color: var(--warning); background: #fff2e4; }
+
+    .score-layout { display: grid; grid-template-columns: .8fr 1.2fr; gap: 18px; }
+    .score-total { display: grid; min-height: 330px; padding: 32px; place-items: center; text-align: center; }
+    .ring {
+      display: grid;
+      width: 172px;
+      height: 172px;
+      place-items: center;
+      border: 16px solid var(--primary-soft);
+      border-top-color: var(--primary);
+      border-right-color: var(--primary-deep);
+      border-radius: 50%;
+      color: var(--primary);
+      font-size: 38px;
+      font-weight: 850;
+    }
+    .score-total p { margin: 14px 0 0; color: var(--muted); }
+    .score-card { padding: 28px; }
+    .score-row { display: grid; grid-template-columns: 120px 1fr 48px; align-items: center; gap: 14px; margin: 19px 0; }
+    .bar { height: 10px; overflow: hidden; border-radius: 999px; background: #edf0f6; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), var(--primary-deep)); }
+    .score-row strong { color: var(--primary); text-align: right; }
+    .formula { margin-top: 20px; padding: 13px 15px; border-radius: 12px; color: var(--muted); background: #f7f8fb; font-size: 13px; }
+
+    .architecture { display: grid; grid-template-columns: 1fr 50px 1fr 50px 1fr; align-items: stretch; gap: 10px; }
+    .arch-box { padding: 27px; text-align: center; }
+    .arch-box strong { display: block; margin-bottom: 8px; font-size: 18px; }
+    .arch-box span { color: var(--muted); font-size: 13px; }
+    .connector { display: grid; place-items: center; color: #a3acc0; font-size: 30px; }
+    .tech-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+    .tech { padding: 18px 20px; }
+    .tech strong { display: block; }
+    .tech span { color: var(--muted); font-size: 13px; }
+
+    .scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .scope-card { padding: 28px; }
+    .scope-card.in { border-top: 4px solid var(--success); }
+    .scope-card.out { border-top: 4px solid var(--danger); }
+    .scope-card ul { padding-left: 20px; margin: 14px 0 0; color: var(--muted); }
+    .scope-card li { margin: 7px 0; }
+
+    .acceptance { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .accept-item { display: flex; gap: 13px; padding: 20px 22px; }
+    .accept-item b { color: var(--success); }
+    .accept-item p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+
+    .notice {
+      padding: 25px 28px;
+      border: 1px solid #e0dff7;
+      border-radius: 18px;
+      color: #4f4b75;
+      background: linear-gradient(135deg, #f5f3ff, #eef2ff);
+    }
+    .notice strong { display: block; margin-bottom: 5px; color: var(--primary-deep); }
+    footer { padding: 28px 0 44px; color: var(--muted); text-align: center; font-size: 13px; }
+
+    @media (max-width: 920px) {
+      .nav { display: none; }
+      .hero { padding: 44px 34px; }
+      .stats, .feature-grid { grid-template-columns: repeat(2, 1fr); }
+      .overview, .score-layout, .scope-grid { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: repeat(3, 1fr); }
+      .flow-step:nth-child(3)::after { display: none; }
+      .architecture { grid-template-columns: 1fr; }
+      .connector { transform: rotate(90deg); }
+      .tech-list { grid-template-columns: 1fr; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .section-note { text-align: left; }
+    }
+
+    @media (max-width: 600px) {
+      .page { width: min(100% - 20px, 1180px); }
+      .hero { margin-top: 16px; padding: 36px 23px; border-radius: 22px; }
+      .stats, .feature-grid, .flow, .acceptance { grid-template-columns: 1fr; }
+      .flow-step:not(:last-child)::after { display: none; }
+      .score-row { grid-template-columns: 96px 1fr 40px; gap: 9px; font-size: 13px; }
+    }
+
+    @media print {
+      body { background: #fff; font-size: 11px; }
+      .topbar { display: none; }
+      .page { width: 100%; }
+      .hero { margin-top: 0; padding: 35px; box-shadow: none; print-color-adjust: exact; }
+      main { padding-top: 26px; }
+      section { break-inside: avoid; margin-bottom: 30px; }
+      .card { box-shadow: none; }
+      .feature-grid, .stats { gap: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="page topbar-inner">
+      <div class="brand"><span class="brand-mark">AI</span><span>口腔客服智能陪练</span></div>
+      <nav class="nav" aria-label="页面导航">
+        <a href="#overview">产品定位</a>
+        <a href="#flow">使用流程</a>
+        <a href="#features">功能模块</a>
+        <a href="#scenarios">训练场景</a>
+        <a href="#scoring">评分体系</a>
+        <a href="#scope">版本边界</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="page">
+    <section class="hero">
+      <div class="hero-content">
+        <span class="eyebrow">MVP · FUNCTION SPECIFICATION</span>
+        <h1>口腔客服智能陪练<br>MVP 版本功能说明</h1>
+        <p>通过 AI 模拟患者、多轮对练和结构化评分，为新入口腔客服提供一个低风险、可重复、可回顾的沟通训练闭环。</p>
+        <div class="meta">
+          <span>文档版本：MVP 1.0</span>
+          <span>更新日期：2026-07-16</span>
+          <span>终端：微信小程序</span>
+          <span>状态：可运行演示版</span>
+        </div>
+      </div>
+    </section>
+
+    <main>
+      <section aria-label="版本数字概览">
+        <div class="stats">
+          <div class="stat card"><span class="stat-value">4</span><span class="stat-label">固定训练场景</span></div>
+          <div class="stat card"><span class="stat-value">10</span><span class="stat-label">单次最多对话轮数</span></div>
+          <div class="stat card"><span class="stat-value">5</span><span class="stat-label">自动评分维度</span></div>
+          <div class="stat card"><span class="stat-value">1</span><span class="stat-label">固定演示账号</span></div>
+        </div>
+      </section>
+
+      <section id="overview">
+        <div class="section-head">
+          <div><div class="kicker">01 · Positioning</div><h2>产品定位</h2></div>
+          <p class="section-note">验证“选择场景 → AI 对练 → 自动评分 → 历史回顾”的最小业务闭环。</p>
+        </div>
+        <div class="overview">
+          <article class="card">
+            <h3>目标用户与核心价值</h3>
+            <p>面向新入口腔客服及需要练习典型咨询场景的服务人员，在不接触真实患者数据的前提下反复训练沟通能力、需求识别和医疗合规意识。</p>
+            <ul class="clean-list">
+              <li><span class="check">✓</span><span><b>低风险：</b>固定虚拟患者画像，不使用真实病历。</span></li>
+              <li><span class="check">✓</span><span><b>可重复：</b>同一场景可以重新开始，便于比较不同沟通策略。</span></li>
+              <li><span class="check">✓</span><span><b>有反馈：</b>结束后生成五维得分、优势、改进项、违规说明和逐轮点评。</span></li>
+              <li><span class="check">✓</span><span><b>可回顾：</b>历史记录、场景统计和维度均分统一留存。</span></li>
+            </ul>
+          </article>
+          <aside class="card boundary">
+            <h3><strong>重要边界</strong></h3>
+            <p>系统是训练工具，不是医疗咨询工具。AI 患者不提供诊断或治疗建议，评分也不替代医生、客服专家或正式培训考核。</p>
+            <p>训练中不得输入真实患者姓名、电话、病历或其他隐私信息。</p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="flow">
+        <div class="section-head">
+          <div><div class="kicker">02 · User Journey</div><h2>完整使用流程</h2></div>
+          <p class="section-note">至少完成 1 轮对话后可主动结束，达到最大轮数时也会进入评分流程。</p>
+        </div>
+        <div class="flow">
+          <article class="flow-step card"><span class="step-no">STEP 01</span><h3>进入首页</h3><p>检查后端状态；本地演示可临时配置模型密钥。</p></article>
+          <article class="flow-step card"><span class="step-no">STEP 02</span><h3>选择场景</h3><p>查看难度、训练重点、历史次数和最佳得分。</p></article>
+          <article class="flow-step card"><span class="step-no">STEP 03</span><h3>开始或续练</h3><p>创建新会话，或恢复该场景尚未完成的会话。</p></article>
+          <article class="flow-step card"><span class="step-no">STEP 04</span><h3>多轮对话</h3><p>客服自由输入回复，AI 患者结合画像和上下文自然回应。</p></article>
+          <article class="flow-step card"><span class="step-no">STEP 05</span><h3>结束评分</h3><p>确认结束后读取完整对话，生成结构化训练报告。</p></article>
+          <article class="flow-step card"><span class="step-no">STEP 06</span><h3>复盘提升</h3><p>查看得分、证据和改写建议，并从历史记录重新训练。</p></article>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="section-head">
+          <div><div class="kicker">03 · Modules</div><h2>MVP 功能模块</h2></div>
+          <p class="section-note">以下内容均对应当前版本已经实现的页面或后端能力。</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature card"><div class="icon">首</div><h3>首页与运行状态</h3><p>展示产品定位、训练闭环和个人演示数据；后端不可用时给出错误提示。</p><div class="tags"><span class="tag">健康检查</span><span class="tag">模型密钥</span><span class="tag">快捷入口</span></div></article>
+          <article class="feature card"><div class="icon">景</div><h3>双模式训练场景</h3><p>四个固定场景支持“客服训练 / 患者模拟”切换；患者模拟公开建议提问，不泄露后端服务重点。</p><div class="tags"><span class="tag">模式切换</span><span class="tag">开始/继续</span><span class="tag">建议提问</span></div></article>
+          <article class="feature card"><div class="icon">聊</div><h3>AI 多轮对练</h3><p>AI 根据患者公开画像、隐藏顾虑、情绪与历史上下文生成患者回复，单次最多 10 轮。</p><div class="tags"><span class="tag">上下文对话</span><span class="tag">发送重试</span><span class="tag">暂存退出</span></div></article>
+          <article class="feature card"><div class="icon">分</div><h3>自动评分报告</h3><p>生成总分、五维得分、总结、优势、改进建议、违规项及关键轮次点评。</p><div class="tags"><span class="tag">结构化 JSON</span><span class="tag">证据校验</span><span class="tag">评分重试</span></div></article>
+          <article class="feature card"><div class="icon">换</div><h3>患者模拟与学习复盘</h3><p>学员扮演患者提问；标准客服逐轮展示答复、学习要点和合规边界，结束后生成无数值评分的复盘。</p><div class="tags"><span class="tag">标准答复</span><span class="tag">合规边界</span><span class="tag">独立复盘</span></div></article>
+          <article class="feature card"><div class="icon">史</div><h3>历史记录</h3><p>按训练模式独立展示进行中和已完成会话，可继续未完成训练，回看问答、报告或患者模拟复盘。</p><div class="tags"><span class="tag">会话恢复</span><span class="tag">模式筛选</span><span class="tag">状态展示</span></div></article>
+          <article class="feature card"><div class="icon">数</div><h3>演示数据看板</h3><p>汇总总训练次数、完成次数、平均分、场景训练分布、五维均分和最近记录。</p><div class="tags"><span class="tag">汇总指标</span><span class="tag">场景统计</span><span class="tag">维度趋势</span></div></article>
+        </div>
+      </section>
+
+      <section id="scenarios">
+        <div class="section-head">
+          <div><div class="kicker">04 · Scenarios</div><h2>固定训练场景</h2></div>
+          <p class="section-note">场景只向前端公开必要画像，隐藏顾虑和状态变化由后端控制。</p>
+        </div>
+        <div class="table-wrap card">
+          <table>
+            <thead><tr><th>场景</th><th>难度</th><th>患者概况</th><th>重点训练能力</th></tr></thead>
+            <tbody>
+              <tr><td><b>种植牙基础咨询</b></td><td><span class="level basic">基础</span></td><td>52 岁，缺失一颗后牙，对种植牙了解较少，平静但谨慎。</td><td>基础信息解释、需求挖掘、回应疼痛与预算担忧、引导专业检查。</td></tr>
+              <tr><td><b>正畸基础咨询</b></td><td><span class="level basic">基础</span></td><td>22 岁，牙齿不整齐，考虑隐形矫正，期待但犹豫。</td><td>澄清诉求、说明检查流程、避免越权判断、不承诺固定周期。</td></tr>
+              <tr><td><b>与其他诊所比价</b></td><td><span class="level advanced">进阶</span></td><td>45 岁，已咨询多家诊所，对当前报价理性且警惕。</td><td>询问比较标准、客观解释价格构成、不贬低同行、保持收费透明。</td></tr>
+              <tr><td><b>术后不适咨询</b></td><td><span class="level advanced">进阶</span></td><td>38 岁，治疗后疼痛或肿胀，焦虑并担心治疗失败。</td><td>安抚情绪、追问症状、识别风险信号、及时引导联系医生。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="scoring">
+        <div class="section-head">
+          <div><div class="kicker">05 · Evaluation</div><h2>五维评分体系</h2></div>
+          <p class="section-note">各维度按 0–100 分输出，总分按固定权重计算，评分依据必须来自客服原话。</p>
+        </div>
+        <div class="score-layout">
+          <article class="score-total card"><div><div class="ring">100</div><p>总分上限</p></div></article>
+          <article class="score-card card">
+            <div class="score-row"><span>专业准确性</span><div class="bar"><span style="width: 25%"></span></div><strong>25%</strong></div>
+            <div class="score-row"><span>医疗合规性</span><div class="bar"><span style="width: 25%"></span></div><strong>25%</strong></div>
+            <div class="score-row"><span>沟通共情</span><div class="bar"><span style="width: 20%"></span></div><strong>20%</strong></div>
+            <div class="score-row"><span>需求挖掘</span><div class="bar"><span style="width: 20%"></span></div><strong>20%</strong></div>
+            <div class="score-row"><span>服务礼仪</span><div class="bar"><span style="width: 10%"></span></div><strong>10%</strong></div>
+            <div class="formula">总分 = 专业准确性 × 25% + 医疗合规性 × 25% + 沟通共情 × 20% + 需求挖掘 × 20% + 服务礼仪 × 10%</div>
+          </article>
+        </div>
+        <div class="notice" style="margin-top: 18px"><strong>评分安全校验</strong>服务端会校验维度范围、报告结构、客服原话引用和建议内容，重点识别疗效保证、越权判断治疗方案、术后风险处理不当及贬低其他机构等问题。无效或不安全的模型输出不会直接作为正式报告保存。</div>
+      </section>
+
+      <section id="architecture">
+        <div class="section-head">
+          <div><div class="kicker">06 · Architecture</div><h2>系统组成与数据流</h2></div>
+          <p class="section-note">小程序不直连数据库和模型，密钥与隐藏场景配置均保留在后端。</p>
+        </div>
+        <div class="architecture">
+          <div class="arch-box card"><strong>微信小程序</strong><span>页面展示、用户输入、会话状态、报告轮询</span></div>
+          <div class="connector">→</div>
+          <div class="arch-box card"><strong>C++ API 服务</strong><span>Crow 路由、业务校验、模型编排、安全过滤</span></div>
+          <div class="connector">→</div>
+          <div class="arch-box card"><strong>PostgreSQL / DeepSeek</strong><span>会话持久化、评分报告、AI 患者与评分生成</span></div>
+        </div>
+        <div class="tech-list">
+          <div class="tech card"><strong>前端</strong><span>微信小程序原生 WXML / WXSS / JavaScript</span></div>
+          <div class="tech card"><strong>后端</strong><span>C++17、Crow、WinHTTP、nlohmann/json、libpqxx</span></div>
+          <div class="tech card"><strong>数据</strong><span>PostgreSQL：场景、会话、消息、评分四类核心数据</span></div>
+        </div>
+      </section>
+
+      <section id="scope">
+        <div class="section-head">
+          <div><div class="kicker">07 · Scope</div><h2>MVP 范围与限制</h2></div>
+          <p class="section-note">本版本优先验证核心训练价值，不追求生产系统的完整组织和运营能力。</p>
+        </div>
+        <div class="scope-grid">
+          <article class="scope-card in card"><h3>本版本包含</h3><ul><li>四个固定训练场景</li><li>固定演示用户，无需微信登录授权</li><li>多轮文字对话与上下文患者回复</li><li>会话暂存、恢复和重新开始</li><li>主动结束、自动结束和评分失败重试</li><li>结构化五维报告、历史记录和数据看板</li><li>PostgreSQL 持久化与 DeepSeek 模型调用</li></ul></article>
+          <article class="scope-card out card"><h3>本版本暂不包含</h3><ul><li>真实用户登录、组织、角色和权限管理</li><li>语音输入、语音识别或语音合成</li><li>快捷话术、黄金话术和对话中实时提示</li><li>真实患者数据、病历接入或医疗诊断</li><li>场景后台编辑、课程体系和正式考试</li><li>多人协作、排行榜、证书和消息通知</li><li>生产级监控、审计、限流和自动化部署</li></ul></article>
+        </div>
+      </section>
+
+      <section id="acceptance">
+        <div class="section-head">
+          <div><div class="kicker">08 · Acceptance</div><h2>MVP 验收要点</h2></div>
+          <p class="section-note">以下项目全部通过，才视为一次完整演示成功。</p>
+        </div>
+        <div class="acceptance">
+          <div class="accept-item card"><b>✓</b><div><strong>服务可用</strong><p>健康检查显示数据库可用且模型已配置。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>场景完整</strong><p>场景页稳定展示四个固定训练场景。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>多轮有效</strong><p>连续发送多轮消息，患者回复非空且符合患者身份。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>续练可靠</strong><p>退出后可恢复原会话、历史消息和待重试输入。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>评分闭环</strong><p>结束训练后生成总分、五维得分和结构化反馈。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>数据一致</strong><p>报告、历史记录和数据看板反映同一训练结果。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>异常可见</strong><p>网络、模型、解析或评分失败时显示明确提示并允许重试。</p></div></div>
+          <div class="accept-item card"><b>✓</b><div><strong>隐私合规</strong><p>页面持续提醒不输入真实患者隐私，报告不输出诊疗指令。</p></div></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="notice"><strong>文档用途</strong>本说明用于 MVP 演示、项目交接、测试验收和后续版本规划。详细安装步骤请查看项目根目录 README，接口字段和状态码请查看 <code>docs/api.md</code>。</div>
+      </section>
+    </main>
+
+    <footer>口腔客服智能陪练 MVP · AI 模拟训练，不构成医疗建议</footer>
+  </div>
+</body>
+</html>
