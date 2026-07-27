@@ -11,10 +11,11 @@
   <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
     <view class="chat-intro">本次训练最多10轮。请以普通客服身份沟通，不提供快捷话术或实时提示。</view>
     <view class="message-item {{item.role === 'user' ? 'user-message' : 'patient-message'}}" wx:for="{{messages}}" wx:key="id">
-      <view class="message-avatar">{{item.role === 'user' ? '我' : '患'}}</view>
+      <view class="message-avatar">{{item.role === 'user' ? '我' : item.role === 'hint' ? '💡' : '患'}}</view>
       <view class="message-body">
-        <text class="message-role">{{item.role === 'user' ? '客服' : '患者'}} · {{item.time}}</text>
-        <view class="message-bubble"><text>{{item.content}}</text></view>
+        <text class="message-role">{{item.role === 'user' ? '客服' : item.role === 'hint' ? '训练提示' : '患者'}} · {{item.time}}</text>
+        <view class="message-bubble {{item.role === 'hint' ? 'hint-bubble' : ''}}"><text>{{item.content}}</text></view>
+        <view class="emotion-tag {{item.emotionClass}}" wx:if="{{item.role === 'patient' && item.emotion}}"><text wx:if="{{item.emotionIcon}}">{{item.emotionIcon}} </text>{{item.emotion}}</view>
       </view>
     </view>
     <view class="typing" wx:if="{{sending}}"><view class="typing-dot"></view><text>患者正在输入…</text></view>
@@ -22,6 +23,24 @@
   </scroll-view>
 
   <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
+  <view class="hint-bar" wx:if="{{hintRemaining > 0}}">
+    <text class="hint-info">还剩 {{hintRemaining}} 次提示机会</text>
+    <button class="hint-button" bindtap="requestHint" disabled="{{hintLoading || sending}}">{{hintLoading ? '获取中…' : '获取提示'}}</button>
+  </view>
+  <view class="hint-bar hint-disabled" wx:else>
+    <text class="hint-info">提示次数已用完</text>
+    <button class="hint-button" disabled>获取提示</button>
+  </view>
+  <view class="quick-phrase-bar">
+    <view class="quick-phrase-toggle" bindtap="toggleQuickPhrases">
+      <text>{{showQuickPhrases ? '收起快捷话术 ▲' : '快捷话术 ▼'}}</text>
+    </view>
+    <scroll-view class="quick-phrase-panel" scroll-x wx:if="{{showQuickPhrases}}">
+      <view class="quick-phrase-chip" wx:for="{{quickPhrases}}" wx:key="id" bindtap="selectQuickPhrase" data-content="{{item.text}}">
+        <text>{{item.label}}</text>
+      </view>
+    </scroll-view>
+  </view>
   <view class="input-area">
     <input class="input-field" placeholder="输入你的回复…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing}}" />
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>

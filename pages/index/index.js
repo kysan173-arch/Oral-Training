@@ -136,7 +136,7 @@ function buildCategories(scenarios) {
 
 Page({
   data: {
-    scenarios: [],
+    categories: [],
     expandedId: '',
     trainingMode: 'customer_service'
   },
@@ -147,24 +147,34 @@ Page({
     const isRoleplay = this.data.trainingMode === 'patient_simulation';
     const request = isRoleplay ? api.getRoleplayScenarios() : api.getScenarios();
     request.then(data => {
-      const scenarios = data.items.map(item => Object.assign({}, item, {
-        difficulty: item.difficulty === 'advanced' ? '进阶' : '基础',
+      const enrichedScenarios = data.items.map(item => Object.assign({}, item, {
         patientAge: `${item.patientProfile.age}岁`,
         patientConcern: item.patientProfile.description,
         patientEmotion: isRoleplay ? '由你自由提问' : '需通过对话了解',
         actionText: item.activeSession
           ? (isRoleplay ? '继续模拟' : '继续训练')
           : (isRoleplay ? '开始模拟' : '开始训练'),
+        activeSessionRounds: item.activeSession ? `${item.activeSession.currentRound}/10轮` : '',
         suggestedQuestions: item.suggestedQuestions || []
       }));
-      this.setData({ scenarios, expandedId: '' });
+      const categories = buildCategories(enrichedScenarios);
+      this.setData({ categories, expandedId: '' });
     }).catch(error => wx.showToast({ title: error.message || '场景加载失败', icon: 'none' }));
   },
 
   switchMode(e) {
     const mode = e.currentTarget.dataset.mode;
     if (!mode || mode === this.data.trainingMode) return;
-    this.setData({ trainingMode: mode, scenarios: [], expandedId: '' }, () => this.loadScenarios());
+    this.setData({ trainingMode: mode, categories: [], expandedId: '' }, () => this.loadScenarios());
+  },
+
+  toggleCategory(e) {
+    const catId = e.currentTarget.dataset.catId;
+    const categories = this.data.categories.map(cat => {
+      cat.expanded = cat.id === catId ? !cat.expanded : cat.expanded;
+      return cat;
+    });
+    this.setData({ categories });
   },
 
   toggleProfile(e) {
@@ -172,9 +182,17 @@ Page({
     this.setData({ expandedId: this.data.expandedId === id ? '' : id });
   },
 
+  findScenario(id) {
+    for (const cat of this.data.categories) {
+      const found = cat.scenarios.find(s => s.id === id);
+      if (found) return found;
+    }
+    return null;
+  },
+
   openTraining(e) {
     const { id, mode } = e.currentTarget.dataset;
-    const scenario = this.data.scenarios.find(item => item.id === id);
+    const scenario = this.findScenario(id);
     if (!scenario) return;
     if (this.data.trainingMode === 'patient_simulation') {
       this.openRoleplay(scenario, mode, '');
@@ -189,7 +207,7 @@ Page({
   },
 
   openSuggestion(e) {
-    const scenario = this.data.scenarios.find(item => item.id === e.currentTarget.dataset.id);
+    const scenario = this.findScenario(e.currentTarget.dataset.id);
     if (!scenario) return;
     this.openRoleplay(scenario, scenario.activeSession ? 'continue' : 'new', e.currentTarget.dataset.prompt || '');
   },
@@ -212,7 +230,7 @@ Page({
       confirmText: '重新开始',
       success: result => {
         if (!result.confirm) return;
-        const scenario = this.data.scenarios.find(item => item.id === id);
+        const scenario = this.findScenario(id);
         if (!scenario || !scenario.activeSession) return;
         const request = isRoleplay
           ? api.restartRoleplaySession(scenario.activeSession.id)

@@ -7,7 +7,13 @@
     "pages/result/result",
     "pages/roleplay-result/roleplay-result",
     "pages/report/report",
-    "pages/admin/admin"
+    "pages/admin/admin",
+    "pages/phrases/phrases",
+    "pages/profile/profile",
+    "pages/mistakes/mistakes",
+    "pages/mine/mine",
+    "pages/member-detail/member-detail",
+    "pages/phrase-vault/phrase-vault"
   ],
   "window": {
     "navigationBarBackgroundColor": "#667eea",
@@ -41,10 +47,16 @@
         "selectedIconPath": "static/image/tabbar/report_selected.png"
       },
       {
-        "pagePath": "pages/admin/admin",
-        "text": "数据",
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
         "iconPath": "static/image/tabbar/mine.png",
         "selectedIconPath": "static/image/tabbar/mine_selected.png"
+      },
+      {
+        "pagePath": "pages/admin/admin",
+        "text": "数据",
+        "iconPath": "static/image/tabbar/admin.png",
+        "selectedIconPath": "static/image/tabbar/admin_selected.png"
       }
     ]
   },

@@ -1,0 +1,74 @@
+.phrases-page { padding: 0 24rpx 48rpx; }
+
+/* 搜索 */
+.phrases-search-section { margin-top: 20rpx; }
+.phrases-search-box {
+  display: flex;
+  align-items: center;
+  padding: 14rpx 22rpx;
+  border-radius: 40rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 14rpx rgba(0,0,0,.05);
+}
+.search-icon { font-size: 28rpx; margin-right: 10rpx; opacity: .5; }
+.search-input { flex: 1; height: 52rpx; font-size: 25rpx; color: #333; }
+.search-clear { padding: 6rpx 12rpx; color: #bbb; font-size: 26rpx; }
+
+/* Hero */
+.phrases-hero { padding: 36rpx 28rpx; margin-top: 20rpx; border-radius: 24rpx; color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); }
+.phrases-title { display: block; font-size: 40rpx; font-weight: 700; }
+.phrases-desc { display: block; margin-top: 12rpx; font-size: 23rpx; opacity: .8; line-height: 1.55; }
+.phrases-stat { display: flex; align-items: baseline; gap: 8rpx; margin-top: 20rpx; padding-top: 20rpx; border-top: 1rpx solid rgba(255,255,255,.15); font-size: 22rpx; opacity: .75; }
+.stat-big { font-size: 36rpx; font-weight: 700; opacity: 1; }
+
+/* 空态 */
+.empty-state { display: flex; flex-direction: column; align-items: center; padding: 60rpx 30rpx; margin-top: 30rpx; }
+.empty-icon { font-size: 64rpx; }
+.empty-title { margin-top: 16rpx; font-size: 28rpx; font-weight: 700; color: #666; }
+.empty-desc { margin-top: 10rpx; color: #999; font-size: 23rpx; line-height: 1.6; text-align: center; }
+.empty-reset { margin-top: 20rpx; padding: 12rpx 36rpx; border-radius: 30rpx; color: #667eea; font-size: 23rpx; background: #eef2ff; }
+
+.loading-state { padding: 60rpx; text-align: center; }
+.loading-text { color: #999; font-size: 25rpx; }
+
+/* 分组列表 */
+.phrase-groups { margin-top: 24rpx; }
+.group-block { margin-bottom: 28rpx; }
+.group-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14rpx; padding: 0 4rpx; }
+.group-name-row { display: flex; align-items: center; gap: 12rpx; }
+.group-name { font-size: 28rpx; font-weight: 700; color: #333; }
+.group-count { padding: 4rpx 16rpx; border-radius: 16rpx; font-size: 20rpx; }
+.tag-basic { color: #5672bd; background: #eef2ff; }
+.tag-adv { color: #bd7a35; background: #fff2df; }
+.group-train-link { color: #667eea; font-size: 23rpx; font-weight: 600; }
+
+/* 话术卡片 - 对话式 */
+.group-phrases { display: flex; flex-direction: column; gap: 12rpx; }
+.phrase-full-card {
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04);
+}
+
+/* 迷你对话 */
+.phrase-dialogue-mini { margin-bottom: 10rpx; }
+.pdm-row { display: flex; padding: 12rpx; border-radius: 12rpx; }
+.pdm-patient { background: #faf6f0; border-left: 4rpx solid #e0a860; }
+.pdm-cs { background: #f2f4ff; border-left: 4rpx solid #667eea; }
+.pdm-role {
+  flex-shrink: 0;
+  width: 60rpx;
+  font-size: 19rpx;
+  font-weight: 700;
+}
+.pdm-patient .pdm-role { color: #c28b3c; }
+.pdm-cs .pdm-role { color: #667eea; }
+.pdm-text { flex: 1; font-size: 23rpx; color: #555; line-height: 1.5; }
+.pdm-arrow { display: block; text-align: center; color: #ccc; font-size: 20rpx; margin: 2rpx 0; }
+
+.phrase-copy-hint { display: block; margin-top: 10rpx; color: #bbb; font-size: 20rpx; text-align: right; }
+
+.disclaimer { display: block; margin-top: 30rpx; color: #aaa; font-size: 21rpx; line-height: 1.5; text-align: center; }
+
+.card { border-radius: 20rpx; background: #fff; box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04); }

@@ -1,0 +1,82 @@
+<view class="page-shell profile-page">
+  <view class="profile-header">
+    <text class="eyebrow">成长档案 / ABILITY</text>
+    <text class="page-title">能力画像</text>
+    <text class="page-intro">基于历史训练数据生成个人能力趋势分析与短板诊断。</text>
+  </view>
+
+  <!-- 加载态 -->
+  <view class="loading-card card" wx:if="{{loading}}">
+    <text class="loading-text">正在生成能力画像…</text>
+  </view>
+
+  <block wx:elif="{{!loadError}}">
+
+    <!-- 能力标签 -->
+    <view class="tags-section" wx:if="{{tags.length > 0}}">
+      <text class="section-label">能力标签</text>
+      <view class="tags-row">
+        <view class="tag-chip card" wx:for="{{tags}}" wx:key="name">
+          <text class="tag-emoji">{{item.emoji}}</text>
+          <text class="tag-name">{{item.name}}</text>
+          <text class="tag-dim">{{item.dimensionName}} {{item.score > 0 ? item.score + '分' : ''}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 总体概览 -->
+    <view class="overview-card card">
+      <view class="ov-item">
+        <text class="ov-value">{{overall.averageScore}}</text>
+        <text class="ov-label">综合均分</text>
+      </view>
+      <view class="ov-divider"></view>
+      <view class="ov-item">
+        <text class="ov-value level-{{levelEn}}">{{overall.level}}</text>
+        <text class="ov-label">当前等级</text>
+      </view>
+      <view class="ov-divider"></view>
+      <view class="ov-item">
+        <text class="ov-value">{{overall.totalCompleted}}</text>
+        <text class="ov-label">完成训练</text>
+      </view>
+    </view>
+
+    <!-- 五维成长曲线 -->
+    <view class="section-label">近30天五维成长曲线</view>
+    <view class="chart-container card" wx:if="{{showChart}}">
+      <canvas type="2d" id="growth-canvas" class="growth-canvas" style="width:340px;height:280px;"></canvas>
+      <view class="chart-legend">
+        <text class="legend-item" wx:for="{{dimLabel}}" wx:key="*this" style="color:{{dimColors[['knowledgeAccuracy','medicalCompliance','empathy','needsDiscovery','serviceEtiquette'][index]]}}">● {{item}}</text>
+      </view>
+    </view>
+    <view class="empty-chart card" wx:elif="{{trend.length < 2}}">
+      <text>数据不足</text>
+      <text class="empty-sub">至少完成2次训练才能生成成长曲线，请继续训练。</text>
+    </view>
+
+    <!-- 短板诊断 -->
+    <view class="section-label">能力短板诊断</view>
+    <view class="weakness-card card" wx:if="{{weaknessDiagnosis.length > 0}}">
+      <view class="weakness-item" wx:for="{{weaknessDiagnosis}}" wx:key="dimension">
+        <view class="weakness-top">
+          <text class="weakness-dim">{{item.dimensionName}}</text>
+          <text class="weakness-scores">最近得分：{{item.recentScores.join('、')}}</text>
+        </view>
+        <text class="weakness-advice">💡 {{item.suggestion}}</text>
+      </view>
+    </view>
+    <view class="empty-weakness card" wx:else>
+      <text>暂无显著短板</text>
+      <text class="empty-sub">各维度表现均衡，继续保持！</text>
+    </view>
+
+    <!-- 操作入口 -->
+    <view class="profile-actions">
+      <button class="primary-button" bindtap="goMistakes">查看错题本</button>
+      <button class="secondary-button" bindtap="goHistory">返回训练报告</button>
+    </view>
+  </block>
+
+  <text class="disclaimer">AI模拟训练，评分基于固定规则，不替代正式考核。</text>
+</view>

@@ -9,6 +9,17 @@
 .boundary-tip { display: flex; align-items: center; padding: 20rpx 24rpx; margin-bottom: 22rpx; border-radius: 18rpx; color: #6872c9; background: #eef0ff; font-size: 23rpx; line-height: 1.5; }
 .boundary-icon { width: 32rpx; height: 32rpx; line-height: 32rpx; flex-shrink: 0; margin-right: 14rpx; border-radius: 50%; text-align: center; color: #fff; background: #7b85db; font-size: 22rpx; }
 .scenario-card { padding: 28rpx; margin-bottom: 20rpx; }
+/* 分类卡（可折叠） */
+.category-card { margin-bottom: 18rpx; overflow: hidden; }
+.cat-header { display: flex; align-items: center; justify-content: space-between; padding: 22rpx 24rpx; }
+.cat-left { display: flex; align-items: center; }
+.cat-icon { font-size: 36rpx; margin-right: 16rpx; }
+.cat-info { display: flex; flex-direction: column; }
+.cat-name { font-size: 28rpx; font-weight: 700; color: #333; }
+.cat-progress { margin-top: 4rpx; font-size: 20rpx; color: #aaa; }
+.cat-arrow { font-size: 20rpx; color: #aaa; transition: transform .25s; }
+.cat-arrow.open { transform: rotate(180deg); }
+.cat-body { padding: 0 12rpx 6rpx; }
 .scenario-topline { display: flex; align-items: center; }
 .scenario-index { color: #c4c8e9; font-size: 24rpx; font-weight: 700; letter-spacing: 1rpx; }
 .difficulty { margin-left: 14rpx; padding: 6rpx 16rpx; border-radius: 20rpx; color: #5268c9; background: #eef0ff; font-size: 21rpx; }

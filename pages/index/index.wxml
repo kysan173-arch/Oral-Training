@@ -13,27 +13,42 @@
   <view class="boundary-tip"><text class="boundary-icon">i</text><text>{{trainingMode === 'patient_simulation' ? '标准客服会展示答复思路与合规边界；不提供诊断、治疗承诺或未经确认的价格信息。' : '患者隐藏信息不会直接展示，训练中请通过提问逐步了解。'}}</text></view>
 
   <view class="scenario-list">
-    <view class="scenario-card card" wx:for="{{scenarios}}" wx:key="id">
-      <view class="scenario-topline">
-        <text class="scenario-index">0{{index + 1}}</text>
-        <text class="difficulty {{item.difficulty === '进阶' ? 'advanced' : ''}}">{{item.difficulty}}</text>
-        <text class="active-mark" wx:if="{{item.activeSession}}">进行中 · {{item.activeSession.currentRound}}/10轮</text>
+    <view class="category-card card" wx:for="{{categories}}" wx:key="id" wx:for-item="cat">
+      <view class="cat-header" bindtap="toggleCategory" data-cat-id="{{cat.id}}">
+        <view class="cat-left">
+          <text class="cat-icon">{{cat.icon}}</text>
+          <view class="cat-info">
+            <text class="cat-name">{{cat.name}}</text>
+            <text class="cat-progress">{{cat.scenarios.length}}个场景</text>
+          </view>
+        </view>
+        <text class="cat-arrow {{cat.expanded ? 'open' : ''}}">▼</text>
       </view>
-      <text class="scenario-name">{{item.name}}</text>
-      <text class="scenario-summary">{{item.summary}}</text>
-      <view class="profile-row">
-        <view class="profile-avatar">{{item.patientAge}}</view>
-        <view class="profile-copy"><text class="profile-label">{{trainingMode === 'patient_simulation' ? '患者提问场景' : '患者基础画像'}}</text><text class="profile-text">{{item.patientConcern}}，{{item.patientEmotion}}</text></view>
-      </view>
-      <view class="focus-row" bindtap="toggleProfile" data-id="{{item.id}}"><text class="focus-label">{{trainingMode === 'patient_simulation' ? '服务学习重点' : '训练重点'}}</text><text class="focus-hint">{{expandedId === item.id ? '收起' : '查看'}} ›</text></view>
-      <view class="focus-list" wx:if="{{expandedId === item.id}}"><text class="focus-tag" wx:for="{{item.focus}}" wx:for-item="focus" wx:key="*this">{{focus}}</text></view>
-      <view class="suggestion-block" wx:if="{{trainingMode === 'patient_simulation' && expandedId === item.id && item.suggestedQuestions.length}}">
-        <text class="suggestion-label">可直接作为患者提问</text>
-        <view class="suggestion-list"><text class="suggestion-chip" wx:for="{{item.suggestedQuestions}}" wx:for-item="question" wx:key="*this" bindtap="openSuggestion" data-id="{{item.id}}" data-prompt="{{question}}">{{question}}</text></view>
-      </view>
-      <view class="scenario-actions">
-        <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{item.id}}" data-mode="{{item.activeSession ? 'continue' : 'new'}}">{{item.actionText}}</button>
-        <text class="restart-link" wx:if="{{item.activeSession}}" bindtap="restartTraining" data-id="{{item.id}}">重新开始</text>
+
+      <view class="cat-body" wx:if="{{cat.expanded}}">
+        <view class="scenario-card card" wx:for="{{cat.scenarios}}" wx:key="id" wx:for-item="item">
+          <view class="scenario-topline">
+            <text class="scenario-index">0{{index + 1}}</text>
+            <text class="difficulty {{item.difficultyText === '进阶' ? 'advanced' : ''}}">{{item.difficultyText}}</text>
+            <text class="active-mark" wx:if="{{item.activeSession}}">进行中 · {{item.activeSessionRounds}}</text>
+          </view>
+          <text class="scenario-name">{{item.name}}</text>
+          <text class="scenario-summary">{{item.summary || item.description}}</text>
+          <view class="profile-row">
+            <view class="profile-avatar">{{item.patientAge}}</view>
+            <view class="profile-copy"><text class="profile-label">{{trainingMode === 'patient_simulation' ? '患者提问场景' : '患者基础画像'}}</text><text class="profile-text">{{item.patientConcern}}，{{item.patientEmotion}}</text></view>
+          </view>
+          <view class="focus-row" bindtap="toggleProfile" data-id="{{item.id}}"><text class="focus-label">{{trainingMode === 'patient_simulation' ? '服务学习重点' : '训练重点'}}</text><text class="focus-hint">{{expandedId === item.id ? '收起' : '查看'}} ›</text></view>
+          <view class="focus-list" wx:if="{{expandedId === item.id}}"><text class="focus-tag" wx:for="{{item.focus}}" wx:for-item="focus" wx:key="*this">{{focus}}</text></view>
+          <view class="suggestion-block" wx:if="{{trainingMode === 'patient_simulation' && expandedId === item.id && item.suggestedQuestions.length}}">
+            <text class="suggestion-label">可直接作为患者提问</text>
+            <view class="suggestion-list"><text class="suggestion-chip" wx:for="{{item.suggestedQuestions}}" wx:for-item="question" wx:key="*this" bindtap="openSuggestion" data-id="{{item.id}}" data-prompt="{{question}}">{{question}}</text></view>
+          </view>
+          <view class="scenario-actions">
+            <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{item.id}}" data-mode="{{item.activeSession ? 'continue' : 'new'}}">{{item.actionText}}</button>
+            <text class="restart-link" wx:if="{{item.activeSession}}" bindtap="restartTraining" data-id="{{item.id}}">重新开始</text>
+          </view>
+        </view>
       </view>
     </view>
   </view>

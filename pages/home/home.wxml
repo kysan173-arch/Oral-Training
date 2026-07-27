@@ -1,49 +1,80 @@
-<view class="page-shell home-page">
-  <view class="hero-card">
-    <view class="hero-decoration decoration-one"></view>
-    <view class="hero-decoration decoration-two"></view>
-    <text class="eyebrow">AI ORAL CARE TRAINING · MVP DEMO</text>
-    <text class="hero-title">口腔客服智能陪练</text>
-    <text class="hero-subtitle">客服训练 · 患者模拟 · 结构化复盘</text>
-    <text class="hero-description">面向新入口腔客服的低风险练习空间，帮助你在典型场景中练习沟通、服务表达和合规边界。</text>
-    <button class="primary-button hero-button" bindtap="startTraining">开始训练</button>
-  </view>
-
-  <view class="model-key-card card">
-    <text class="model-key-title">DeepSeek 模型密钥（本地演示）</text>
-    <text class="model-key-text">密钥仅提交给当前后端进程，不写入小程序缓存、数据库或代码仓库。已通过环境变量配置时无需填写。</text>
-    <view class="key-input-row">
-      <input class="key-input" password placeholder="输入 DeepSeek API Key" value="{{apiKey}}" bindinput="onKeyInput" disabled="{{savingKey}}" />
-      <button class="key-save-button" bindtap="saveApiKey" disabled="{{savingKey || !apiKey}}">{{savingKey ? '配置中' : '配置'}}</button>
+<view class="page-shell home-v2">
+  <!-- 搜索框 -->
+  <view class="search-section">
+    <view class="search-box">
+      <text class="search-icon">🔍</text>
+      <input class="search-input"
+             placeholder="搜索话术（如「种植牙」「价格」）"
+             value="{{searchKeyword}}"
+             bindinput="onSearchInput"
+             bindconfirm="onSearchConfirm"
+             confirm-type="search" />
+      <text class="search-btn" bindtap="onSearchConfirm" wx:if="{{searchKeyword}}">搜索</text>
     </view>
-    <text class="key-status" wx:if="{{keyStatus}}">{{keyStatus}}</text>
   </view>
 
-  <view class="section-heading">
-    <view><text class="section-title">训练闭环</text><text class="section-caption">从场景选择到报告回顾</text></view>
-    <text class="mvp-badge">MVP</text>
+  <!-- 热门话术轮播 — 简洁卡片，点击跳话术锦囊 -->
+  <view class="phrase-carousel-section" wx:if="{{phrasePreview.length > 0}}">
+    <view class="section-header">
+      <text class="section-head">热门话术</text>
+      <text class="section-more" bindtap="goPhrases">话术锦囊 ›</text>
+    </view>
+    <swiper class="phrase-swiper"
+            indicator-dots="{{true}}"
+            indicator-color="rgba(102,126,234,.25)"
+            indicator-active-color="#667eea"
+            autoplay="{{true}}"
+            interval="{{4000}}"
+            circular="{{true}}">
+      <swiper-item wx:for="{{phrasePreview}}" wx:key="csReplies">
+        <view class="phrase-swiper-card" bindtap="goPhrases">
+          <view class="psc-header">
+            <text class="psc-scenario-tag">{{item.scenarioName}}</text>
+            <text class="psc-tap-hint">点击查看完整对话 ›</text>
+          </view>
+          <text class="psc-phrase-text">"{{item.csReplies}}"</text>
+        </view>
+      </swiper-item>
+    </swiper>
   </view>
-  <view class="flow-card card">
-    <view class="flow-item"><text class="flow-number">01</text><text>选择场景</text></view>
-    <text class="flow-arrow">›</text>
-    <view class="flow-item"><text class="flow-number">02</text><text>双模式对话</text></view>
-    <text class="flow-arrow">›</text>
-    <view class="flow-item"><text class="flow-number">03</text><text>查看报告/复盘</text></view>
+  <view class="empty-hint card" wx:elif="{{overview && phrasePreview.length === 0}}">
+    <text>完成训练后，这里会展示热门话术卡片。点击可跳转话术锦囊查看完整对话示范。</text>
   </view>
 
-  <view class="section-heading stats-heading">
-    <view><text class="section-title">我的演示数据</text><text class="section-caption">完成训练后自动更新</text></view>
-    <text class="section-link" bindtap="viewDashboard">查看数据 ›</text>
+  <!-- 场景训练入口 -->
+  <view class="section-header">
+    <text class="section-head">训练场景</text>
+    <text class="section-more" bindtap="goTraining">全部场景 ›</text>
   </view>
-  <view class="stats-grid">
-    <view class="stat-card card"><text class="stat-value">{{dashboard.totalCount}}</text><text class="stat-label">总训练次数</text></view>
-    <view class="stat-card card"><text class="stat-value">{{dashboard.completedCount}}</text><text class="stat-label">已完成次数</text></view>
-    <view class="stat-card card"><text class="stat-value">{{dashboard.averageScore}}</text><text class="stat-label">平均得分</text></view>
+  <view class="scenario-grid" wx:if="{{scenarioStatus.length > 0}}">
+    <view class="scenario-grid-card card" wx:for="{{scenarioStatus}}" wx:key="scenarioId" bindtap="startScenario" data-id="{{item.scenarioId}}">
+      <view class="sgc-top">
+        <text class="sgc-name">{{item.name}}</text>
+        <text class="sgc-diff {{item.difficulty === 'advanced' ? 'diff-adv' : 'diff-basic'}}">{{item.difficultyText}}</text>
+      </view>
+      <text class="sgc-desc">{{item.summary}}</text>
+      <view class="sgc-bottom">
+        <text class="sgc-progress {{item.completedCount > 0 ? 'progress-done' : ''}}">{{item.progressText}}</text>
+        <text class="sgc-arrow">开始训练 ›</text>
+      </view>
+    </view>
   </view>
 
-  <view class="quick-links">
-    <view class="quick-link card" bindtap="startTraining"><text class="quick-icon">✦</text><view><text class="quick-title">开始一次新的练习</text><text class="quick-text">四个固定场景可选</text></view><text class="quick-arrow">›</text></view>
-    <view class="quick-link card" bindtap="viewHistory"><text class="quick-icon">↺</text><view><text class="quick-title">回看历史记录</text><text class="quick-text">继续未完成训练或查看报告</text></view><text class="quick-arrow">›</text></view>
+  <!-- 成长档案入口 -->
+  <view class="section-header">
+    <text class="section-head">成长档案</text>
+  </view>
+  <view class="growth-entries">
+    <view class="growth-entry card" bindtap="goProfile">
+      <text class="ge-emoji">📊</text>
+      <view class="ge-info"><text class="ge-title">能力画像</text><text class="ge-desc">五维成长曲线 · 短板诊断</text></view>
+      <text class="ge-arrow">›</text>
+    </view>
+    <view class="growth-entry card" bindtap="goMistakes">
+      <text class="ge-emoji">📝</text>
+      <view class="ge-info"><text class="ge-title">错题本</text><text class="ge-desc">待改进回合 · 复练提升</text></view>
+      <text class="ge-arrow">›</text>
+    </view>
   </view>
 
   <text class="disclaimer">AI模拟训练，不构成医疗建议；评分不替代医生、客服专家或正式培训考核。</text>

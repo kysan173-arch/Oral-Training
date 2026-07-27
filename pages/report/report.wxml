@@ -1,14 +1,126 @@
 <view class="page-shell history-page">
-  <view class="history-header"><text class="eyebrow">STEP 05 / HISTORY</text><text class="page-title">历史记录</text><text class="page-intro">两种训练模式独立保存，评分与患者模拟复盘不会混在一起。</text></view>
-  <view class="history-mode-switch"><view class="history-mode {{historyMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="customer_service">客服训练</view><view class="history-mode {{historyMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="patient_simulation">患者模拟</view></view>
-  <view class="history-tip"><text>状态说明：</text><text>{{historyMode === 'patient_simulation' ? '进行中可续练，已完成可查看学习复盘，已放弃记录仅用于回看。' : '进行中可续练，已完成可查看报告，已放弃记录仅用于回看。'}}</text></view>
-  <view class="empty-history card" wx:if="{{sessions.length === 0}}"><text class="empty-icon">↺</text><text class="empty-title">还没有{{historyMode === 'patient_simulation' ? '患者模拟' : '客服训练'}}记录</text><text class="empty-text">完成一次{{historyMode === 'patient_simulation' ? '患者模拟' : '训练'}}后，完整对话会自动出现在这里。</text></view>
+  <view class="history-header">
+    <text class="eyebrow">STEP 05 / HISTORY</text>
+    <text class="page-title">训练报告</text>
+    <text class="page-intro">两种训练模式独立保存，支持按通过状态和场景筛选，展开查看雷达图与建议。</text>
+  </view>
+
+  <!-- 成长档案快捷入口 -->
+  <view class="growth-shortcuts">
+    <view class="growth-shortcut card" bindtap="goProfile">
+      <text class="gs-emoji">📊</text>
+      <text class="gs-title">能力画像</text>
+      <text class="gs-desc">五维成长曲线 · 短板诊断</text>
+    </view>
+    <view class="growth-shortcut card" bindtap="goMistakes">
+      <text class="gs-emoji">📝</text>
+      <text class="gs-title">错题本</text>
+      <text class="gs-desc">待改进回合 · 复练提升</text>
+    </view>
+  </view>
+
+  <!-- 模式切换 -->
+  <view class="history-mode-switch">
+    <view class="history-mode {{historyMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="customer_service">客服训练</view>
+    <view class="history-mode {{historyMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="patient_simulation">患者模拟</view>
+  </view>
+
+  <!-- 筛选栏 -->
+  <view class="filter-bar">
+    <view class="filter-group status-filters">
+      <text class="filter-item {{statusFilter === 'all' ? 'active' : ''}}" bindtap="onStatusFilter" data-status="all">全部</text>
+      <text class="filter-item {{statusFilter === 'passed' ? 'active' : ''}}" bindtap="onStatusFilter" data-status="passed">已通过</text>
+      <text class="filter-item {{statusFilter === 'failed' ? 'active' : ''}}" bindtap="onStatusFilter" data-status="failed">未通过</text>
+    </view>
+    <view class="filter-group scenario-filter-wrap">
+      <text class="filter-item dropdown {{scenarioFilter ? 'active' : ''}}" bindtap="toggleScenarioFilter">
+        {{scenarioFilterLabel}}
+      </text>
+      <view class="scenario-dropdown card" wx:if="{{showScenarioFilter}}">
+        <text class="dropdown-item {{scenarioFilter === '' ? 'active' : ''}}" bindtap="onScenarioFilter" data-id="">全部场景</text>
+        <text class="dropdown-item {{scenarioFilter === item.id ? 'active' : ''}}" wx:for="{{scenarioFilters}}" wx:key="id" wx:if="{{item.id}}" bindtap="onScenarioFilter" data-id="{{item.id}}">{{item.name}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 统计提示 -->
+  <view class="filter-summary" wx:if="{{sessions.length > 0}}">
+    <text>共 {{sessions.length}} 条记录</text>
+  </view>
+
+  <view class="empty-history card" wx:if="{{sessions.length === 0}}">
+    <text class="empty-icon">↺</text>
+    <text class="empty-title">暂无符合条件的记录</text>
+    <text class="empty-text">尝试切换筛选条件或完成更多训练后再来查看。</text>
+  </view>
+
   <view class="history-list" wx:else>
     <view class="history-card card" wx:for="{{sessions}}" wx:key="id">
-      <view class="history-card-top"><view><text class="history-scene">{{item.scenarioName}}</text><text class="history-mode-label">{{item.isRoleplay ? '患者模拟' : '客服训练'}}</text></view><text class="status {{item.statusClass}}">{{item.statusText}}</text></view>
-      <view class="history-meta"><text>{{item.updatedAt}}</text><text>{{item.currentRound}} / {{item.maxRounds}} 轮</text><text wx:if="{{item.evaluation}}">{{item.evaluation.totalScore}} 分</text><text wx:elif="{{item.isRoleplay}}">{{item.summaryStatus === 'ready' ? '已复盘' : item.summaryStatus === 'failed' ? '复盘待重试' : '复盘生成中'}}</text><text wx:else>未评分</text></view>
-      <view class="history-actions"><text class="conversation-link" bindtap="toggleConversation" data-id="{{item.id}}">{{expandedId === item.id ? '收起对话' : '查看完整对话'}} ›</text><button class="history-button {{item.statusClass}}" bindtap="handleAction" data-id="{{item.id}}">{{item.actionText}}</button></view>
-      <view class="conversation" wx:if="{{expandedId === item.id}}"><view class="conversation-row {{message.role === 'user' || message.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{item.messages}}" wx:for-item="message" wx:key="id"><text class="conversation-role">{{message.role === 'user' ? '客服' : message.role === 'patient' ? '患者' : message.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}}</text><text class="conversation-text">{{message.content}}</text><view class="history-learning" wx:if="{{message.role === 'standard_customer' && message.learningPoints.length}}"><text wx:for="{{message.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text><text wx:if="{{message.complianceBoundary}}" class="history-boundary">合规边界：{{message.complianceBoundary}}</text></view></view></view>
+      <view class="history-card-top">
+        <view>
+          <text class="history-scene">{{item.scenarioName}}</text>
+          <text class="history-mode-label">{{item.isRoleplay ? '患者模拟' : '客服训练'}}</text>
+        </view>
+        <view class="history-status-row">
+          <text class="pass-badge {{item.passStatus}}" wx:if="{{item.passLabel}}">{{item.passLabel}}</text>
+          <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+        </view>
+      </view>
+      <view class="history-meta">
+        <text>{{item.updatedAt}}</text>
+        <text>{{item.currentRound}} / {{item.maxRounds}} 轮</text>
+        <text wx:if="{{item.evaluation}}">{{item.evaluation.totalScore}} 分</text>
+        <text wx:elif="{{item.isRoleplay}}">{{item.summaryStatus === 'ready' ? '已复盘' : item.summaryStatus === 'failed' ? '复盘待重试' : '复盘生成中'}}</text>
+        <text wx:else>未评分</text>
+      </view>
+
+      <!-- 展开的对话内容 -->
+      <view class="conversation" wx:if="{{expandedId === item.id}}">
+        <view class="conversation-row {{message.role === 'user' || message.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{item.messages}}" wx:for-item="message" wx:key="id">
+          <text class="conversation-role">{{message.role === 'user' ? '客服' : message.role === 'patient' ? '患者' : message.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}}</text>
+          <text class="conversation-text">{{message.content}}</text>
+          <view class="history-learning" wx:if="{{message.role === 'standard_customer' && message.learningPoints.length}}">
+            <text wx:for="{{message.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text>
+            <text wx:if="{{message.complianceBoundary}}" class="history-boundary">合规边界：{{message.complianceBoundary}}</text>
+          </view>
+        </view>
+
+        <!-- 展开的评估数据（雷达图 + 维度明细 + AI建议） -->
+        <view class="expanded-eval" wx:if="{{expandedEval && !item.isRoleplay}}">
+          <view class="eval-section-title"><text>五维雷达图</text></view>
+          <view class="radar-container">
+            <radar-chart dimensions="{{expandedDims}}" canvasWidth="{{280}}" canvasHeight="{{240}}" />
+          </view>
+
+          <view class="eval-section-title"><text>维度明细</text></view>
+          <view class="dimension-item" wx:for="{{expandedDims}}" wx:key="key">
+            <view class="dimension-header"><text>{{item.name}}</text><text class="dimension-score">{{item.score || 0}}</text></view>
+            <view class="score-bar"><view class="score-fill" style="width: {{item.score || 0}}%; background: {{item.color}};"></view></view>
+          </view>
+
+          <view class="eval-section-title"><text>AI 综合评价</text></view>
+          <view class="eval-text">{{expandedEval.summary}}</view>
+
+          <view class="eval-section-title"><text>改进建议</text></view>
+          <text class="eval-item" wx:for="{{expandedEval.improvements}}" wx:key="*this">• {{item}}</text>
+
+          <view wx:if="{{expandedEval.violations.length > 0}}">
+            <view class="eval-section-title"><text>严重违规（{{expandedEval.violations.length}} 项）</text></view>
+            <view class="violation-item" wx:for="{{expandedEval.violations}}" wx:key="id">
+              <text class="vio-type">{{item.type}}（-{{item.deduction}}分）</text>
+              <text class="vio-quote">"{{item.quote}}"</text>
+              <text class="vio-rewrite">建议：{{item.rewrite}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="history-actions">
+        <text class="conversation-link" bindtap="toggleConversation" data-id="{{item.id}}">
+          {{expandedId === item.id ? '收起详情 ▲' : '展开查看 ›'}}
+        </text>
+        <button class="history-button {{item.statusClass}}" bindtap="handleAction" data-id="{{item.id}}">{{item.actionText}}</button>
+      </view>
     </view>
   </view>
   <text class="disclaimer">完整对话仅保存在当前演示环境，不包含真实患者信息。</text>

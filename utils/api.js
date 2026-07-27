@@ -68,5 +68,32 @@ module.exports = {
   getRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary`),
   retryRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary/retry`, { method: 'POST', data: {} }),
   getRoleplaySessions: params => request(`/roleplay/sessions?${query(params || {})}`),
-  getDashboard: () => request('/dashboard/summary')
+  getDashboard: () => request('/dashboard/summary'),
+  getHint: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/hint`, { method: 'POST', data: {} }),
+  getPhrases: (keyword) => {
+    const qs = keyword ? `?search=${encodeURIComponent(keyword)}` : '';
+    return request(`/phrases${qs}`);
+  },
+  getHomeOverview: () => request('/home/overview'),
+  getProfile: () => request('/profile'),
+  getMineDashboard: () => request('/mine/dashboard'),
+  mineCheckin: () => request('/mine/checkin', { method: 'POST' }),
+  getMineRules: () => request('/mine/rules'),
+  addMinePoints: (amount) => request('/mine/add-points', { method: 'POST', data: { amount } }),
+  // Admin / 主管端
+  getEnhancedDashboard: (params) => request(`/dashboard/enhanced?${query(params || {})}`),
+  getDashboardTrend: (params) => request(`/dashboard/trend?${query(params || {})}`),
+  getMembers: (params) => request(`/members?${query(params || {})}`),
+  getMemberProfile: (memberId) => request(`/members/${encodeURIComponent(memberId)}/profile`),
+  getWarnings: () => request('/warnings'),
+  getPlans: (params) => request(`/plans?${query(params || {})}`),
+  createPlan: (data) => request('/plans', { method: 'POST', data }),
+  updatePlan: (planId, data) => request(`/plans/${encodeURIComponent(planId)}`, { method: 'PUT', data }),
+  deletePlan: (planId) => request(`/plans/${encodeURIComponent(planId)}`, { method: 'DELETE' }),
+  getPlanTasks: (planId) => request(`/plans/${encodeURIComponent(planId)}/tasks`),
+  createPlanTask: (planId, data) => request(`/plans/${encodeURIComponent(planId)}/tasks`, { method: 'POST', data }),
+  updatePlanTask: (planId, taskId, data) => request(`/plans/${encodeURIComponent(planId)}/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', data }),
+  getViolationWords: () => request('/violations/words'),
+  getLeaderboard: (params) => request(`/leaderboard?${query(params || {})}`),
+  exportReport: (format = 'csv') => request(`/export/report?format=${encodeURIComponent(format)}`)
 };

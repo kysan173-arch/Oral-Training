@@ -1,0 +1,57 @@
+.profile-page { padding: 34rpx 24rpx 48rpx; }
+.profile-header { padding: 8rpx 8rpx 18rpx; }
+.eyebrow { display: block; color: #7c86d8; font-size: 20rpx; letter-spacing: 2rpx; }
+.page-title { display: block; margin-top: 14rpx; font-size: 46rpx; font-weight: 700; }
+.page-intro { display: block; margin-top: 14rpx; color: #999; font-size: 25rpx; }
+.section-label { margin: 28rpx 2rpx 14rpx; font-size: 26rpx; font-weight: 700; color: #444; }
+
+/* 加载态 */
+.loading-card { padding: 80rpx 30rpx; text-align: center; }
+.loading-text { color: #999; font-size: 25rpx; }
+
+/* 能力标签 */
+.tags-row { display: flex; flex-wrap: wrap; gap: 14rpx; }
+.tag-chip { display: flex; flex-direction: column; align-items: center; padding: 20rpx 28rpx; min-width: 130rpx; }
+.tag-emoji { font-size: 36rpx; }
+.tag-name { margin-top: 8rpx; font-size: 24rpx; font-weight: 700; color: #333; }
+.tag-dim { margin-top: 4rpx; font-size: 19rpx; color: #aaa; }
+
+/* 总体概览 */
+.overview-card { display: flex; align-items: center; justify-content: space-around; padding: 28rpx 20rpx; margin-top: 6rpx; }
+.ov-item { display: flex; flex-direction: column; align-items: center; }
+.ov-value { font-size: 38rpx; font-weight: 800; color: #333; }
+.ov-value.level-expert { color: #667eea; }
+.ov-value.level-great { color: #52a67a; }
+.ov-value.level-good { color: #f0a34b; }
+.ov-value.level-beginner { color: #999; }
+.ov-label { margin-top: 6rpx; font-size: 20rpx; color: #aaa; }
+.ov-divider { width: 1rpx; height: 50rpx; background: #f0f0f3; }
+
+/* 折线图 */
+.chart-container { display: flex; flex-direction: column; align-items: center; padding: 20rpx 10rpx 14rpx; }
+.growth-canvas { display: block; }
+.chart-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12rpx; margin-top: 8rpx; }
+.legend-item { font-size: 19rpx; }
+
+/* 空态 */
+.empty-chart { padding: 40rpx 30rpx; text-align: center; color: #aaa; font-size: 24rpx; }
+.empty-weakness { padding: 28rpx; text-align: center; color: #52a67a; font-size: 24rpx; }
+.empty-sub { display: block; margin-top: 8rpx; color: #aaa; font-size: 21rpx; }
+
+/* 短板诊断 */
+.weakness-item { padding: 18rpx 0; border-bottom: 1rpx solid #f5f5f8; }
+.weakness-item:last-child { border-bottom: none; }
+.weakness-top { display: flex; align-items: center; justify-content: space-between; }
+.weakness-dim { font-size: 24rpx; font-weight: 700; color: #d26464; }
+.weakness-scores { font-size: 20rpx; color: #999; }
+.weakness-advice { display: block; margin-top: 10rpx; color: #666; font-size: 22rpx; line-height: 1.6; }
+
+/* 操作按钮 */
+.profile-actions { display: flex; flex-direction: column; gap: 16rpx; margin-top: 34rpx; }
+.primary-button, .secondary-button { height: 84rpx; line-height: 84rpx; border-radius: 44rpx; font-size: 27rpx; font-weight: 600; }
+.primary-button { color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); }
+.secondary-button { color: #667eea; background: #eef2ff; }
+
+.disclaimer { display: block; margin-top: 30rpx; color: #aaa; font-size: 21rpx; text-align: center; }
+
+.card { border-radius: 20rpx; background: #fff; box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04); }

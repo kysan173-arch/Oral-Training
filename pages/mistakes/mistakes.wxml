@@ -1,0 +1,75 @@
+<view class="page-shell mistakes-page">
+  <view class="mistakes-header">
+    <text class="eyebrow">成长档案 / MISTAKES</text>
+    <text class="page-title">错题本</text>
+    <text class="page-intro">自动收藏训练中表现不佳的对话回合，支持针对性复练，实现薄弱点闭环提升。</text>
+  </view>
+
+  <!-- 筛选栏 -->
+  <view class="filter-bar">
+    <view class="filter-group">
+      <text class="filter-item {{scenarioFilter === '' ? 'active' : ''}}" bindtap="onScenarioFilter" data-id="">全部场景</text>
+      <text class="filter-item {{scenarioFilter === item.id ? 'active' : ''}}" wx:for="{{scenarioOptions}}" wx:key="id" wx:if="{{item.id}}" bindtap="onScenarioFilter" data-id="{{item.id}}">{{item.name}}</text>
+    </view>
+    <text class="toggle-mastered" bindtap="toggleMastered">
+      {{showMastered ? '隐藏已掌握' : '显示已掌握'}}
+    </text>
+  </view>
+
+  <view class="filter-summary" wx:if="{{mistakes.length > 0}}">
+    <text>共 {{mistakes.length}} 条待改进记录</text>
+  </view>
+
+  <!-- 加载态 -->
+  <view class="loading-card card" wx:if="{{loading}}">
+    <text class="loading-text">正在加载错题本…</text>
+  </view>
+
+  <!-- 空态 -->
+  <view class="empty-card card" wx:elif="{{mistakes.length === 0}}">
+    <text class="empty-icon">🎉</text>
+    <text class="empty-title">暂无错题记录</text>
+    <text class="empty-text">完成更多训练后，表现不佳的对话回合会自动收录到这里。</text>
+  </view>
+
+  <!-- 错题列表 -->
+  <view class="mistakes-list" wx:else>
+    <view class="mistake-card card {{masteredIds.indexOf(item.id) > -1 ? 'mastered' : ''}}" wx:for="{{mistakes}}" wx:key="id" wx:for-item="item">
+      <view class="mistake-top">
+        <text class="mistake-scene">{{item.scenarioName}}</text>
+        <text class="mistake-round">{{item.round ? '第' + item.round + '轮' : '违规'}}</text>
+        <text class="mistake-type" wx:if="{{item.violationType}}">{{item.violationType}}</text>
+      </view>
+
+      <!-- 原话 -->
+      <view class="mistake-quote">
+        <text class="mq-label">当时回复</text>
+        <text class="mq-text">"{{item.userQuote || '（无内容）'}}"</text>
+      </view>
+
+      <!-- 点评 -->
+      <view class="mistake-comment">
+        <text class="mc-label">系统点评</text>
+        <text class="mc-text">{{item.comment}}</text>
+      </view>
+
+      <!-- 推荐话术 -->
+      <view class="mistake-rewrite" wx:if="{{item.rewrite}}">
+        <text class="mr-label">推荐话术</text>
+        <text class="mr-text">"{{item.rewrite}}"</text>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="mistake-actions">
+        <button class="ma-btn retrain" bindtap="goRetrain" data-item="{{item}}">去复练</button>
+        <button wx:if="{{masteredIds.indexOf(item.id) === -1}}" class="ma-btn master" bindtap="markMastered" data-id="{{item.id}}">已掌握</button>
+        <button wx:else class="ma-btn unmaster" bindtap="unmarkMastered" data-id="{{item.id}}">取消掌握</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="mistakes-footer">
+    <button class="secondary-button" bindtap="goProfile">返回能力画像</button>
+    <text class="disclaimer">错题数据基于AI评估，仅供参考学习。</text>
+  </view>
+</view>

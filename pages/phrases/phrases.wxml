@@ -1,0 +1,67 @@
+<view class="page-shell phrases-page">
+  <!-- 搜索框 -->
+  <view class="phrases-search-section">
+    <view class="phrases-search-box">
+      <text class="search-icon">🔍</text>
+      <input class="search-input"
+             placeholder="搜索话术（如「种植牙」「价格」）"
+             value="{{searchKeyword}}"
+             bindinput="onSearchInput"
+             bindconfirm="onSearchConfirm"
+             confirm-type="search" />
+      <text class="search-clear" wx:if="{{searchKeyword}}" bindtap="onClearSearch">✕</text>
+    </view>
+  </view>
+
+  <view class="phrases-hero">
+    <text class="phrases-title">话术锦囊</text>
+    <text class="phrases-desc">完成训练后，AI 推荐的高质量话术自动收录于此，成为你的随身话术库。</text>
+    <view class="phrases-stat" wx:if="{{totalPhrases > 0}}">
+      <text class="stat-big">{{totalPhrases}}</text>
+      <text>条话术 · 覆盖 {{groups.length}} 个场景</text>
+      <text wx:if="{{isSearching}}">（搜索结果）</text>
+    </view>
+  </view>
+
+  <view class="empty-state card" wx:if="{{!loading && groups.length === 0}}">
+    <text class="empty-icon">{{isSearching ? '🔍' : '📭'}}</text>
+    <text class="empty-title">{{isSearching ? '未找到匹配话术' : '暂无话术'}}</text>
+    <text class="empty-desc">{{isSearching ? '试试其他关键词，如「种植牙」「价格」「术后」。' : '完成至少一次客服训练，AI 评估后会推荐高质量话术，自动收录到这里。'}}</text>
+    <text class="empty-reset" wx:if="{{isSearching}}" bindtap="onClearSearch">清除搜索</text>
+  </view>
+
+  <view class="loading-state" wx:if="{{loading}}">
+    <text class="loading-text">加载中…</text>
+  </view>
+
+  <view class="phrase-groups" wx:if="{{!loading && groups.length > 0}}">
+    <view class="group-block" wx:for="{{groups}}" wx:key="scenarioId">
+      <view class="group-header">
+        <view class="group-name-row">
+          <text class="group-name">{{item.scenarioName}}</text>
+          <text class="group-count {{item.difficulty === 'advanced' ? 'tag-adv' : 'tag-basic'}}">{{item.phrases.length}} 条</text>
+        </view>
+        <text class="group-train-link" bindtap="goTraining" data-id="{{item.scenarioId}}">去训练 ›</text>
+      </view>
+      <view class="group-phrases">
+        <view class="phrase-full-card" wx:for="{{item.phrases}}" wx:key="csReplies" bindtap="copyPhrase" data-phrase="{{item.csReplies}}">
+          <!-- 对话式展示 -->
+          <view class="phrase-dialogue-mini" wx:if="{{item.patientSays}}">
+            <view class="pdm-row pdm-patient">
+              <text class="pdm-role">患者</text>
+              <text class="pdm-text">{{item.patientSays}}</text>
+            </view>
+            <text class="pdm-arrow">↓</text>
+          </view>
+          <view class="pdm-row pdm-cs">
+            <text class="pdm-role">客服</text>
+            <text class="pdm-text">"{{item.csReplies}}"</text>
+          </view>
+          <text class="phrase-copy-hint">点击复制话术</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <text class="disclaimer">AI生成话术仅供参考，实际沟通请结合具体场景灵活运用。</text>
+</view>

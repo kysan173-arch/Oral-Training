@@ -22,3 +22,6 @@ backend/.local-postgres.log
 backend/.backend.stdout.log
 backend/.backend.stderr.log
 backend/.env
+backend/portable/backend.env
+newbackend/backend.env
+server/.env

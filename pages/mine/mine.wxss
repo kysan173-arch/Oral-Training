@@ -1,0 +1,98 @@
+.mine-page { padding: 0 0 48rpx; }
+
+/* 用户信息卡 */
+.user-card {
+  display: flex; flex-direction: column;
+  margin: 30rpx 24rpx 20rpx; padding: 28rpx 28rpx 22rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff; box-shadow: 0 6rpx 24rpx rgba(102,126,234,.25);
+}
+.user-info { display: flex; align-items: center; }
+.avatar {
+  width: 72rpx; height: 72rpx; line-height: 72rpx;
+  border-radius: 50%; background: rgba(255,255,255,.18);
+  font-size: 34rpx; text-align: center;
+}
+.user-text { margin-left: 18rpx; }
+.user-name { display: block; font-size: 30rpx; font-weight: 700; }
+.user-level { display: block; margin-top: 6rpx; font-size: 22rpx; opacity: .8; }
+
+.user-stats {
+  display: flex; align-items: center; margin-top: 20rpx;
+}
+.user-points { display: flex; flex-direction: column; align-items: center; min-width: 80rpx; }
+.up-value { font-size: 38rpx; font-weight: 800; }
+.up-label { margin-top: 2rpx; font-size: 20rpx; opacity: .7; }
+.level-bar-wrap { flex: 1; margin-left: 20rpx; }
+.level-bar { height: 8rpx; border-radius: 4rpx; background: rgba(255,255,255,.25); overflow: hidden; }
+.level-bar-fill { height: 100%; border-radius: 4rpx; background: #ffe066; transition: width .4s; }
+.level-hint { display: block; margin-top: 6rpx; font-size: 19rpx; opacity: .6; }
+
+/* 训练统计 */
+.stats-row {
+  display: flex; margin: 0 24rpx; padding: 24rpx 10rpx;
+  border-radius: 20rpx; background: #fff;
+  box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04);
+}
+.stats-item { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.si-value { font-size: 32rpx; font-weight: 700; color: #333; }
+.si-label { margin-top: 6rpx; font-size: 20rpx; color: #aaa; }
+
+/* Section header */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin: 34rpx 28rpx 14rpx; }
+.section-title { font-size: 29rpx; font-weight: 700; color: #333; }
+.section-right { display: flex; align-items: center; gap: 14rpx; }
+.streak-info { font-size: 21rpx; color: #52a67a; font-weight: 600; }
+.section-link { font-size: 21rpx; color: #667eea; }
+
+/* 打卡按钮 */
+.checkin-btn {
+  padding: 10rpx 22rpx;
+  border-radius: 24rpx;
+  font-size: 21rpx; font-weight: 600;
+  color: #fff; background: linear-gradient(135deg, #667eea, #764ba2);
+}
+.checkin-btn.checked { color: #aaa; background: #eee; }
+
+/* 日历 */
+.calendar-card { margin: 0 24rpx; padding: 22rpx 16rpx 18rpx; }
+.calendar-header { text-align: center; color: #445; font-size: 25rpx; font-weight: 600; margin-bottom: 14rpx; }
+.weekday-row { display: flex; }
+.weekday { flex: 1; text-align: center; color: #bbb; font-size: 21rpx; padding: 6rpx 0; }
+.day-grid { display: flex; flex-wrap: wrap; }
+.day-cell { width: calc(100% / 7); aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+.day-num { font-size: 23rpx; color: #555; }
+.day-cell.today { border-radius: 50%; background: #eef2ff; }
+.day-cell.today .day-num { color: #667eea; font-weight: 700; }
+.day-cell.checked { border-radius: 50%; background: #667eea; }
+.day-cell.checked .day-num { color: #fff; font-weight: 700; }
+
+/* 积分规则 */
+.rules-card { margin: 0 24rpx; padding: 18rpx 22rpx; }
+.rule-row { display: flex; align-items: center; padding: 14rpx 0; border-bottom: 1rpx solid #f5f5f8; }
+.rule-row:last-child { border-bottom: 0; }
+.rule-action { flex: 1; font-size: 24rpx; color: #333; font-weight: 600; }
+.rule-points { color: #667eea; font-size: 24rpx; font-weight: 700; margin-right: 20rpx; }
+.rule-desc { font-size: 21rpx; color: #aaa; max-width: 180rpx; text-align: right; }
+
+/* 快捷入口 */
+.shortcuts { display: flex; flex-direction: column; margin: 0 24rpx; gap: 12rpx; }
+.shortcut-item { display: flex; align-items: center; padding: 22rpx 20rpx; }
+.sc-emoji { font-size: 36rpx; margin-right: 16rpx; }
+.sc-text { flex: 1; font-size: 26rpx; font-weight: 600; color: #333; }
+.sc-tag { padding: 2rpx 12rpx; margin-left: 10rpx; border-radius: 14rpx; color: #667eea; background: #eef2ff; font-size: 19rpx; }
+.sc-arrow { color: #ccc; font-size: 30rpx; }
+
+/* 排行榜 */
+.leader-card { margin: 0 24rpx; padding: 14rpx 20rpx; }
+.leader-row { display: flex; align-items: center; padding: 14rpx 0; border-bottom: 1rpx solid #f5f5f8; }
+.leader-row:last-child { border-bottom: 0; }
+.lr-rank { width: 50rpx; font-size: 24rpx; text-align: center; }
+.lr-name { flex: 1; font-size: 24rpx; color: #333; }
+.lr-points { font-size: 24rpx; font-weight: 700; color: #667eea; }
+.leader-empty { padding: 30rpx; text-align: center; color: #aaa; font-size: 23rpx; }
+
+.disclaimer { display: block; margin-top: 30rpx; color: #aaa; font-size: 21rpx; text-align: center; }
+
+.card { border-radius: 20rpx; background: #fff; box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04); }

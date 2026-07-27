@@ -1,0 +1,61 @@
+.mistakes-page { padding: 34rpx 24rpx 48rpx; }
+.mistakes-header { padding: 8rpx 8rpx 18rpx; }
+.eyebrow { display: block; color: #7c86d8; font-size: 20rpx; letter-spacing: 2rpx; }
+.page-title { display: block; margin-top: 14rpx; font-size: 46rpx; font-weight: 700; }
+.page-intro { display: block; margin-top: 14rpx; color: #999; font-size: 25rpx; }
+
+/* 筛选栏 */
+.filter-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10rpx; }
+.filter-group { display: flex; align-items: center; padding: 6rpx; border-radius: 20rpx; background: #fff; overflow-x: auto; white-space: nowrap; }
+.filter-item { padding: 10rpx 18rpx; border-radius: 16rpx; font-size: 22rpx; color: #999; }
+.filter-item.active { color: #667eea; background: #eef2ff; font-weight: 600; }
+.toggle-mastered { flex-shrink: 0; padding: 10rpx 18rpx; font-size: 21rpx; color: #667eea; }
+.filter-summary { padding: 4rpx 8rpx 12rpx; color: #aaa; font-size: 21rpx; }
+
+/* 加载态 */
+.loading-card { padding: 80rpx 30rpx; text-align: center; }
+.loading-text { color: #999; font-size: 25rpx; }
+
+/* 空态 */
+.empty-card { display: flex; flex-direction: column; align-items: center; padding: 70rpx 30rpx; text-align: center; }
+.empty-icon { font-size: 56rpx; }
+.empty-title { margin-top: 16rpx; font-size: 28rpx; font-weight: 700; }
+.empty-text { margin-top: 10rpx; color: #999; font-size: 23rpx; line-height: 1.6; }
+
+/* 错题卡片 */
+.mistakes-list { display: flex; flex-direction: column; gap: 18rpx; }
+.mistake-card { padding: 26rpx; border-left: 6rpx solid #d26464; }
+.mistake-card.mastered { border-left-color: #bbb; opacity: .7; }
+.mistake-top { display: flex; align-items: center; gap: 14rpx; margin-bottom: 16rpx; }
+.mistake-scene { font-size: 26rpx; font-weight: 700; color: #333; }
+.mistake-round { padding: 3rpx 12rpx; border-radius: 12rpx; font-size: 19rpx; color: #667eea; background: #eef2ff; }
+.mistake-type { padding: 3rpx 10rpx; border-radius: 10rpx; font-size: 19rpx; color: #d26464; background: #fef5f5; }
+
+/* 原话 */
+.mistake-quote { padding: 14rpx 16rpx; margin-bottom: 12rpx; border-radius: 12rpx; background: #f8f8fa; }
+.mq-label { display: block; font-size: 19rpx; color: #bbb; margin-bottom: 6rpx; }
+.mq-text { display: block; color: #666; font-size: 23rpx; line-height: 1.5; font-style: italic; }
+
+/* 点评 */
+.mistake-comment { padding: 0 2rpx; margin-bottom: 12rpx; }
+.mc-label { display: block; font-size: 19rpx; color: #bbb; margin-bottom: 6rpx; }
+.mc-text { display: block; color: #555; font-size: 23rpx; line-height: 1.6; }
+
+/* 推荐话术 */
+.mistake-rewrite { padding: 14rpx 16rpx; margin-bottom: 6rpx; border-radius: 12rpx; background: #eff9f4; }
+.mr-label { display: block; font-size: 19rpx; color: #6aad8b; margin-bottom: 6rpx; }
+.mr-text { display: block; color: #3d7a58; font-size: 23rpx; line-height: 1.5; }
+
+/* 操作按钮 */
+.mistake-actions { display: flex; gap: 14rpx; margin-top: 12rpx; }
+.ma-btn { flex: 1; height: 64rpx; line-height: 64rpx; margin: 0; padding: 0; border-radius: 34rpx; font-size: 23rpx; font-weight: 600; text-align: center; }
+.ma-btn.retrain { color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); }
+.ma-btn.master { color: #52a67a; background: #e8f5ed; }
+.ma-btn.unmaster { color: #999; background: #f5f5f5; }
+
+/* 底部 */
+.mistakes-footer { margin-top: 30rpx; }
+.secondary-button { height: 84rpx; line-height: 84rpx; border-radius: 44rpx; font-size: 27rpx; font-weight: 600; color: #667eea; background: #eef2ff; }
+.disclaimer { display: block; margin-top: 18rpx; color: #aaa; font-size: 21rpx; text-align: center; }
+
+.card { border-radius: 20rpx; background: #fff; box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04); }

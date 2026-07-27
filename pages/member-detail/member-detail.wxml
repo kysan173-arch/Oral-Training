@@ -1,0 +1,72 @@
+<view class="member-detail-page">
+  <!-- 成员信息 -->
+  <view class="member-header card">
+    <view class="mh-avatar">{{member.avatar}}</view>
+    <view class="mh-info">
+      <text class="mh-name">{{member.name}}</text>
+      <text class="mh-role">{{member.role}}</text>
+      <text class="mh-meta">入职 {{member.joinedAt}} · 累计 {{member.totalHours}}h</text>
+    </view>
+    <view class="mh-stats">
+      <view class="mhs-item"><text class="mhs-val">{{member.avgScore}}</text><text class="mhs-label">平均分</text></view>
+      <view class="mhs-item"><text class="mhs-val">{{member.passRate}}%</text><text class="mhs-label">通过率</text></view>
+    </view>
+  </view>
+
+  <!-- 雷达图 -->
+  <view class="section-header"><text class="section-title">五维能力</text></view>
+  <view class="radar-wrap card">
+    <canvas type="2d" id="radarCanvas" class="radar-canvas"></canvas>
+    <view class="dim-bar-list">
+      <view class="dim-bar-row" wx:for="{{dimKeys}}" wx:key="*this">
+        <text class="dim-bar-name">{{dimNames[item] || item}}</text>
+        <view class="dim-bar-bar"><view class="dim-bar-fill" style="width:{{dimensionAverages[item] || 0}}%; background:{{dimColor(item)}};"></view></view>
+        <text class="dim-bar-val">{{dimensionAverages[item] || 0}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 成长曲线 -->
+  <view class="section-header"><text class="section-title">成长曲线</text></view>
+  <view class="growth-card card">
+    <view class="growth-chart">
+      <view class="gc-point" wx:for="{{growthCurve}}" wx:key="index" style="left:{{(index / Math.max(growthCurve.length - 1, 1)) * 100}}%; bottom:{{(item.totalScore / 100) * 80}}%;">
+        <view class="gc-dot"></view>
+        <text class="gc-score">{{item.totalScore}}</text>
+      </view>
+    </view>
+    <view class="gc-labels">
+      <text wx:for="{{growthCurve}}" wx:key="index" class="gc-label" style="left:{{(index / Math.max(growthCurve.length - 1, 1)) * 100}}%;">{{item.date}}</text>
+    </view>
+  </view>
+
+  <!-- 薄弱项预警 -->
+  <view class="section-header"><text class="section-title">薄弱项预警</text></view>
+  <view class="warnings-list" wx:if="{{warnings.length > 0}}">
+    <view class="warning-card card {{item.severity === 'high' ? 'high' : ''}}" wx:for="{{warnings}}" wx:key="dimension">
+      <view class="warn-head">
+        <text class="warn-icon">⚠️</text>
+        <text class="warn-dim">{{item.dimensionName}}</text>
+        <text class="warn-severity {{item.severity}}">{{item.severity === 'high' ? '严重' : '警告'}}</text>
+      </view>
+      <text class="warn-scores">最近得分: {{item.recentScores}}</text>
+      <text class="warn-suggestion">{{item.suggestion}}</text>
+    </view>
+  </view>
+  <view class="no-warnings card" wx:else>
+    <text>🎉 近期各项指标表现良好，无预警</text>
+  </view>
+
+  <!-- 历史时间轴 -->
+  <view class="section-header"><text class="section-title">训练记录</text></view>
+  <view class="timeline" wx:if="{{trend.length > 0}}">
+    <view class="tl-item card" wx:for="{{trend}}" wx:key="index">
+      <view class="tl-head">
+        <text class="tl-date">{{item.date}}</text>
+        <text class="tl-score {{item.totalScore >= 60 ? 'pass' : ''}}">{{item.totalScore}}分</text>
+      </view>
+      <text class="tl-scenario">{{item.scenarioName}}</text>
+    </view>
+  </view>
+  <view class="no-data card" wx:else><text>暂无训练记录</text></view>
+</view>

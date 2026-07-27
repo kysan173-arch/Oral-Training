@@ -1,17 +1,43 @@
 .history-page { padding: 34rpx 24rpx 48rpx; }
-.history-header { padding: 8rpx 8rpx 26rpx; }
-.history-mode-switch { display: flex; padding: 6rpx; margin: -4rpx 0 22rpx; border-radius: 20rpx; background: #e9ebf8; }
+.history-header { padding: 8rpx 8rpx 18rpx; }
+.history-mode-switch { display: flex; padding: 6rpx; margin: -4rpx 0 18rpx; border-radius: 20rpx; background: #e9ebf8; }
 .history-mode { flex: 1; padding: 16rpx 12rpx; border-radius: 16rpx; color: #7780aa; font-size: 25rpx; text-align: center; }
 .history-mode.selected { color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); font-weight: 600; }
 .eyebrow { display: block; color: #7c86d8; font-size: 20rpx; letter-spacing: 2rpx; }
 .page-title { display: block; margin-top: 14rpx; font-size: 46rpx; font-weight: 700; }
 .page-intro { display: block; margin-top: 14rpx; color: #999; font-size: 25rpx; }
-.history-tip { padding: 18rpx 22rpx; margin-bottom: 22rpx; border-radius: 16rpx; color: #777; background: #fff; font-size: 22rpx; line-height: 1.5; }
-.history-tip text:first-child { color: #667eea; font-weight: 600; }
+
+/* 成长档案快捷入口 */
+.growth-shortcuts { display: flex; gap: 16rpx; margin-bottom: 24rpx; }
+.growth-shortcut { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 24rpx 16rpx; }
+.gs-emoji { font-size: 36rpx; }
+.gs-title { margin-top: 8rpx; font-size: 24rpx; font-weight: 700; color: #333; }
+.gs-desc { margin-top: 4rpx; font-size: 20rpx; color: #aaa; text-align: center; }
+
+/* 筛选栏 */
+.filter-bar { display: flex; align-items: flex-start; gap: 12rpx; margin-bottom: 14rpx; }
+.filter-group { display: flex; align-items: center; padding: 6rpx; border-radius: 20rpx; background: #fff; }
+.status-filters { flex: 1; }
+.scenario-filter-wrap { position: relative; }
+.filter-item { padding: 10rpx 20rpx; border-radius: 16rpx; font-size: 23rpx; color: #999; }
+.filter-item.active { color: #667eea; background: #eef2ff; font-weight: 600; }
+.filter-item.dropdown { white-space: nowrap; }
+.scenario-dropdown { position: absolute; top: 100%; right: 0; z-index: 10; min-width: 180rpx; margin-top: 8rpx; padding: 12rpx 0; }
+.dropdown-item { display: block; padding: 14rpx 24rpx; font-size: 23rpx; color: #666; }
+.dropdown-item.active { color: #667eea; font-weight: 700; background: #f5f6ff; }
+.filter-summary { padding: 0 8rpx 10rpx; color: #aaa; font-size: 21rpx; }
+
+/* 通过状态标签 */
+.history-status-row { display: flex; align-items: center; gap: 10rpx; }
+.pass-badge { padding: 4rpx 12rpx; border-radius: 12rpx; font-size: 20rpx; font-weight: 600; }
+.pass-badge.passed { color: #3d9d6a; background: #e8f5ed; }
+.pass-badge.failed { color: #d26464; background: #fef0f0; }
+
+/* 历史卡片 */
 .history-card { padding: 26rpx; margin-bottom: 18rpx; }
-.history-card-top { display: flex; justify-content: space-between; align-items: center; }
-.history-scene { font-size: 29rpx; font-weight: 700; }
-.history-mode-label { display: block; margin-top: 5rpx; color: #8d96bc; font-size: 19rpx; }
+.history-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.history-scene { font-size: 29rpx; font-weight: 700; display: block; }
+.history-mode-label { margin-top: 5rpx; color: #8d96bc; font-size: 19rpx; }
 .status { padding: 6rpx 14rpx; border-radius: 18rpx; font-size: 21rpx; }
 .status.in_progress { color: #bd7a35; background: #fff3df; }
 .status.completed { color: #3d9d6a; background: #eaf8ef; }
@@ -23,6 +49,8 @@
 .history-button.in_progress { color: #fff; background: #667eea; }
 .history-button.completed { color: #667eea; background: #eef0ff; }
 .history-button.abandoned { color: #777; background: #f1f1f1; }
+
+/* 对话展示 */
 .conversation { padding: 18rpx 0 2rpx; margin-top: 20rpx; border-top: 1rpx solid #f0f0f3; }
 .conversation-row { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 14rpx; }
 .conversation-row.mine { align-items: flex-end; }
@@ -32,6 +60,26 @@
 .history-learning { max-width: 88%; padding: 10rpx 14rpx; margin-top: 6rpx; border-radius: 10rpx; color: #55716e; background: #eff9f7; font-size: 20rpx; line-height: 1.45; }
 .history-learning text { display: block; }
 .history-boundary { padding-top: 7rpx; margin-top: 7rpx; border-top: 1rpx solid #d7ebe7; color: #896c47; }
+
+/* 展开的评估区域 */
+.expanded-eval { margin-top: 22rpx; padding: 22rpx 16rpx 8rpx; border-top: 2rpx solid #eef2ff; }
+.eval-section-title { margin-bottom: 12rpx; font-size: 24rpx; font-weight: 700; color: #445; }
+.radar-container { display: flex; justify-content: center; margin-bottom: 18rpx; }
+.dimension-item { margin-bottom: 14rpx; }
+.dimension-header { display: flex; justify-content: space-between; font-size: 22rpx; color: #666; margin-bottom: 6rpx; }
+.dimension-score { font-weight: 700; color: #333; }
+.score-bar { height: 10rpx; border-radius: 6rpx; background: #f0f0f3; overflow: hidden; }
+.score-fill { height: 100%; border-radius: 6rpx; transition: width .4s; }
+.eval-text { margin-bottom: 16rpx; color: #555; font-size: 23rpx; line-height: 1.6; }
+.eval-item { display: block; margin-bottom: 10rpx; color: #777; font-size: 22rpx; line-height: 1.5; }
+
+/* 违规项 */
+.violation-item { padding: 14rpx; margin-bottom: 10rpx; border-radius: 12rpx; background: #fef5f5; }
+.vio-type { display: block; font-size: 21rpx; font-weight: 700; color: #d26464; }
+.vio-quote { display: block; margin-top: 6rpx; color: #888; font-size: 21rpx; font-style: italic; }
+.vio-rewrite { display: block; margin-top: 6rpx; color: #52a67a; font-size: 21rpx; }
+
+/* 空态 & 尾部 */
 .empty-history { display: flex; flex-direction: column; align-items: center; padding: 70rpx 30rpx; text-align: center; }
 .empty-icon { color: #bfc4ef; font-size: 70rpx; }
 .empty-title { margin-top: 20rpx; font-size: 30rpx; font-weight: 700; }
