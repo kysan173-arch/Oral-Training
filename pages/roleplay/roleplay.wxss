@@ -1,5 +1,5 @@
-.roleplay-page { display: flex; flex-direction: column; height: 100vh; padding-bottom: 0; box-sizing: border-box; background: #f5f5f5; }
-.roleplay-header { display: flex; align-items: center; justify-content: space-between; padding: 26rpx 28rpx 22rpx; color: #fff; background: linear-gradient(135deg, #32a79b, #4389c7); }
+.roleplay-page { display: flex; flex-direction: column; height: 100vh; padding-bottom: 0; box-sizing: border-box; background: var(--bg-grad, #F7F8FA); }
+.roleplay-header { display: flex; align-items: center; justify-content: space-between; padding: 26rpx 28rpx 22rpx; color: #fff; background: #5B6EF5; }
 .customer-title { display: flex; align-items: center; }
 .customer-dot { width: 64rpx; height: 64rpx; margin-right: 16rpx; border-radius: 20rpx; background: rgba(255,255,255,.22); }
 .customer-name, .customer-subtitle { display: block; }
@@ -9,37 +9,37 @@
 .round-value { font-size: 38rpx; font-weight: 700; }
 .round-total { margin-left: 4rpx; color: rgba(255,255,255,.78); font-size: 20rpx; }
 .profile-strip { display: flex; align-items: center; padding: 16rpx 28rpx; background: #fff; border-bottom: 1rpx solid #eee; }
-.strip-label { padding: 5rpx 12rpx; border-radius: 14rpx; color: #22877e; background: #e8f7f4; font-size: 20rpx; }
+.strip-label { padding: 5rpx 12rpx; border-radius: 14rpx; color: #5B6EF5; background: #F2F2F7; font-size: 20rpx; }
 .strip-text { flex: 1; margin-left: 14rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; font-size: 22rpx; }
 .chat-area { flex: 1; min-height: 0; padding: 22rpx 24rpx; box-sizing: border-box; }
 .chat-intro { padding: 16rpx 20rpx; margin-bottom: 16rpx; border-radius: 16rpx; color: #777; background: #fff; font-size: 21rpx; line-height: 1.5; text-align: center; }
-.suggestion-panel { padding: 18rpx; margin-bottom: 22rpx; border-radius: 16rpx; background: #eaf7f5; }
-.suggestion-title { display: block; color: #25867e; font-size: 22rpx; font-weight: 700; }
+.suggestion-panel { padding: 18rpx; margin-bottom: 22rpx; border-radius: 16rpx; background: #F2F2F7; }
+.suggestion-title { display: block; color: #5B6EF5; font-size: 22rpx; font-weight: 700; }
 .suggestion-list { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 12rpx; }
-.suggestion-chip { padding: 9rpx 13rpx; border-radius: 15rpx; color: #28746e; background: #fff; font-size: 21rpx; line-height: 1.45; }
+.suggestion-chip { padding: 9rpx 13rpx; border-radius: 15rpx; color: #5B6EF5; background: #fff; font-size: 21rpx; line-height: 1.45; }
 .message-item { display: flex; align-items: flex-start; margin-bottom: 26rpx; }
 .learner-message { flex-direction: row-reverse; }
-.message-avatar { width: 58rpx; height: 58rpx; line-height: 58rpx; flex-shrink: 0; border-radius: 18rpx; color: #25867e; background: #dff4f0; font-size: 22rpx; text-align: center; }
-.learner-message .message-avatar { color: #fff; background: #4389c7; }
+.message-avatar { width: 58rpx; height: 58rpx; line-height: 58rpx; flex-shrink: 0; border-radius: 18rpx; color: #5B6EF5; background: #F2F2F7; font-size: 22rpx; text-align: center; }
+.learner-message .message-avatar { color: #fff; background: #5B6EF5; }
 .message-body { max-width: 78%; margin-left: 14rpx; }
 .learner-message .message-body { margin-right: 14rpx; margin-left: 0; }
 .message-role { display: block; margin-bottom: 7rpx; color: #aaa; font-size: 20rpx; }
 .learner-message .message-role { text-align: right; }
 .message-bubble { padding: 18rpx 22rpx; border-radius: 6rpx 22rpx 22rpx 22rpx; color: #444; background: #fff; box-shadow: 0 3rpx 12rpx rgba(0,0,0,.03); font-size: 27rpx; line-height: 1.6; }
-.learner-message .message-bubble { border-radius: 22rpx 6rpx 22rpx 22rpx; color: #fff; background: #4389c7; }
-.learning-card { padding: 16rpx; margin-top: 10rpx; border-radius: 14rpx; background: #eff9f7; }
-.learning-title { display: block; color: #25867e; font-size: 21rpx; font-weight: 700; }
-.learning-point { display: block; margin-top: 7rpx; color: #55716e; font-size: 21rpx; line-height: 1.5; }
-.boundary-box { padding-top: 12rpx; margin-top: 12rpx; border-top: 1rpx solid #cfe9e4; color: #846c4b; font-size: 20rpx; line-height: 1.5; }
-.boundary-label { margin-right: 10rpx; color: #aa8150; font-weight: 700; }
+.learner-message .message-bubble { border-radius: 22rpx 6rpx 22rpx 22rpx; color: #fff; background: #5B6EF5; }
+.learning-card { padding: 16rpx; margin-top: 10rpx; border-radius: 14rpx; background: #F2F2F7; }
+.learning-title { display: block; color: #5B6EF5; font-size: 21rpx; font-weight: 700; }
+.learning-point { display: block; margin-top: 7rpx; color: #6B6B7B; font-size: 21rpx; line-height: 1.5; }
+.boundary-box { padding-top: 12rpx; margin-top: 12rpx; border-top: 1rpx solid #cfe9e4; color: #8A6E4B; font-size: 20rpx; line-height: 1.5; }
+.boundary-label { margin-right: 10rpx; color: #FF9500; font-weight: 700; }
 .typing { display: flex; align-items: center; width: max-content; padding: 15rpx 20rpx; margin: 4rpx 0 20rpx 72rpx; border-radius: 18rpx; color: #999; background: #fff; font-size: 22rpx; }
-.typing-dot { width: 12rpx; height: 12rpx; margin-right: 10rpx; border-radius: 50%; background: #25867e; }
-.training-note { padding: 10rpx 24rpx; color: #aaa; background: #fafafa; font-size: 20rpx; text-align: center; }
+.typing-dot { width: 12rpx; height: 12rpx; margin-right: 10rpx; border-radius: 50%; background: #5B6EF5; }
+.training-note { padding: 10rpx 24rpx; color: #aaa; background: var(--bg-grad, #F7F8FA); font-size: 20rpx; text-align: center; }
 .input-area { display: flex; align-items: center; gap: 14rpx; padding: 16rpx 22rpx; background: #fff; border-top: 1rpx solid #eee; }
-.input-field { flex: 1; height: 72rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 36rpx; background: #f5f5f5; font-size: 26rpx; }
-.send-button { width: 128rpx; height: 72rpx; line-height: 72rpx; padding: 0; border-radius: 36rpx; color: #fff; background: #25867e; font-size: 25rpx; }
+.input-field { flex: 1; height: 72rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 36rpx; background: #F7F8FA; font-size: 26rpx; }
+.send-button { width: 128rpx; height: 72rpx; line-height: 72rpx; padding: 0; border-radius: 36rpx; color: #fff; background: #5B6EF5; font-size: 25rpx; }
 .send-button[disabled] { background: #c9c9c9; }
 .roleplay-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 22rpx 22rpx; background: #fff; }
 .leave-link { padding: 20rpx 8rpx; color: #999; font-size: 23rpx; }
-.finish-button { width: 220rpx; height: 66rpx; line-height: 66rpx; padding: 0; border: 1rpx solid #cce7e1; border-radius: 34rpx; color: #25867e; background: #fff; font-size: 24rpx; text-align: center; }
+.finish-button { width: 220rpx; height: 66rpx; line-height: 66rpx; padding: 0; border: 1rpx solid #D1D1D6; border-radius: 34rpx; color: #5B6EF5; background: #fff; font-size: 24rpx; text-align: center; }
 .finish-button.is-disabled { color: #bbb; border-color: #eee; }

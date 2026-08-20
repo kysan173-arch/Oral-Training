@@ -1,25 +1,34 @@
 <view class="page-shell result-page" wx:if="{{!loading}}">
   <view class="result-hero">
+    <view class="hero-deco hero-deco-1"></view>
+    <view class="hero-deco hero-deco-2"></view>
     <text class="result-kicker">训练完成 · {{scenario.name}}</text>
-    <view class="score-circle"><text class="score-value">{{evaluation.totalScore}}</text><text class="score-unit">/ 100</text></view>
-    <view class="level-badge" wx:if="{{levelInfo}}" style="background: {{levelInfo.bg}}; color: {{levelInfo.color}}; border-color: {{levelInfo.color}};">
-      <text class="level-text">{{levelInfo.level}}</text>
-      <text class="pass-text">{{levelInfo.passed ? '✓ 通过' : '✗ 未通过'}}</text>
+    <view class="score-ring">
+      <view class="score-ring-fill" style="background: conic-gradient({{level.scoreColor}} {{scorePercent}}%, rgba(255,255,255,.14) 0);">
+        <view class="score-ring-hole">
+          <text class="score-value" style="color: {{level.scoreColor}}">{{evaluation.totalScore}}</text>
+          <text class="score-unit">/ 100</text>
+        </view>
+      </view>
     </view>
     <text class="score-caption">本次训练总分</text>
+    <view class="level-badge {{level.key}}"><text>{{level.name}}</text><text class="level-note">{{level.note}}</text></view>
     <text class="result-time">{{session.startedAt}} — {{session.finishedAt}}</text>
   </view>
 
   <view class="notice-box"><text class="notice-icon">!</text><text>自动评分基于固定 MVP 评分量表，仅用于演示和辅助反馈，不替代专家审核或正式考核。</text></view>
 
-  <view class="section-title-row"><text class="section-title">五维得分</text><text class="section-caption">按完整对话综合评价</text></view>
-  <view class="radar-container card">
-    <radar-chart dimensions="{{dimensions}}" canvasWidth="{{300}}" canvasHeight="{{260}}" />
-  </view>
+  <view class="section-title-row"><text class="section-title">五维能力</text><text class="section-caption">按完整对话综合评价</text></view>
   <view class="dimensions-card card">
-    <view class="dimension-item" wx:for="{{dimensions}}" wx:key="key">
-      <view class="dimension-header"><text>{{item.name}}</text><text class="dimension-score">{{item.score || 0}}</text></view>
-      <view class="score-bar"><view class="score-fill" style="width: {{item.score || 0}}%; background: {{item.color}};"></view></view>
+    <view class="dimension-rings">
+      <view class="dimension-ring-item" wx:for="{{dimensions}}" wx:key="key">
+        <view class="dimension-ring-box">
+          <view class="dimension-ring-fill" style="background: conic-gradient({{item.color}} {{item.score}}%, #eef0f6 0);">
+            <view class="dimension-ring-hole"><text class="dimension-ring-score">{{item.score}}</text></view>
+          </view>
+        </view>
+        <text class="dimension-ring-name">{{item.name}}</text>
+      </view>
     </view>
   </view>
 
@@ -27,46 +36,57 @@
   <view class="evaluation-card card"><text class="evaluation-text">{{evaluation.summary}}</text></view>
 
   <view class="feedback-grid">
-    <view class="feedback-card card"><text class="feedback-title positive">做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view>
-    <view class="feedback-card card"><text class="feedback-title improve">下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view>
-  </view>
-
-  <view class="section-title-row"><text class="section-title">最佳话术推荐</text><text class="section-caption">本场景的高质量话术</text></view>
-  <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>暂无推荐话术。</text></view>
-  <view class="phrases-card card" wx:else>
-    <view class="phrase-item" wx:for="{{evaluation.recommendedPhrases}}" wx:key="csReplies" wx:for-item="p">
-      <view class="phrase-dialogue-mini" wx:if="{{p.patientSays}}">
-        <text class="phrase-patient-says">患者：{{p.patientSays}}</text>
-      </view>
-      <text class="phrase-text">"{{p.csReplies || p.phrase}}"</text>
-    </view>
+    <view class="feedback-card feedback-good"><text class="feedback-title positive">👍 做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view>
+    <view class="feedback-card feedback-improve"><text class="feedback-title improve">📈 下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view>
   </view>
 
   <view class="section-title-row"><text class="section-title">严重违规</text><text class="section-caption">{{evaluation.violations.length}} 项</text></view>
   <view class="empty-card card" wx:if="{{evaluation.violations.length === 0}}"><text>本次没有识别到严重违规，继续保持医疗合规边界。</text></view>
   <view class="violation-card card" wx:for="{{evaluation.violations}}" wx:key="id">
     <view class="violation-top"><text class="violation-type">{{item.type}}</text><text class="deduction">-{{item.deduction}}分</text></view>
-    <text class="quote">"{{item.quote}}"</text>
+    <text class="quote">“{{item.quote}}”</text>
     <text class="violation-reason">{{item.reason}}</text>
     <view class="rewrite-box"><text class="rewrite-label">建议改写</text><text>{{item.rewrite}}</text></view>
   </view>
 
   <view class="section-title-row"><text class="section-title">关键轮次点评</text><text class="section-caption">{{evaluation.roundComments.length}} 个回合</text></view>
   <view class="round-card card" wx:for="{{evaluation.roundComments}}" wx:key="round">
-    <view class="round-label">第 {{item.round}} 轮</view>
-    <text class="round-quote">"{{item.userQuote}}"</text>
+    <view class="round-badge"><text class="round-label">第 {{item.round}} 轮</text></view>
+    <text class="round-quote">“{{item.userQuote}}”</text>
     <text class="round-comment">{{item.comment}}</text>
     <view class="round-rewrite"><text class="rewrite-label">更优表达</text><text>{{item.rewrite}}</text></view>
   </view>
 
-  <view class="result-actions"><button class="primary-button" bindtap="restartTraining">重新训练</button><button wx:if="{{nextScenario}}" class="next-button" bindtap="goNextScenario">下一关：{{nextScenario.name}} ›</button><button class="secondary-button" bindtap="viewScenes">返回场景列表</button><button class="text-button" bindtap="viewHistory">查看历史记录</button></view>
+  <view class="section-title-row"><text class="section-title">本次可收录话术</text><text class="section-caption">来自已点评轮次</text></view>
+  <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>本次暂无可收录的话术，完成更多训练后可在话术锦囊中回顾。</text></view>
+  <view class="phrase-card card" wx:for="{{evaluation.recommendedPhrases}}" wx:key="phraseKey">
+    <text class="phrase-patient" wx:if="{{item.patientSays}}">患者：{{item.patientSays}}</text>
+    <text class="phrase-copy">{{item.csReply}}</text>
+    <text class="phrase-reason">{{item.reason}}</text>
+  </view>
+
+  <view class="result-actions">
+    <button wx:if="{{nextScenario}}" class="primary-button result-btn-main" bindtap="startNextScenario">下一场：{{nextScenario.name}}</button>
+    <button wx:else class="primary-button result-btn-main" bindtap="restartTraining">重新训练</button>
+    <view class="result-btn-row">
+      <button class="secondary-button result-btn-sub" bindtap="viewPhrases">话术锦囊</button>
+      <button class="secondary-button result-btn-sub" bindtap="viewMistakes">错题复练</button>
+    </view>
+    <view class="result-link-row">
+      <text class="text-button" bindtap="viewProfile">查看个人成长</text>
+      <text class="link-divider">|</text>
+      <text class="text-button" bindtap="viewHistory">查看历史记录</text>
+    </view>
+  </view>
   <text class="disclaimer">AI模拟训练，不构成医疗建议。</text>
 </view>
 
 <view class="page-shell result-page loading-result" wx:if="{{loading}}">
   <view class="loading-card card">
     <text class="loading-title">{{loadingText}}</text>
-    <text class="loading-text">评分将读取完整对话并生成五维反馈，请勿关闭页面。</text>
+    <text class="loading-text">{{timedOut ? '任务仍在后台可靠执行，离开页面后可从历史记录继续查看。' : '评分将读取完整对话并生成五维反馈，请稍候。'}}</text>
     <button wx:if="{{retryable}}" class="primary-button retry-button" bindtap="retryEvaluation">重新评分</button>
+    <button wx:if="{{timedOut}}" class="primary-button retry-button" bindtap="continueWaiting">继续等待</button>
+    <button wx:if="{{timedOut}}" class="secondary-button retry-button" bindtap="viewHistory">返回历史</button>
   </view>
 </view>

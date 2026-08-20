@@ -1,5 +1,6 @@
 param(
   [string]$BaseUrl = 'http://127.0.0.1:8080/api',
+  [string]$WechatCode = 'controlled-smoke-code',
   [switch]$WithModel
 )
 
@@ -13,6 +14,7 @@ function Invoke-Api {
   )
 
   $args = @{ Method = $Method; Uri = "$BaseUrl$Path"; TimeoutSec = 45 }
+  if ($script:AccessToken) { $args.Headers = @{ Authorization = "Bearer $script:AccessToken" } }
   if ($null -ne $Body) {
     $args.ContentType = 'application/json'
     $args.Body = $Body | ConvertTo-Json -Compress -Depth 8
@@ -24,6 +26,12 @@ function Invoke-Api {
 
 $health = Invoke-Api GET '/health' $null
 if (-not $health.database) { throw 'Database health check failed.' }
+if (-not $health.workerRunning) { throw 'AI worker is not running.' }
+if ($null -eq $health.pendingJobs -or $null -eq $health.deadJobs) { throw 'Worker health counters are missing.' }
+
+$login = Invoke-Api POST '/auth/wechat' @{ code = $WechatCode }
+if ([string]::IsNullOrWhiteSpace($login.accessToken)) { throw 'Login did not return an access token.' }
+$script:AccessToken = $login.accessToken
 
 $scenarioData = Invoke-Api GET '/scenarios' $null
 if ($scenarioData.items.Count -ne 4) { throw "Expected 4 scenarios, got $($scenarioData.items.Count)." }

@@ -1,67 +1,40 @@
 <view class="page-shell phrases-page">
-  <!-- 搜索框 -->
-  <view class="phrases-search-section">
-    <view class="phrases-search-box">
-      <text class="search-icon">🔍</text>
-      <input class="search-input"
-             placeholder="搜索话术（如「种植牙」「价格」）"
-             value="{{searchKeyword}}"
-             bindinput="onSearchInput"
-             bindconfirm="onSearchConfirm"
-             confirm-type="search" />
-      <text class="search-clear" wx:if="{{searchKeyword}}" bindtap="onClearSearch">✕</text>
+  <view class="page-header">
+    <text class="eyebrow">LEARNING LIBRARY</text>
+    <text class="page-title">{{favoritesOnly ? '我的话术收藏' : '话术锦囊'}}</text>
+    <text class="page-intro">从你已完成的训练报告中提炼的合规表达，可复制后结合实际情境调整使用。</text>
+  </view>
+
+  <view class="phrase-view-switch"><text class="phrase-view {{!favoritesOnly ? 'selected' : ''}}" bindtap="selectPhraseView" data-favorites="false">全部话术</text><text class="phrase-view {{favoritesOnly ? 'selected' : ''}}" bindtap="selectPhraseView" data-favorites="true">我的收藏</text></view>
+
+  <view class="search-card card">
+    <input class="search-input" placeholder="搜索场景、患者关切或话术" value="{{keyword}}" bindinput="onSearchInput" bindconfirm="onSearchConfirm" confirm-type="search" />
+    <text class="search-action" bindtap="onSearchConfirm">搜索</text>
+    <text class="clear-action" wx:if="{{keyword}}" bindtap="clearSearch">清除</text>
+  </view>
+
+  <scroll-view class="filter-scroll" scroll-x="true" enable-flex="true">
+    <view class="filter-row">
+      <text wx:for="{{scenarioFilters}}" wx:key="id" class="filter-chip {{selectedScenarioId === item.id ? 'selected' : ''}}" bindtap="selectScenario" data-id="{{item.id}}">{{item.name}}</text>
+    </view>
+  </scroll-view>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在整理训练话术…</text></view>
+  <view class="empty-card card" wx:elif="{{phrases.length === 0}}">
+    <text class="empty-title">{{favoritesOnly ? '还没有收藏话术' : '还没有可收录的话术'}}</text>
+    <text class="empty-text">{{favoritesOnly ? '在话术锦囊中点击收藏后，可在这里集中回顾。' : '完成客服训练并生成报告后，关键轮次的优化表达会自动出现在这里。'}}</text>
+    <button class="primary-button" bindtap="goProfile">查看成长记录</button>
+  </view>
+
+  <view class="phrase-list" wx:else>
+    <view class="phrase-card card" wx:for="{{phrases}}" wx:key="id">
+      <view class="phrase-head"><text class="scene-tag">{{item.scenarioName}}</text><text class="round-tag">第 {{item.round}} 轮</text></view>
+      <view class="patient-box" wx:if="{{item.patientSays}}"><text class="patient-label">患者关切</text><text>{{item.patientSays}}</text></view>
+      <view class="phrase-box"><text class="phrase-label">推荐表达</text><text class="phrase-text">{{item.csReply}}</text></view>
+      <text class="reason-text">{{item.reason}}</text>
+      <view class="phrase-actions"><text class="copy-action" bindtap="copyPhrase" data-phrase="{{item.csReply}}">复制话术</text><text class="favorite-action {{item.favorited ? 'active' : ''}}" bindtap="toggleFavorite" data-session-id="{{item.sessionId}}" data-phrase-key="{{item.phraseKey}}">{{favoriteBusyId === item.id ? '处理中…' : item.favorited ? '★ 已收藏' : '☆ 收藏'}}</text><text class="train-action" bindtap="startScenario" data-id="{{item.scenarioId}}">用此场景复练 ›</text></view>
     </view>
   </view>
 
-  <view class="phrases-hero">
-    <text class="phrases-title">话术锦囊</text>
-    <text class="phrases-desc">完成训练后，AI 推荐的高质量话术自动收录于此，成为你的随身话术库。</text>
-    <view class="phrases-stat" wx:if="{{totalPhrases > 0}}">
-      <text class="stat-big">{{totalPhrases}}</text>
-      <text>条话术 · 覆盖 {{groups.length}} 个场景</text>
-      <text wx:if="{{isSearching}}">（搜索结果）</text>
-    </view>
-  </view>
-
-  <view class="empty-state card" wx:if="{{!loading && groups.length === 0}}">
-    <text class="empty-icon">{{isSearching ? '🔍' : '📭'}}</text>
-    <text class="empty-title">{{isSearching ? '未找到匹配话术' : '暂无话术'}}</text>
-    <text class="empty-desc">{{isSearching ? '试试其他关键词，如「种植牙」「价格」「术后」。' : '完成至少一次客服训练，AI 评估后会推荐高质量话术，自动收录到这里。'}}</text>
-    <text class="empty-reset" wx:if="{{isSearching}}" bindtap="onClearSearch">清除搜索</text>
-  </view>
-
-  <view class="loading-state" wx:if="{{loading}}">
-    <text class="loading-text">加载中…</text>
-  </view>
-
-  <view class="phrase-groups" wx:if="{{!loading && groups.length > 0}}">
-    <view class="group-block" wx:for="{{groups}}" wx:key="scenarioId">
-      <view class="group-header">
-        <view class="group-name-row">
-          <text class="group-name">{{item.scenarioName}}</text>
-          <text class="group-count {{item.difficulty === 'advanced' ? 'tag-adv' : 'tag-basic'}}">{{item.phrases.length}} 条</text>
-        </view>
-        <text class="group-train-link" bindtap="goTraining" data-id="{{item.scenarioId}}">去训练 ›</text>
-      </view>
-      <view class="group-phrases">
-        <view class="phrase-full-card" wx:for="{{item.phrases}}" wx:key="csReplies" bindtap="copyPhrase" data-phrase="{{item.csReplies}}">
-          <!-- 对话式展示 -->
-          <view class="phrase-dialogue-mini" wx:if="{{item.patientSays}}">
-            <view class="pdm-row pdm-patient">
-              <text class="pdm-role">患者</text>
-              <text class="pdm-text">{{item.patientSays}}</text>
-            </view>
-            <text class="pdm-arrow">↓</text>
-          </view>
-          <view class="pdm-row pdm-cs">
-            <text class="pdm-role">客服</text>
-            <text class="pdm-text">"{{item.csReplies}}"</text>
-          </view>
-          <text class="phrase-copy-hint">点击复制话术</text>
-        </view>
-      </view>
-    </view>
-  </view>
-
-  <text class="disclaimer">AI生成话术仅供参考，实际沟通请结合具体场景灵活运用。</text>
+  <view class="bottom-links"><text bindtap="goMistakes">去错题复练</text><text bindtap="goProfile">查看个人成长</text></view>
 </view>

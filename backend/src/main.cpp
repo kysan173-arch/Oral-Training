@@ -3,16 +3,25 @@
 #include <pqxx/pqxx>
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <winhttp.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
+#include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <regex>
 #include <set>
@@ -20,6 +29,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -28,6 +38,8 @@ using json = nlohmann::json;
 namespace {
 
 constexpr char kDemoUserId[] = "demo-user-001";
+constexpr int kReplyLeaseSeconds = 180;
+constexpr int kJobLeaseSeconds = 180;
 constexpr char kSessionTimes[] = R"(
   to_char(started_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS started_at,
   to_char(updated_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS updated_at,
@@ -78,6 +90,8 @@ int getEnvInt(const char* name, int fallback) {
   }
 }
 
+int clampInt(int value, int low, int high);
+
 struct Config {
   std::string database_url;
   std::string deepseek_key;
@@ -85,16 +99,50 @@ struct Config {
   bool allow_runtime_api_key;
   std::string bind_address;
   int port;
+  bool production;
+  std::string auth_mode;
+  std::string wechat_app_id;
+  std::string wechat_app_secret;
+  int auth_token_ttl_seconds;
+  std::string allowed_origin;
+  bool require_https;
+  int worker_concurrency;
+  int rate_limit_per_minute;
 
   static Config fromEnvironment() {
-    return {
-        getEnv("DATABASE_URL", "postgresql://oral_training_app@127.0.0.1:5432/oral_training"),
-        trim(getEnv("DEEPSEEK_API_KEY")),
-        trim(getEnv("DEEPSEEK_MODEL", "deepseek-v4-flash")),
-        getEnvBool("ALLOW_RUNTIME_API_KEY", false),
-        trim(getEnv("BIND_ADDRESS", "127.0.0.1")),
-        getEnvInt("PORT", 8080),
-    };
+    Config config;
+    config.database_url = getEnv(
+        "DATABASE_URL", "postgresql://oral_training_app@127.0.0.1:5432/oral_training");
+    config.deepseek_key = trim(getEnv("DEEPSEEK_API_KEY"));
+    config.deepseek_model = trim(getEnv("DEEPSEEK_MODEL", "deepseek-v4-flash"));
+    config.bind_address = trim(getEnv("BIND_ADDRESS", "127.0.0.1"));
+    config.port = getEnvInt("PORT", 8080);
+    config.production = getEnvBool("PRODUCTION", false);
+    config.auth_mode = trim(getEnv("AUTH_MODE", config.production ? "wechat" : "demo"));
+    config.wechat_app_id = trim(getEnv("WECHAT_APP_ID"));
+    config.wechat_app_secret = trim(getEnv("WECHAT_APP_SECRET"));
+    config.auth_token_ttl_seconds = clampInt(getEnvInt("AUTH_TOKEN_TTL_SECONDS", 604800), 300, 2592000);
+    config.allowed_origin = trim(getEnv("ALLOWED_ORIGIN", config.production ? "" : "*"));
+    config.require_https = getEnvBool("REQUIRE_HTTPS", config.production);
+    config.worker_concurrency = clampInt(getEnvInt("AI_WORKER_CONCURRENCY", 1), 1, 4);
+    config.rate_limit_per_minute = clampInt(getEnvInt("RATE_LIMIT_PER_MINUTE", 120), 10, 5000);
+    const bool loopback = config.bind_address == "127.0.0.1" || config.bind_address == "::1" ||
+                          config.bind_address == "localhost";
+    config.allow_runtime_api_key = getEnvBool("ALLOW_RUNTIME_API_KEY", false) && !config.production && loopback;
+    if (config.auth_mode != "demo" && config.auth_mode != "wechat") {
+      throw std::runtime_error("AUTH_MODE must be demo or wechat");
+    }
+    if (config.production && config.allowed_origin.empty()) {
+      throw std::runtime_error("ALLOWED_ORIGIN is required in production");
+    }
+    if (config.production && config.allowed_origin == "*") {
+      throw std::runtime_error("ALLOWED_ORIGIN cannot be wildcard in production");
+    }
+    if (config.auth_mode == "wechat" &&
+        (config.wechat_app_id.empty() || config.wechat_app_secret.empty())) {
+      throw std::runtime_error("WECHAT_APP_ID and WECHAT_APP_SECRET are required for wechat auth");
+    }
+    return config;
   }
 };
 
@@ -111,6 +159,103 @@ std::string makeId(const std::string& prefix) {
 
 int clampInt(int value, int low, int high) {
   return std::max(low, std::min(high, value));
+}
+
+size_t utf8Length(const std::string& value) {
+  size_t count = 0;
+  for (size_t i = 0; i < value.size();) {
+    const auto lead = static_cast<unsigned char>(value[i]);
+    size_t width = 0;
+    uint32_t codepoint = 0;
+    if (lead <= 0x7f) {
+      width = 1;
+      codepoint = lead;
+    } else if ((lead & 0xe0) == 0xc0) {
+      width = 2;
+      codepoint = lead & 0x1f;
+    } else if ((lead & 0xf0) == 0xe0) {
+      width = 3;
+      codepoint = lead & 0x0f;
+    } else if ((lead & 0xf8) == 0xf0) {
+      width = 4;
+      codepoint = lead & 0x07;
+    } else {
+      throw ApiError(400, "INVALID_ARGUMENT", "文本不是有效的 UTF-8");
+    }
+    if (i + width > value.size()) throw ApiError(400, "INVALID_ARGUMENT", "文本不是有效的 UTF-8");
+    for (size_t offset = 1; offset < width; ++offset) {
+      const auto next = static_cast<unsigned char>(value[i + offset]);
+      if ((next & 0xc0) != 0x80) throw ApiError(400, "INVALID_ARGUMENT", "文本不是有效的 UTF-8");
+      codepoint = (codepoint << 6) | (next & 0x3f);
+    }
+    const bool overlong = (width == 2 && codepoint < 0x80) || (width == 3 && codepoint < 0x800) ||
+                          (width == 4 && codepoint < 0x10000);
+    if (overlong || codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff)) {
+      throw ApiError(400, "INVALID_ARGUMENT", "文本不是有效的 UTF-8");
+    }
+    i += width;
+    ++count;
+  }
+  return count;
+}
+
+std::string utf8Truncate(const std::string& value, size_t max_characters) {
+  if (max_characters == 0) return "";
+  size_t characters = 0;
+  size_t index = 0;
+  while (index < value.size() && characters < max_characters) {
+    const auto lead = static_cast<unsigned char>(value[index]);
+    const size_t width = lead <= 0x7f ? 1 : ((lead & 0xe0) == 0xc0 ? 2 : ((lead & 0xf0) == 0xe0 ? 3 : 4));
+    if (index + width > value.size()) break;
+    index += width;
+    ++characters;
+  }
+  return value.substr(0, index);
+}
+
+std::string randomToken(size_t byte_count = 32) {
+  std::vector<unsigned char> bytes(byte_count);
+  if (BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()),
+                      BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+    throw std::runtime_error("secure random generation failed");
+  }
+  std::ostringstream output;
+  output << std::hex << std::setfill('0');
+  for (const auto byte : bytes) output << std::setw(2) << static_cast<int>(byte);
+  return output.str();
+}
+
+std::string sha256Hex(const std::string& value) {
+  BCRYPT_ALG_HANDLE algorithm = nullptr;
+  BCRYPT_HASH_HANDLE hash = nullptr;
+  DWORD object_size = 0;
+  DWORD hash_size = 0;
+  DWORD result_size = 0;
+  if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0 ||
+      BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size),
+                        sizeof(object_size), &result_size, 0) != 0 ||
+      BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&hash_size),
+                        sizeof(hash_size), &result_size, 0) != 0) {
+    if (algorithm != nullptr) BCryptCloseAlgorithmProvider(algorithm, 0);
+    throw std::runtime_error("SHA-256 initialization failed");
+  }
+  std::vector<unsigned char> object(object_size);
+  std::vector<unsigned char> digest(hash_size);
+  const auto create_status = BCryptCreateHash(algorithm, &hash, object.data(), object_size, nullptr, 0, 0);
+  const auto update_status = create_status == 0
+      ? BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<char*>(value.data())),
+                       static_cast<ULONG>(value.size()), 0)
+      : create_status;
+  const auto finish_status = update_status == 0
+      ? BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0)
+      : update_status;
+  if (hash != nullptr) BCryptDestroyHash(hash);
+  BCryptCloseAlgorithmProvider(algorithm, 0);
+  if (finish_status != 0) throw std::runtime_error("SHA-256 failed");
+  std::ostringstream output;
+  output << std::hex << std::setfill('0');
+  for (const auto byte : digest) output << std::setw(2) << static_cast<int>(byte);
+  return output.str();
 }
 
 int jsonInt(const json& object, const char* key, int fallback) {
@@ -136,10 +281,15 @@ json parseRequest(const crow::request& request) {
   return parseJson(request.body);
 }
 
+std::string g_allowed_origin = "*";
+thread_local std::string g_request_id;
+
 crow::response makeResponse(int status, const json& payload) {
   crow::response response(status, payload.dump());
   response.set_header("Content-Type", "application/json; charset=utf-8");
-  response.set_header("Access-Control-Allow-Origin", "*");
+  response.set_header("Access-Control-Allow-Origin", g_allowed_origin);
+  response.set_header("Vary", "Origin");
+  if (!g_request_id.empty()) response.set_header("X-Request-Id", g_request_id);
   return response;
 }
 
@@ -159,15 +309,39 @@ crow::response handle(Fn&& function) {
   } catch (const ApiError& error) {
     return fail(error);
   } catch (const pqxx::sql_error& error) {
-    std::cerr << "database SQL error: " << error.what() << '\n';
+    std::cerr << json({{"event", "database_sql_error"}, {"requestId", g_request_id},
+                      {"error", error.what()}}).dump() << '\n';
     return makeResponse(500, {{"code", "DATABASE_ERROR"}, {"message", "数据库操作失败"}, {"data", nullptr}});
   } catch (const pqxx::failure& error) {
-    std::cerr << "database error: " << error.what() << '\n';
+    std::cerr << json({{"event", "database_connection_error"}, {"requestId", g_request_id},
+                      {"error", error.what()}}).dump() << '\n';
     return makeResponse(500, {{"code", "DATABASE_ERROR"}, {"message", "数据库连接失败"}, {"data", nullptr}});
   } catch (const std::exception& error) {
-    std::cerr << "internal error: " << error.what() << '\n';
+    std::cerr << json({{"event", "internal_error"}, {"requestId", g_request_id},
+                      {"error", error.what()}}).dump() << '\n';
     return makeResponse(500, {{"code", "INTERNAL_ERROR"}, {"message", "服务内部错误"}, {"data", nullptr}});
   }
+}
+
+bool validRequestId(const std::string& value) {
+  if (value.empty() || value.size() > 64) return false;
+  return std::all_of(value.begin(), value.end(), [](unsigned char character) {
+    return std::isalnum(character) || character == '-' || character == '_' || character == '.';
+  });
+}
+
+template <typename Fn>
+crow::response handle(const crow::request& request, Fn&& function) {
+  const auto supplied_id = request.get_header_value("X-Request-Id");
+  g_request_id = validRequestId(supplied_id) ? supplied_id : makeId("req");
+  const auto started = std::chrono::steady_clock::now();
+  auto response = handle(std::forward<Fn>(function));
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - started).count();
+  std::cerr << json({{"event", "http_request"}, {"requestId", g_request_id},
+                    {"method", crow::method_name(request.method)}, {"path", request.url},
+                    {"status", response.code}, {"durationMs", elapsed}}).dump() << '\n';
+  return response;
 }
 
 std::wstring toWide(const std::string& value) {
@@ -235,6 +409,52 @@ HttpResult postDeepSeek(const std::string& api_key, const std::string& body) {
     DWORD available = 0;
     if (!WinHttpQueryDataAvailable(request.get(), &available)) break;
     if (available == 0) break;
+    std::string chunk(static_cast<size_t>(available), '\0');
+    DWORD received = 0;
+    if (!WinHttpReadData(request.get(), chunk.data(), available, &received)) break;
+    response_body.append(chunk.data(), received);
+  }
+  return {static_cast<int>(status), response_body};
+}
+
+std::string urlEncode(const std::string& value) {
+  std::ostringstream output;
+  output << std::hex << std::uppercase << std::setfill('0');
+  for (const auto character : value) {
+    const auto byte = static_cast<unsigned char>(character);
+    if (std::isalnum(byte) || byte == '-' || byte == '_' || byte == '.' || byte == '~') {
+      output << static_cast<char>(byte);
+    } else {
+      output << '%' << std::setw(2) << static_cast<int>(byte);
+    }
+  }
+  return output.str();
+}
+
+HttpResult getHttps(const std::wstring& host, const std::wstring& path) {
+  InternetHandle session(WinHttpOpen(L"oral-training-auth/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+  if (!session.get()) throw ApiError(503, "AUTH_UPSTREAM_ERROR", "无法连接微信登录服务");
+  WinHttpSetTimeouts(session.get(), 5000, 5000, 5000, 10000);
+  InternetHandle connection(WinHttpConnect(session.get(), host.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0));
+  if (!connection.get()) throw ApiError(503, "AUTH_UPSTREAM_ERROR", "无法连接微信登录服务");
+  InternetHandle request(WinHttpOpenRequest(connection.get(), L"GET", path.c_str(), nullptr,
+                                             WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                             WINHTTP_FLAG_SECURE));
+  if (!request.get() ||
+      !WinHttpSendRequest(request.get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                          WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+      !WinHttpReceiveResponse(request.get(), nullptr)) {
+    throw ApiError(503, "AUTH_UPSTREAM_ERROR", "微信登录服务响应超时");
+  }
+  DWORD status = 0;
+  DWORD status_size = sizeof(status);
+  WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                      WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size, WINHTTP_NO_HEADER_INDEX);
+  std::string response_body;
+  while (true) {
+    DWORD available = 0;
+    if (!WinHttpQueryDataAvailable(request.get(), &available) || available == 0) break;
     std::string chunk(static_cast<size_t>(available), '\0');
     DWORD received = 0;
     if (!WinHttpReadData(request.get(), chunk.data(), available, &received)) break;
@@ -540,7 +760,7 @@ summary 控制在 80—260 个中文字符；coveredTopics 1—6 条；keyPrinci
 };
 
 json sessionJson(const pqxx::row& row) {
-  return {
+  json result = {
       {"id", row["id"].c_str()},
       {"scenarioId", row["scenario_id"].c_str()},
       {"scenarioName", row["scenario_name"].c_str()},
@@ -553,6 +773,10 @@ json sessionJson(const pqxx::row& row) {
       {"totalScore", row["total_score"].is_null() ? json(nullptr) : json(row["total_score"].as<int>())},
       {"evaluationStatus", row["evaluation_status"].c_str()},
   };
+  if (!row["custom_patient_profile"].is_null()) {
+    result["customPatientProfile"] = json::parse(row["custom_patient_profile"].c_str());
+  }
+  return result;
 }
 
 json roleplaySessionJson(const pqxx::row& row) {
@@ -577,854 +801,8 @@ void accumulateDimensionScores(json& totals, const json& report, const std::vect
   }
 }
 
-class Database {
- public:
-  explicit Database(std::string database_url) : database_url_(std::move(database_url)) {}
-
-  bool healthy() const {
-    try {
-      pqxx::connection connection(database_url_);
-      pqxx::read_transaction tx(connection);
-      tx.exec("SELECT 1");
-      return true;
-    } catch (...) {
-      return false;
-    }
-  }
-
-  json listScenarios() const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto rows = tx.exec(R"(
-      SELECT s.id, s.name, s.summary, s.difficulty, s.focus, s.patient_profile, s.max_rounds,
-        COALESCE(best.best_score, 0) AS best_score,
-        active.id AS active_id, active.current_round AS active_current_round,
-        active.max_rounds AS active_max_rounds, active.updated_at AS active_updated_at
-      FROM scenarios s
-      LEFT JOIN LATERAL (
-        SELECT MAX(total_score) AS best_score FROM sessions
-        WHERE user_id = 'demo-user-001' AND scenario_id = s.id AND evaluation_status = 'ready'
-      ) best ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT id, current_round, max_rounds, updated_at FROM sessions
-        WHERE user_id = 'demo-user-001' AND scenario_id = s.id AND status = 'in_progress'
-        ORDER BY updated_at DESC LIMIT 1
-      ) active ON TRUE
-      ORDER BY s.sort_order
-    )");
-    json items = json::array();
-    for (const auto& row : rows) {
-      json item = {
-          {"id", row["id"].c_str()}, {"name", row["name"].c_str()}, {"summary", row["summary"].c_str()},
-          {"difficulty", row["difficulty"].c_str()}, {"focus", json::parse(row["focus"].c_str())},
-          {"patientProfile", json::parse(row["patient_profile"].c_str())}, {"maxRounds", row["max_rounds"].as<int>()},
-          {"bestScore", row["best_score"].as<int>()}, {"activeSession", nullptr},
-      };
-      if (!row["active_id"].is_null()) {
-        item["activeSession"] = {{"id", row["active_id"].c_str()},
-                                 {"currentRound", row["active_current_round"].as<int>()},
-                                 {"maxRounds", row["active_max_rounds"].as<int>()},
-                                 {"updatedAt", row["active_updated_at"].c_str()}};
-      }
-      items.push_back(item);
-    }
-    return {{"items", items}};
-  }
-
-  json createSession(const std::string& scenario_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto scenario = tx.exec_params("SELECT * FROM scenarios WHERE id = $1", scenario_id);
-    if (scenario.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
-    const auto active = tx.exec_params(
-        "SELECT id FROM sessions WHERE user_id = $1 AND scenario_id = $2 AND status = 'in_progress'", kDemoUserId, scenario_id);
-    if (!active.empty()) throw ApiError(409, "SESSION_IN_PROGRESS", "该场景已有进行中的训练");
-
-    const auto& row = scenario[0];
-    const auto hidden = json::parse(row["hidden_config"].c_str());
-    const json state = {
-        {"emotion", hidden["initialState"].value("emotion", "平静")},
-        {"emotionLevel", hidden["initialState"].value("emotionLevel", 0)},
-        {"trustLevel", hidden["initialState"].value("trustLevel", 50)},
-        {"revealedInformation", json::array()},
-        {"riskTriggered", false},
-    };
-    const auto session_id = makeId("sess");
-    const auto opening_id = makeId("msg");
-    tx.exec_params(R"(
-      INSERT INTO sessions (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, patient_state)
-      VALUES ($1, $2, $3, $4, 'in_progress', 0, $5, $6::jsonb)
-    )", session_id, kDemoUserId, scenario_id, row["name"].c_str(), row["max_rounds"].as<int>(), json(state).dump());
-    tx.exec_params("INSERT INTO messages (id, session_id, role, content, round) VALUES ($1, $2, 'patient', $3, 0)",
-                   opening_id, session_id, hidden["opening"].get<std::string>());
-    const auto saved = getSessionRow(tx, session_id);
-    tx.commit();
-    return {{"session", saved}, {"messages", json::array({messageJson(opening_id, "patient", hidden["opening"].get<std::string>(), 0)})}};
-  }
-
-  json restartSession(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto previous = tx.exec_params("SELECT scenario_id, status FROM sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (previous.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    if (std::string(previous[0]["status"].c_str()) != "in_progress") {
-      throw ApiError(409, "SESSION_NOT_RESTARTABLE", "只有进行中的训练可以重新开始");
-    }
-    const auto scenario_id = std::string(previous[0]["scenario_id"].c_str());
-    tx.exec_params("UPDATE sessions SET status = 'abandoned', updated_at = NOW() WHERE id = $1", session_id);
-    const auto scenario = tx.exec_params("SELECT * FROM scenarios WHERE id = $1", scenario_id)[0];
-    const auto hidden = json::parse(scenario["hidden_config"].c_str());
-    const json state = {
-        {"emotion", hidden["initialState"].value("emotion", "平静")},
-        {"emotionLevel", hidden["initialState"].value("emotionLevel", 0)},
-        {"trustLevel", hidden["initialState"].value("trustLevel", 50)},
-        {"revealedInformation", json::array()}, {"riskTriggered", false},
-    };
-    const auto new_id = makeId("sess");
-    const auto opening_id = makeId("msg");
-    tx.exec_params(R"(
-      INSERT INTO sessions (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, patient_state)
-      VALUES ($1, $2, $3, $4, 'in_progress', 0, $5, $6::jsonb)
-    )", new_id, kDemoUserId, scenario_id, scenario["name"].c_str(), scenario["max_rounds"].as<int>(), state.dump());
-    tx.exec_params("INSERT INTO messages (id, session_id, role, content, round) VALUES ($1, $2, 'patient', $3, 0)",
-                   opening_id, new_id, hidden["opening"].get<std::string>());
-    const auto saved = getSessionRow(tx, new_id);
-    tx.commit();
-    return {{"session", saved}, {"messages", json::array({messageJson(opening_id, "patient", hidden["opening"].get<std::string>(), 0)})}};
-  }
-
-  json getSession(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto session = getSessionRow(tx, session_id);
-    const auto rows = tx.exec_params(R"(
-      SELECT id, role, content, round,
-        to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS created_at
-      FROM messages WHERE session_id = $1 ORDER BY round, created_at
-    )", session_id);
-    json messages = json::array();
-    for (const auto& row : rows) messages.push_back(messageJson(row));
-    const auto pending_rows = tx.exec_params(R"(
-      SELECT u.client_message_id, u.content, u.round
-      FROM messages u
-      WHERE u.session_id = $1 AND u.role = 'user' AND u.client_message_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM messages p
-          WHERE p.session_id = u.session_id AND p.role = 'patient' AND p.round = u.round
-        )
-      ORDER BY u.created_at DESC LIMIT 1
-    )", session_id);
-    json pending_message = nullptr;
-    if (!pending_rows.empty()) {
-      pending_message = {
-          {"clientMessageId", pending_rows[0]["client_message_id"].c_str()},
-          {"content", pending_rows[0]["content"].c_str()},
-          {"round", pending_rows[0]["round"].as<int>()},
-      };
-    }
-    return {{"session", session}, {"messages", messages}, {"pendingMessage", pending_message}};
-  }
-
-  json listSessions(const std::string& status, const std::string& scenario_id, int limit) const {
-    const std::vector<std::string> allowed = {"all", "in_progress", "completed", "abandoned"};
-    if (std::find(allowed.begin(), allowed.end(), status) == allowed.end()) {
-      throw ApiError(400, "INVALID_ARGUMENT", "status 参数无效");
-    }
-    limit = clampInt(limit, 1, 50);
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    std::string query = "SELECT id, scenario_id, scenario_name, status, current_round, max_rounds, " + std::string(kSessionTimes) +
-        ", total_score, evaluation_status FROM sessions WHERE user_id = " + tx.quote(kDemoUserId);
-    if (status != "all") query += " AND status = " + tx.quote(status);
-    if (!scenario_id.empty()) query += " AND scenario_id = " + tx.quote(scenario_id);
-    query += " ORDER BY updated_at DESC LIMIT " + std::to_string(limit);
-    const auto rows = tx.exec(query);
-    json items = json::array();
-    for (const auto& row : rows) items.push_back(sessionJson(row));
-    return {{"items", items}, {"total", static_cast<int>(items.size())}};
-  }
-
-  json getScenarioInternal(const std::string& scenario_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    return getScenarioInternal(tx, scenario_id);
-  }
-
-  json getHistory(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto rows = tx.exec_params("SELECT role, content, round FROM messages WHERE session_id = $1 ORDER BY round, created_at", session_id);
-    json messages = json::array();
-    for (const auto& row : rows) messages.push_back({{"role", row["role"].c_str()}, {"content", row["content"].c_str()}, {"round", row["round"].as<int>()}});
-    return messages;
-  }
-
-  json getPatientState(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto rows = tx.exec_params("SELECT patient_state FROM sessions WHERE id = $1", session_id);
-    if (rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    return json::parse(rows[0]["patient_state"].c_str());
-  }
-
-  json saveUserMessageOrLoadPending(const std::string& session_id, const std::string& client_message_id,
-                                    const std::string& content) const {
-    if (client_message_id.empty() || client_message_id.size() > 100) {
-      throw ApiError(400, "INVALID_ARGUMENT", "clientMessageId 格式无效");
-    }
-    if (content.empty() || content.size() > 1000) throw ApiError(400, "INVALID_ARGUMENT", "消息长度应为 1 到 1000 个字符");
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto existing = tx.exec_params(R"(
-      SELECT u.id AS user_id, u.content AS user_content, u.round AS user_round,
-        p.id AS patient_id, p.content AS patient_content
-      FROM messages u LEFT JOIN messages p ON p.session_id = u.session_id AND p.role = 'patient' AND p.round = u.round
-      WHERE u.session_id = $1 AND u.client_message_id = $2 AND u.role = 'user'
-      ORDER BY p.created_at DESC LIMIT 1
-    )", session_id, client_message_id);
-    if (!existing.empty()) {
-      const auto& row = existing[0];
-      json result = {{"userMessage", messageJson(row["user_id"].c_str(), "user", row["user_content"].c_str(), row["user_round"].as<int>())},
-                     {"patientMessage", nullptr}, {"isComplete", !row["patient_id"].is_null()},
-                     {"round", row["user_round"].as<int>()}};
-      if (!row["patient_id"].is_null()) result["patientMessage"] = messageJson(row["patient_id"].c_str(), "patient", row["patient_content"].c_str(), row["user_round"].as<int>());
-      tx.commit();
-      return result;
-    }
-    const auto session = tx.exec_params("SELECT * FROM sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (session.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    const auto& row = session[0];
-    if (std::string(row["status"].c_str()) != "in_progress") throw ApiError(409, "SESSION_FINISHED", "训练已结束，不能继续发送消息");
-    const auto current_round = row["current_round"].as<int>();
-    const auto max_rounds = row["max_rounds"].as<int>();
-    if (current_round >= max_rounds) throw ApiError(409, "MAX_ROUNDS_REACHED", "已达到最大训练轮数");
-    const auto pending = tx.exec_params(R"(
-      SELECT id FROM messages WHERE session_id = $1 AND role = 'user' AND round = $2
-      AND NOT EXISTS (SELECT 1 FROM messages p WHERE p.session_id = $1 AND p.role = 'patient' AND p.round = $2)
-    )", session_id, current_round + 1);
-    if (!pending.empty()) throw ApiError(409, "SESSION_RESPONSE_PENDING", "上一条消息正在等待患者回复，请使用原请求重试");
-    const auto message_id = makeId("msg");
-    const auto round = current_round + 1;
-    tx.exec_params("INSERT INTO messages (id, session_id, role, content, round, client_message_id) VALUES ($1, $2, 'user', $3, $4, $5)",
-                   message_id, session_id, content, round, client_message_id);
-    tx.exec_params("UPDATE sessions SET updated_at = NOW() WHERE id = $1", session_id);
-    tx.commit();
-    return {{"userMessage", messageJson(message_id, "user", content, round)}, {"patientMessage", nullptr},
-            {"isComplete", false}, {"round", round}};
-  }
-
-  json savePatientReply(const std::string& session_id, int round, const json& model_reply) const {
-    const auto reply = jsonString(model_reply, "reply");
-    if (reply.empty() || reply.size() > 1000) throw ApiError(503, "MODEL_INVALID_RESPONSE", "模型未返回有效患者回复");
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto existing = tx.exec_params("SELECT id, content FROM messages WHERE session_id = $1 AND role = 'patient' AND round = $2", session_id, round);
-    if (!existing.empty()) {
-      const auto session = getSessionRow(tx, session_id);
-      tx.commit();
-      return {{"patientMessage", messageJson(existing[0]["id"].c_str(), "patient", existing[0]["content"].c_str(), round)},
-              {"session", session}, {"shouldFinish", session["currentRound"].get<int>() >= session["maxRounds"].get<int>()}};
-    }
-    const auto session_rows = tx.exec_params("SELECT * FROM sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (session_rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    const auto& session = session_rows[0];
-    if (std::string(session["status"].c_str()) != "in_progress") throw ApiError(409, "SESSION_FINISHED", "训练已结束");
-    json state = json::parse(session["patient_state"].c_str());
-    state["emotion"] = jsonString(model_reply, "emotion", state.value("emotion", "平静"));
-    state["emotionLevel"] = clampInt(jsonInt(model_reply, "emotionLevel", state.value("emotionLevel", 0)), -2, 2);
-    state["trustLevel"] = clampInt(jsonInt(model_reply, "trustLevel", state.value("trustLevel", 50)), 0, 100);
-    state["riskTriggered"] = model_reply.value("riskTriggered", state.value("riskTriggered", false));
-    if (!state.contains("revealedInformation") || !state["revealedInformation"].is_array()) state["revealedInformation"] = json::array();
-    if (model_reply.contains("newlyRevealedInformation") && model_reply["newlyRevealedInformation"].is_array()) {
-      for (const auto& value : model_reply["newlyRevealedInformation"]) {
-        if (value.is_string() && std::find(state["revealedInformation"].begin(), state["revealedInformation"].end(), value) == state["revealedInformation"].end()) {
-          state["revealedInformation"].push_back(value);
-        }
-      }
-    }
-    const auto message_id = makeId("msg");
-    tx.exec_params("INSERT INTO messages (id, session_id, role, content, round) VALUES ($1, $2, 'patient', $3, $4)", message_id, session_id, reply, round);
-    tx.exec_params("UPDATE sessions SET current_round = $2, patient_state = $3::jsonb, updated_at = NOW() WHERE id = $1",
-                   session_id, round, state.dump());
-    const auto saved = getSessionRow(tx, session_id);
-    tx.commit();
-    return {{"patientMessage", messageJson(message_id, "patient", reply, round)}, {"session", saved},
-            {"shouldFinish", round >= saved["maxRounds"].get<int>()}};
-  }
-
-  bool beginEvaluation(const std::string& session_id, const std::string& reason) const {
-    (void)reason;
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto rows = tx.exec_params("SELECT status, current_round, evaluation_status FROM sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    const auto& row = rows[0];
-    const auto status = std::string(row["status"].c_str());
-    if (status == "in_progress" && row["current_round"].as<int>() == 0) {
-      throw ApiError(422, "MIN_ROUNDS_NOT_REACHED", "至少完成 1 轮对话后才能评分");
-    }
-    if (status == "completed") {
-      const bool schedule = std::string(row["evaluation_status"].c_str()) == "failed";
-      tx.commit();
-      return schedule;
-    }
-    tx.exec_params(R"(
-      UPDATE sessions SET status = 'completed', finished_at = NOW(), updated_at = NOW(), evaluation_status = 'generating'
-      WHERE id = $1
-    )", session_id);
-    tx.exec_params(R"(
-      INSERT INTO evaluations (session_id, status, updated_at) VALUES ($1, 'generating', NOW())
-      ON CONFLICT (session_id) DO UPDATE SET status = 'generating', report = NULL, error_type = NULL, updated_at = NOW()
-    )", session_id);
-    tx.commit();
-    return true;
-  }
-
-  void retryEvaluation(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto rows = tx.exec_params("SELECT status, evaluation_status FROM sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    if (std::string(rows[0]["status"].c_str()) != "completed" || std::string(rows[0]["evaluation_status"].c_str()) != "failed") {
-      throw ApiError(409, "EVALUATION_NOT_RETRYABLE", "当前评分不可重试");
-    }
-    tx.exec_params("UPDATE sessions SET evaluation_status = 'generating', updated_at = NOW() WHERE id = $1", session_id);
-    tx.exec_params("UPDATE evaluations SET status = 'generating', report = NULL, error_type = NULL, updated_at = NOW() WHERE session_id = $1", session_id);
-    tx.commit();
-  }
-
-  json getEvaluation(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto session = tx.exec_params("SELECT evaluation_status FROM sessions WHERE id = $1", session_id);
-    if (session.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    const auto status = std::string(session[0]["evaluation_status"].c_str());
-    if (status != "ready") return {{"sessionId", session_id}, {"status", status}, {"retryable", status == "failed"}, {"evaluation", nullptr}};
-    const auto evaluation = tx.exec_params("SELECT report FROM evaluations WHERE session_id = $1 AND status = 'ready'", session_id);
-    if (evaluation.empty() || evaluation[0]["report"].is_null()) return {{"sessionId", session_id}, {"status", "generating"}, {"retryable", false}, {"evaluation", nullptr}};
-    return {{"sessionId", session_id}, {"status", "ready"}, {"retryable", false}, {"evaluation", json::parse(evaluation[0]["report"].c_str())}};
-  }
-
-  void saveEvaluation(const std::string& session_id, json report, const std::string& model_version) const {
-    const auto& dimensions = report["dimensionScores"];
-    const auto total = static_cast<int>(std::round(
-        dimensions["knowledgeAccuracy"].get<int>() * 0.25 + dimensions["medicalCompliance"].get<int>() * 0.25 +
-        dimensions["empathy"].get<int>() * 0.20 + dimensions["needsDiscovery"].get<int>() * 0.20 +
-        dimensions["serviceEtiquette"].get<int>() * 0.10));
-    report["totalScore"] = clampInt(total, 0, 100);
-    report["modelVersion"] = model_version;
-    report["promptVersion"] = "score-prompt-v1";
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    tx.exec_params(R"(
-      UPDATE evaluations SET status = 'ready', report = $2::jsonb, model_version = $3, prompt_version = 'score-prompt-v1',
-        generated_at = NOW(), updated_at = NOW(), error_type = NULL WHERE session_id = $1
-    )", session_id, report.dump(), report["modelVersion"].get<std::string>());
-    tx.exec_params("UPDATE sessions SET evaluation_status = 'ready', total_score = $2, updated_at = NOW() WHERE id = $1",
-                   session_id, report["totalScore"].get<int>());
-    tx.commit();
-  }
-
-  void markEvaluationFailed(const std::string& session_id, const std::string& error_type) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    tx.exec_params("UPDATE evaluations SET status = 'failed', error_type = $2, updated_at = NOW() WHERE session_id = $1", session_id, error_type);
-    tx.exec_params("UPDATE sessions SET evaluation_status = 'failed', updated_at = NOW() WHERE id = $1", session_id);
-    tx.commit();
-  }
-
-  json dashboard() const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto totals = tx.exec(R"(
-      SELECT COUNT(*) FILTER (WHERE status <> 'abandoned') AS total_sessions,
-        COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS completed_sessions,
-        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS average_score
-      FROM sessions WHERE user_id = 'demo-user-001'
-    )")[0];
-    const auto scenarios = tx.exec(R"(
-      SELECT s.id, s.name, COUNT(x.id) AS training_count FROM scenarios s
-      LEFT JOIN sessions x ON x.scenario_id = s.id AND x.user_id = 'demo-user-001' AND x.status <> 'abandoned'
-      GROUP BY s.id, s.name, s.sort_order ORDER BY s.sort_order
-    )");
-    const auto reports = tx.exec(R"(
-      SELECT e.report FROM evaluations e JOIN sessions s ON s.id = e.session_id
-      WHERE s.user_id = 'demo-user-001' AND s.status = 'completed' AND e.status = 'ready'
-    )");
-    const std::vector<std::string> keys = {"knowledgeAccuracy", "medicalCompliance", "empathy", "needsDiscovery", "serviceEtiquette"};
-    json dimensions = json::object();
-    for (const auto& key : keys) dimensions[key] = 0.0;
-    for (const auto& row : reports) {
-      const auto report = json::parse(row["report"].c_str());
-      accumulateDimensionScores(dimensions, report, keys);
-    }
-    if (!reports.empty()) for (const auto& key : keys) dimensions[key] = std::round(dimensions[key].get<double>() / reports.size() * 10.0) / 10.0;
-    json scenario_stats = json::array();
-    for (const auto& row : scenarios) scenario_stats.push_back({{"scenarioId", row["id"].c_str()}, {"scenarioName", row["name"].c_str()}, {"trainingCount", row["training_count"].as<int>()}});
-
-    const auto recent_rows = tx.exec("SELECT id, scenario_id, scenario_name, status, current_round, max_rounds, " + std::string(kSessionTimes) + ", total_score, evaluation_status FROM sessions WHERE user_id = 'demo-user-001' AND status <> 'abandoned' ORDER BY updated_at DESC LIMIT 5");
-    json recent = json::array();
-    for (const auto& row : recent_rows) recent.push_back(sessionJson(row));
-    return {{"totalSessions", totals["total_sessions"].as<int>()},
-            {"completedSessions", totals["completed_sessions"].as<int>()},
-            {"averageScore", totals["average_score"].is_null() ? 0.0 : totals["average_score"].as<double>()},
-            {"scenarioStats", scenario_stats}, {"dimensionAverages", dimensions}, {"recentSessions", recent}};
-  }
-
- private:
-  static json messageJson(const std::string& id, const std::string& role, const std::string& content, int round) {
-    return {{"id", id}, {"role", role}, {"content", content}, {"round", round}};
-  }
-  static json messageJson(const pqxx::row& row) {
-    return {{"id", row["id"].c_str()}, {"role", row["role"].c_str()}, {"content", row["content"].c_str()},
-            {"round", row["round"].as<int>()}, {"createdAt", row["created_at"].c_str()}};
-  }
-
-  static json getSessionRow(pqxx::transaction_base& tx, const std::string& session_id) {
-    const auto rows = tx.exec_params("SELECT id, scenario_id, scenario_name, status, current_round, max_rounds, " + std::string(kSessionTimes) + ", total_score, evaluation_status FROM sessions WHERE id = $1", session_id);
-    if (rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
-    return sessionJson(rows[0]);
-  }
-
-  static json getScenarioInternal(pqxx::transaction_base& tx, const std::string& scenario_id) {
-    const auto rows = tx.exec_params("SELECT id, name, summary, difficulty, focus, patient_profile, hidden_config, max_rounds FROM scenarios WHERE id = $1", scenario_id);
-    if (rows.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
-    const auto& row = rows[0];
-    return {{"public", {{"id", row["id"].c_str()}, {"name", row["name"].c_str()}, {"summary", row["summary"].c_str()},
-                         {"difficulty", row["difficulty"].c_str()}, {"focus", json::parse(row["focus"].c_str())},
-                         {"patientProfile", json::parse(row["patient_profile"].c_str())}, {"maxRounds", row["max_rounds"].as<int>()}}},
-            {"hidden", json::parse(row["hidden_config"].c_str())}};
-  }
-
-  std::string database_url_;
-};
-
-class RoleplayDatabase {
- public:
-  explicit RoleplayDatabase(std::string database_url) : database_url_(std::move(database_url)) {}
-
-  json listScenarios() const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto rows = tx.exec(R"(
-      SELECT s.id, s.name, s.summary, s.difficulty, s.focus, s.patient_profile, s.max_rounds, s.roleplay_config,
-        active.id AS active_id, active.current_round AS active_current_round,
-        active.max_rounds AS active_max_rounds, active.updated_at AS active_updated_at
-      FROM scenarios s
-      LEFT JOIN LATERAL (
-        SELECT id, current_round, max_rounds, updated_at FROM roleplay_sessions
-        WHERE user_id = 'demo-user-001' AND scenario_id = s.id AND status = 'in_progress'
-        ORDER BY updated_at DESC LIMIT 1
-      ) active ON TRUE
-      ORDER BY s.sort_order
-    )");
-    json items = json::array();
-    for (const auto& row : rows) {
-      const auto config = json::parse(row["roleplay_config"].c_str());
-      json suggested_questions = json::array();
-      if (config.contains("suggestedQuestions") && config["suggestedQuestions"].is_array()) {
-        for (const auto& question : config["suggestedQuestions"]) {
-          if (question.is_string() && !trim(question.get<std::string>()).empty() && question.get<std::string>().size() <= 200 &&
-              suggested_questions.size() < 5) {
-            suggested_questions.push_back(trim(question.get<std::string>()));
-          }
-        }
-      }
-      json item = {
-          {"id", row["id"].c_str()}, {"name", row["name"].c_str()}, {"summary", row["summary"].c_str()},
-          {"difficulty", row["difficulty"].c_str()}, {"focus", json::parse(row["focus"].c_str())},
-          {"patientProfile", json::parse(row["patient_profile"].c_str())}, {"maxRounds", row["max_rounds"].as<int>()},
-          {"suggestedQuestions", suggested_questions}, {"activeSession", nullptr},
-      };
-      if (!row["active_id"].is_null()) {
-        item["activeSession"] = {{"id", row["active_id"].c_str()},
-                                 {"currentRound", row["active_current_round"].as<int>()},
-                                 {"maxRounds", row["active_max_rounds"].as<int>()},
-                                 {"updatedAt", row["active_updated_at"].c_str()}};
-      }
-      items.push_back(item);
-    }
-    return {{"items", items}};
-  }
-
-  json createSession(const std::string& scenario_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto scenario = tx.exec_params("SELECT id, name, max_rounds FROM scenarios WHERE id = $1", scenario_id);
-    if (scenario.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
-    const auto active = tx.exec_params(
-        "SELECT id FROM roleplay_sessions WHERE user_id = $1 AND scenario_id = $2 AND status = 'in_progress'",
-        kDemoUserId, scenario_id);
-    if (!active.empty()) throw ApiError(409, "ROLEPLAY_SESSION_IN_PROGRESS", "该场景已有进行中的患者模拟");
-
-    const auto& row = scenario[0];
-    const auto session_id = makeId("rpsess");
-    const auto max_rounds = clampInt(row["max_rounds"].as<int>(), 1, 10);
-    tx.exec_params(R"(
-      INSERT INTO roleplay_sessions (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds)
-      VALUES ($1, $2, $3, $4, 'in_progress', 0, $5)
-    )", session_id, kDemoUserId, scenario_id, row["name"].c_str(), max_rounds);
-    const auto saved = getSessionRow(tx, session_id);
-    tx.commit();
-    return {{"session", saved}, {"messages", json::array()}};
-  }
-
-  json restartSession(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto previous = tx.exec_params(
-        "SELECT scenario_id, status FROM roleplay_sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (previous.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    if (std::string(previous[0]["status"].c_str()) != "in_progress") {
-      throw ApiError(409, "ROLEPLAY_SESSION_NOT_RESTARTABLE", "只有进行中的患者模拟可以重新开始");
-    }
-    const auto scenario_id = std::string(previous[0]["scenario_id"].c_str());
-    const auto scenario = tx.exec_params("SELECT name, max_rounds FROM scenarios WHERE id = $1", scenario_id);
-    if (scenario.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
-    tx.exec_params("UPDATE roleplay_sessions SET status = 'abandoned', updated_at = NOW() WHERE id = $1", session_id);
-    const auto new_id = makeId("rpsess");
-    tx.exec_params(R"(
-      INSERT INTO roleplay_sessions (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds)
-      VALUES ($1, $2, $3, $4, 'in_progress', 0, $5)
-    )", new_id, kDemoUserId, scenario_id, scenario[0]["name"].c_str(), clampInt(scenario[0]["max_rounds"].as<int>(), 1, 10));
-    const auto saved = getSessionRow(tx, new_id);
-    tx.commit();
-    return {{"session", saved}, {"messages", json::array()}};
-  }
-
-  json getSession(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto session = getSessionRow(tx, session_id);
-    const auto rows = tx.exec_params(R"(
-      SELECT id, role, content, learning_points, compliance_boundary, round,
-        to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS created_at
-      FROM roleplay_messages WHERE session_id = $1 ORDER BY round, created_at
-    )", session_id);
-    json messages = json::array();
-    for (const auto& row : rows) messages.push_back(messageJson(row));
-    const auto pending = tx.exec_params(R"(
-      SELECT learner.client_message_id, learner.content, learner.round
-      FROM roleplay_messages learner
-      WHERE learner.session_id = $1 AND learner.role = 'learner_patient' AND learner.client_message_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM roleplay_messages customer
-          WHERE customer.session_id = learner.session_id
-            AND customer.role = 'standard_customer' AND customer.round = learner.round
-        )
-      ORDER BY learner.created_at DESC LIMIT 1
-    )", session_id);
-    json pending_message = nullptr;
-    if (!pending.empty()) {
-      pending_message = {{"clientMessageId", pending[0]["client_message_id"].c_str()},
-                         {"content", pending[0]["content"].c_str()},
-                         {"round", pending[0]["round"].as<int>()}};
-    }
-    return {{"session", session}, {"messages", messages}, {"pendingMessage", pending_message}};
-  }
-
-  json listSessions(const std::string& status, const std::string& scenario_id, int limit) const {
-    const std::vector<std::string> allowed = {"all", "in_progress", "completed", "abandoned"};
-    if (std::find(allowed.begin(), allowed.end(), status) == allowed.end()) {
-      throw ApiError(400, "INVALID_ARGUMENT", "status 参数无效");
-    }
-    limit = clampInt(limit, 1, 50);
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    std::string query = "SELECT r.id, r.scenario_id, r.scenario_name, r.status, r.current_round, r.max_rounds, " +
-        std::string(kRoleplaySessionTimes) + ", COALESCE(s.status, 'not_started') AS summary_status "
-        "FROM roleplay_sessions r LEFT JOIN roleplay_summaries s ON s.session_id = r.id "
-        "WHERE r.user_id = " + tx.quote(kDemoUserId);
-    if (status != "all") query += " AND r.status = " + tx.quote(status);
-    if (!scenario_id.empty()) query += " AND r.scenario_id = " + tx.quote(scenario_id);
-    query += " ORDER BY r.updated_at DESC LIMIT " + std::to_string(limit);
-    const auto rows = tx.exec(query);
-    json items = json::array();
-    for (const auto& row : rows) items.push_back(roleplaySessionJson(row));
-    return {{"items", items}, {"total", static_cast<int>(items.size())}};
-  }
-
-  json getScenarioInternal(const std::string& scenario_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    return getScenarioInternal(tx, scenario_id);
-  }
-
-  json getHistory(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto rows = tx.exec_params(
-        "SELECT role, content, round FROM roleplay_messages WHERE session_id = $1 ORDER BY round, created_at", session_id);
-    json messages = json::array();
-    for (const auto& row : rows) {
-      messages.push_back({{"role", row["role"].c_str()}, {"content", row["content"].c_str()},
-                          {"round", row["round"].as<int>()}});
-    }
-    return messages;
-  }
-
-  json saveLearnerMessageOrLoadPending(const std::string& session_id, const std::string& client_message_id,
-                                       const std::string& content) const {
-    const auto cleaned_content = trim(content);
-    if (client_message_id.empty() || client_message_id.size() > 100) {
-      throw ApiError(400, "INVALID_ARGUMENT", "clientMessageId 格式无效");
-    }
-    if (cleaned_content.empty() || cleaned_content.size() > 1000) {
-      throw ApiError(400, "INVALID_ARGUMENT", "消息长度应为 1 到 1000 个字符");
-    }
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto existing = tx.exec_params(R"(
-      SELECT learner.id AS learner_id, learner.content AS learner_content, learner.round AS learner_round,
-        customer.id AS customer_id, customer.content AS customer_content,
-        customer.learning_points AS customer_learning_points, customer.compliance_boundary AS customer_compliance_boundary
-      FROM roleplay_messages learner
-      LEFT JOIN roleplay_messages customer ON customer.session_id = learner.session_id
-        AND customer.role = 'standard_customer' AND customer.round = learner.round
-      WHERE learner.session_id = $1 AND learner.client_message_id = $2 AND learner.role = 'learner_patient'
-      ORDER BY customer.created_at DESC LIMIT 1
-    )", session_id, client_message_id);
-    if (!existing.empty()) {
-      const auto& row = existing[0];
-      json result = {{"learnerMessage", messageJson(row["learner_id"].c_str(), "learner_patient", row["learner_content"].c_str(), row["learner_round"].as<int>())},
-                     {"standardCustomerMessage", nullptr}, {"isComplete", !row["customer_id"].is_null()},
-                     {"round", row["learner_round"].as<int>()}};
-      if (!row["customer_id"].is_null()) {
-        result["standardCustomerMessage"] = messageJson(
-            row["customer_id"].c_str(), "standard_customer", row["customer_content"].c_str(), row["learner_round"].as<int>(),
-            json::parse(row["customer_learning_points"].c_str()),
-            row["customer_compliance_boundary"].is_null() ? "" : row["customer_compliance_boundary"].c_str());
-      }
-      tx.commit();
-      return result;
-    }
-
-    const auto session = tx.exec_params("SELECT * FROM roleplay_sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (session.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    const auto& row = session[0];
-    if (std::string(row["status"].c_str()) != "in_progress") {
-      throw ApiError(409, "ROLEPLAY_SESSION_FINISHED", "患者模拟已结束，不能继续发送消息");
-    }
-    const auto current_round = row["current_round"].as<int>();
-    const auto max_rounds = row["max_rounds"].as<int>();
-    if (current_round >= max_rounds) throw ApiError(409, "MAX_ROUNDS_REACHED", "已达到最大患者模拟轮数");
-    const auto pending = tx.exec_params(R"(
-      SELECT id FROM roleplay_messages WHERE session_id = $1 AND role = 'learner_patient' AND round = $2
-      AND NOT EXISTS (
-        SELECT 1 FROM roleplay_messages customer
-        WHERE customer.session_id = roleplay_messages.session_id
-          AND customer.role = 'standard_customer' AND customer.round = roleplay_messages.round
-      )
-    )", session_id, current_round + 1);
-    if (!pending.empty()) {
-      throw ApiError(409, "ROLEPLAY_RESPONSE_PENDING", "上一条提问正在等待标准客服回复，请使用原请求重试");
-    }
-    const auto message_id = makeId("rpmsg");
-    const auto round = current_round + 1;
-    tx.exec_params(R"(
-      INSERT INTO roleplay_messages (id, session_id, role, content, round, client_message_id)
-      VALUES ($1, $2, 'learner_patient', $3, $4, $5)
-    )", message_id, session_id, cleaned_content, round, client_message_id);
-    tx.exec_params("UPDATE roleplay_sessions SET updated_at = NOW() WHERE id = $1", session_id);
-    tx.commit();
-    return {{"learnerMessage", messageJson(message_id, "learner_patient", cleaned_content, round)},
-            {"standardCustomerMessage", nullptr}, {"isComplete", false}, {"round", round}};
-  }
-
-  json saveStandardCustomerReply(const std::string& session_id, int round, const json& model_reply) const {
-    const auto reply = trim(jsonString(model_reply, "reply"));
-    const auto learning_points = model_reply.value("learningPoints", json::array());
-    const auto boundary = trim(jsonString(model_reply, "complianceBoundary"));
-    if (reply.empty() || reply.size() > 1000 || !learning_points.is_array() || learning_points.size() < 2 ||
-        learning_points.size() > 4 || boundary.empty() || boundary.size() > 300) {
-      throw ApiError(503, "MODEL_INVALID_RESPONSE", "模型未返回有效标准客服回复");
-    }
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto existing = tx.exec_params(R"(
-      SELECT id, content, learning_points, compliance_boundary
-      FROM roleplay_messages WHERE session_id = $1 AND role = 'standard_customer' AND round = $2
-    )", session_id, round);
-    if (!existing.empty()) {
-      const auto session = getSessionRow(tx, session_id);
-      const auto& row = existing[0];
-      tx.commit();
-      return {{"standardCustomerMessage", messageJson(
-                  row["id"].c_str(), "standard_customer", row["content"].c_str(), round,
-                  json::parse(row["learning_points"].c_str()),
-                  row["compliance_boundary"].is_null() ? "" : row["compliance_boundary"].c_str())},
-              {"session", session},
-              {"shouldFinish", session["currentRound"].get<int>() >= session["maxRounds"].get<int>()}};
-    }
-    const auto session_rows = tx.exec_params("SELECT * FROM roleplay_sessions WHERE id = $1 FOR UPDATE", session_id);
-    if (session_rows.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    if (std::string(session_rows[0]["status"].c_str()) != "in_progress") {
-      throw ApiError(409, "ROLEPLAY_SESSION_FINISHED", "患者模拟已结束");
-    }
-    const auto message_id = makeId("rpmsg");
-    tx.exec_params(R"(
-      INSERT INTO roleplay_messages (id, session_id, role, content, learning_points, compliance_boundary, round)
-      VALUES ($1, $2, 'standard_customer', $3, $4::jsonb, $5, $6)
-    )", message_id, session_id, reply, learning_points.dump(), boundary, round);
-    tx.exec_params("UPDATE roleplay_sessions SET current_round = $2, updated_at = NOW() WHERE id = $1", session_id, round);
-    const auto saved = getSessionRow(tx, session_id);
-    tx.commit();
-    return {{"standardCustomerMessage", messageJson(message_id, "standard_customer", reply, round, learning_points, boundary)},
-            {"session", saved}, {"shouldFinish", round >= saved["maxRounds"].get<int>()}};
-  }
-
-  bool beginSummary(const std::string& session_id, const std::string& reason) const {
-    (void)reason;
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto rows = tx.exec_params(R"(
-      SELECT r.status, r.current_round, summary.status AS summary_status
-      FROM roleplay_sessions r
-      LEFT JOIN roleplay_summaries summary ON summary.session_id = r.id
-      WHERE r.id = $1 FOR UPDATE OF r
-    )", session_id);
-    if (rows.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    const auto& row = rows[0];
-    const auto status = std::string(row["status"].c_str());
-    if (status == "in_progress" && row["current_round"].as<int>() == 0) {
-      throw ApiError(422, "MIN_ROUNDS_NOT_REACHED", "至少完成 1 轮患者模拟后才能生成复盘");
-    }
-    if (status == "abandoned") throw ApiError(409, "ROLEPLAY_SESSION_FINISHED", "已放弃的患者模拟不能生成复盘");
-    if (status == "completed") {
-      const auto summary_status = row["summary_status"].is_null() ? "" : std::string(row["summary_status"].c_str());
-      if (summary_status == "ready" || summary_status == "generating") {
-        tx.commit();
-        return false;
-      }
-      tx.exec_params(R"(
-        INSERT INTO roleplay_summaries (session_id, status, updated_at) VALUES ($1, 'generating', NOW())
-        ON CONFLICT (session_id) DO UPDATE SET status = 'generating', summary = NULL, error_type = NULL, updated_at = NOW()
-      )", session_id);
-      tx.commit();
-      return true;
-    }
-    tx.exec_params(R"(
-      UPDATE roleplay_sessions SET status = 'completed', finished_at = NOW(), updated_at = NOW() WHERE id = $1
-    )", session_id);
-    tx.exec_params(R"(
-      INSERT INTO roleplay_summaries (session_id, status, updated_at) VALUES ($1, 'generating', NOW())
-      ON CONFLICT (session_id) DO UPDATE SET status = 'generating', summary = NULL, error_type = NULL, updated_at = NOW()
-    )", session_id);
-    tx.commit();
-    return true;
-  }
-
-  void retrySummary(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    const auto rows = tx.exec_params(R"(
-      SELECT r.status, summary.status AS summary_status
-      FROM roleplay_sessions r LEFT JOIN roleplay_summaries summary ON summary.session_id = r.id
-      WHERE r.id = $1 FOR UPDATE OF r
-    )", session_id);
-    if (rows.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    if (std::string(rows[0]["status"].c_str()) != "completed" || rows[0]["summary_status"].is_null() ||
-        std::string(rows[0]["summary_status"].c_str()) != "failed") {
-      throw ApiError(409, "ROLEPLAY_SUMMARY_NOT_RETRYABLE", "当前复盘不可重试");
-    }
-    tx.exec_params("UPDATE roleplay_summaries SET status = 'generating', summary = NULL, error_type = NULL, updated_at = NOW() WHERE session_id = $1", session_id);
-    tx.exec_params("UPDATE roleplay_sessions SET updated_at = NOW() WHERE id = $1", session_id);
-    tx.commit();
-  }
-
-  json getSummary(const std::string& session_id) const {
-    pqxx::connection connection(database_url_);
-    pqxx::read_transaction tx(connection);
-    const auto session = tx.exec_params("SELECT status FROM roleplay_sessions WHERE id = $1", session_id);
-    if (session.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    const auto summary = tx.exec_params("SELECT status, summary FROM roleplay_summaries WHERE session_id = $1", session_id);
-    if (summary.empty()) {
-      return {{"sessionId", session_id}, {"status", "not_started"}, {"retryable", false}, {"summary", nullptr}};
-    }
-    const auto status = std::string(summary[0]["status"].c_str());
-    if (status != "ready" || summary[0]["summary"].is_null()) {
-      return {{"sessionId", session_id}, {"status", status}, {"retryable", status == "failed"}, {"summary", nullptr}};
-    }
-    return {{"sessionId", session_id}, {"status", "ready"}, {"retryable", false},
-            {"summary", json::parse(summary[0]["summary"].c_str())}};
-  }
-
-  void saveSummary(const std::string& session_id, json summary, const std::string& model_version) const {
-    summary["modelVersion"] = model_version;
-    summary["promptVersion"] = "roleplay-summary-prompt-v1";
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    tx.exec_params(R"(
-      INSERT INTO roleplay_summaries (session_id, status, summary, model_version, prompt_version, error_type, generated_at, updated_at)
-      VALUES ($1, 'ready', $2::jsonb, $3, 'roleplay-summary-prompt-v1', NULL, NOW(), NOW())
-      ON CONFLICT (session_id) DO UPDATE SET status = 'ready', summary = EXCLUDED.summary,
-        model_version = EXCLUDED.model_version, prompt_version = EXCLUDED.prompt_version, error_type = NULL,
-        generated_at = NOW(), updated_at = NOW()
-    )", session_id, summary.dump(), model_version);
-    tx.exec_params("UPDATE roleplay_sessions SET updated_at = NOW() WHERE id = $1", session_id);
-    tx.commit();
-  }
-
-  void markSummaryFailed(const std::string& session_id, const std::string& error_type) const {
-    pqxx::connection connection(database_url_);
-    pqxx::work tx(connection);
-    tx.exec_params(R"(
-      INSERT INTO roleplay_summaries (session_id, status, error_type, updated_at)
-      VALUES ($1, 'failed', $2, NOW())
-      ON CONFLICT (session_id) DO UPDATE SET status = 'failed', error_type = EXCLUDED.error_type, updated_at = NOW()
-    )", session_id, error_type);
-    tx.exec_params("UPDATE roleplay_sessions SET updated_at = NOW() WHERE id = $1", session_id);
-    tx.commit();
-  }
-
- private:
-  static json messageJson(const std::string& id, const std::string& role, const std::string& content, int round,
-                          const json& learning_points = json::array(), const std::string& compliance_boundary = "") {
-    return {{"id", id}, {"role", role}, {"content", content}, {"round", round},
-            {"learningPoints", learning_points},
-            {"complianceBoundary", compliance_boundary.empty() ? json(nullptr) : json(compliance_boundary)}};
-  }
-
-  static json messageJson(const pqxx::row& row) {
-    const auto learning_points = row["learning_points"].is_null() ? json::array() : json::parse(row["learning_points"].c_str());
-    const auto boundary = row["compliance_boundary"].is_null() ? "" : std::string(row["compliance_boundary"].c_str());
-    auto message = messageJson(row["id"].c_str(), row["role"].c_str(), row["content"].c_str(), row["round"].as<int>(),
-                               learning_points, boundary);
-    message["createdAt"] = row["created_at"].c_str();
-    return message;
-  }
-
-  static json getSessionRow(pqxx::transaction_base& tx, const std::string& session_id) {
-    const auto rows = tx.exec_params(
-        "SELECT r.id, r.scenario_id, r.scenario_name, r.status, r.current_round, r.max_rounds, " +
-        std::string(kRoleplaySessionTimes) +
-        ", COALESCE(summary.status, 'not_started') AS summary_status "
-        "FROM roleplay_sessions r LEFT JOIN roleplay_summaries summary ON summary.session_id = r.id WHERE r.id = $1",
-        session_id);
-    if (rows.empty()) throw ApiError(404, "ROLEPLAY_SESSION_NOT_FOUND", "患者模拟会话不存在");
-    return roleplaySessionJson(rows[0]);
-  }
-
-  static json getScenarioInternal(pqxx::transaction_base& tx, const std::string& scenario_id) {
-    const auto rows = tx.exec_params(R"(
-      SELECT id, name, summary, difficulty, focus, patient_profile, max_rounds, roleplay_config
-      FROM scenarios WHERE id = $1
-    )", scenario_id);
-    if (rows.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
-    const auto& row = rows[0];
-    const auto config = json::parse(row["roleplay_config"].c_str());
-    const auto guidance = config.contains("serviceGuidance") && config["serviceGuidance"].is_array()
-        ? config["serviceGuidance"] : json::array();
-    return {{"public", {{"id", row["id"].c_str()}, {"name", row["name"].c_str()},
-                        {"summary", row["summary"].c_str()}, {"difficulty", row["difficulty"].c_str()},
-                        {"focus", json::parse(row["focus"].c_str())},
-                        {"patientProfile", json::parse(row["patient_profile"].c_str())},
-                        {"maxRounds", row["max_rounds"].as<int>()}}},
-            {"roleplay", guidance}};
-  }
-
-  std::string database_url_;
-};
+#include "reliable_store.h"
+#include "identity.h"
 
 std::string reportText(const json& object, const char* key, const std::string& fallback = "",
                        bool required = false, size_t max_length = 1000) {
@@ -1568,7 +946,7 @@ json roleplayTopicList(const json& source, const json& messages) {
       if (jsonString(message, "role") != "learner_patient") continue;
       auto content = trim(jsonString(message, "content"));
       if (content.empty()) continue;
-      if (content.size() > 70) content = content.substr(0, 70) + "…";
+      if (utf8Length(content) > 70) content = utf8Truncate(content, 70) + "…";
       topics.push_back("患者关注：" + content);
       if (topics.size() == 6) break;
     }
@@ -1608,9 +986,12 @@ json reportArray(const json& source, const char* key, size_t max_items) {
 json normalizeReport(const json& source, const json& messages) {
   if (!source.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "评分报告不是 JSON 对象");
   std::map<int, std::string> user_messages;
+  std::map<int, std::string> patient_messages;
   for (const auto& message : messages) {
     if (jsonString(message, "role") == "user") {
       user_messages[jsonInt(message, "round", -1)] = jsonString(message, "content");
+    } else if (jsonString(message, "role") == "patient") {
+      patient_messages[jsonInt(message, "round", -1)] = jsonString(message, "content");
     }
   }
   if (user_messages.empty()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "评分报告缺少客服对话依据");
@@ -1661,11 +1042,20 @@ json normalizeReport(const json& source, const json& messages) {
     violations.push_back({{"round", round}, {"originalQuote", quote},
                           {"type", reportText(item, "type", "", true, 100)},
                           {"reason", reportText(item, "reason", "", true, 600)},
-                          {"deduction", clampInt(jsonInt(item, "deduction", 0), 0, 100)},
+                          {"deduction", clampInt(jsonInt(item, "deduction", 0), 0, 50)},
                           {"recommendedRewrite", rewrite}});
   }
 
+  const bool has_severe_violation = std::any_of(
+      violations.begin(), violations.end(), [](const auto& violation) {
+        return violation.value("deduction", 0) >= 30;
+      });
+  if (has_severe_violation && dimensions["medicalCompliance"].get<int>() > 60) {
+    throw ApiError(503, "MODEL_SCORE_INCONSISTENT", "严重违规与医疗合规评分不一致");
+  }
+
   json round_comments = json::array();
+  std::map<int, json> comments_by_round;
   std::set<int> commented_rounds;
   for (const auto& item : reportArray(source, "roundComments", 10)) {
     if (!item.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "逐轮点评格式无效");
@@ -1677,73 +1067,176 @@ json normalizeReport(const json& source, const json& messages) {
     const auto rewrite = safeAdviceOrFallback(
         reportText(item, "recommendedRewrite", "", true, 600),
         "我理解您的担忧，具体情况需要医生结合检查结果评估，我们可以先安排面诊沟通。");
-    round_comments.push_back({{"round", round}, {"userMessage", user_message->second},
-                              {"comment", reportText(item, "comment", "", true, 600)},
-                              {"recommendedRewrite", rewrite}});
+    const auto comment = reportText(item, "comment", "", true, 600);
+    const json normalized_comment = {{"round", round}, {"userMessage", user_message->second},
+                                     {"comment", comment}, {"recommendedRewrite", rewrite}};
+    comments_by_round[round] = normalized_comment;
+    round_comments.push_back(normalized_comment);
+  }
+
+  const auto patient_prompt_for_round = [&](int round) {
+    const auto after_prompt = patient_messages.lower_bound(round);
+    if (after_prompt == patient_messages.begin()) return std::string();
+    return std::prev(after_prompt)->second;
+  };
+
+  // These insights are derived from already validated report fields.  Keeping
+  // them in the report makes the phrase library reproducible without adding a
+  // second model response contract or storing client-authored training data.
+  json recommended_phrases = json::array();
+  std::set<std::string> phrase_texts;
+  const auto append_phrase = [&](int round, const std::string& phrase, const std::string& reason) {
+    if (round <= 0 || phrase.empty() || recommended_phrases.size() >= 8 || !phrase_texts.insert(phrase).second) {
+      return;
+    }
+    recommended_phrases.push_back({
+        {"phraseKey", "phrase-" + std::to_string(round) + "-" + std::to_string(recommended_phrases.size() + 1)},
+        {"round", round}, {"patientSays", patient_prompt_for_round(round)}, {"csReply", phrase},
+        {"reason", reason.empty() ? "可作为下一次接待时的合规表达参考。" : reason},
+    });
+  };
+  for (const auto& item : round_comments) {
+    append_phrase(item["round"].get<int>(), item["recommendedRewrite"].get<std::string>(),
+                  item["comment"].get<std::string>());
+  }
+  for (const auto& item : violations) {
+    append_phrase(item["round"].get<int>(), item["recommendedRewrite"].get<std::string>(),
+                  item["reason"].get<std::string>());
+  }
+
+  json learning_mistakes = json::array();
+  std::set<int> violation_rounds;
+  for (size_t index = 0; index < violations.size() && learning_mistakes.size() < 12; ++index) {
+    const auto& item = violations[index];
+    const auto round = item["round"].get<int>();
+    violation_rounds.insert(round);
+    learning_mistakes.push_back({
+        {"mistakeKey", "violation-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+        {"kind", "violation"}, {"priority", item["deduction"].get<int>() >= 30 ? "high" : "medium"},
+        {"round", round}, {"originalQuote", item["originalQuote"]}, {"reason", item["reason"]},
+        {"recommendedRewrite", item["recommendedRewrite"]},
+    });
+  }
+  for (size_t index = 0; index < improvements.size() && learning_mistakes.size() < 12; ++index) {
+    const auto& item = improvements[index];
+    const auto round = item["round"].get<int>();
+    const auto user_message = user_messages.find(round);
+    if (round <= 0 || user_message == user_messages.end() || violation_rounds.find(round) != violation_rounds.end()) {
+      continue;
+    }
+    const auto comment = comments_by_round.find(round);
+    const auto rewrite = comment == comments_by_round.end()
+        ? std::string("我理解您的担忧，具体情况需要医生结合检查结果评估，我们可以协助安排进一步沟通。")
+        : comment->second["recommendedRewrite"].get<std::string>();
+    learning_mistakes.push_back({
+        {"mistakeKey", "improvement-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+        {"kind", "improvement"}, {"priority", "practice"}, {"round", round},
+        {"originalQuote", user_message->second}, {"reason", item["content"]},
+        {"recommendedRewrite", rewrite},
+    });
   }
 
   return {{"dimensionScores", dimensions},
           {"summary", reportText(source, "summary", "已完成本次训练评分。", false, 1000)},
           {"strengths", strengths}, {"improvements", improvements},
-          {"violations", violations}, {"roundComments", round_comments}};
+          {"violations", violations}, {"roundComments", round_comments},
+          {"recommendedPhrases", recommended_phrases}, {"learningMistakes", learning_mistakes}};
 }
 
 class Service {
  public:
   explicit Service(const Config& config)
-      : database_(config.database_url), roleplay_database_(config.database_url), model_(config) {}
+      : database_(config.database_url), roleplay_database_(config.database_url), model_(config),
+        queue_(config.database_url), worker_concurrency_(config.worker_concurrency) {
+    startWorkers();
+  }
 
-  Database& database() { return database_; }
-  RoleplayDatabase& roleplayDatabase() { return roleplay_database_; }
+  ~Service() { stopWorkers(); }
+
+  ReliableDatabase& database() { return database_; }
+  ReliableRoleplayDatabase& roleplayDatabase() { return roleplay_database_; }
   ModelGateway& model() { return model_; }
+  bool workerRunning() const {
+    return running_workers_.load() > 0 || (!workers_.empty() && !stopping_.load());
+  }
 
-  json sendMessage(const std::string& session_id, const std::string& client_message_id, const std::string& content) {
-    const auto saved = database_.saveUserMessageOrLoadPending(session_id, client_message_id, content);
+  json jobStats() const {
+    try {
+      return queue_.stats();
+    } catch (const std::exception& error) {
+      std::cerr << json({{"event", "job_stats_error"}, {"error", error.what()}}).dump() << '\n';
+      return {{"pendingJobs", 0}, {"deadJobs", 0}};
+    }
+  }
+
+  json sendMessage(const std::string& user_id, const std::string& session_id,
+                   const std::string& client_message_id, const std::string& content) {
+    const auto saved = database_.claimUserMessage(user_id, session_id, client_message_id, content);
     if (saved["isComplete"].get<bool>()) {
-      const auto session = database_.getSession(session_id)["session"];
+      const auto session = database_.getSession(user_id, session_id)["session"];
       return {{"userMessage", saved["userMessage"]}, {"patientMessage", saved["patientMessage"]},
               {"session", {{"currentRound", session["currentRound"]}, {"remainingRounds", session["maxRounds"].get<int>() - session["currentRound"].get<int>()}, {"status", session["status"]}, {"shouldFinish", session["status"] == "completed"}}}};
     }
-    const auto detail = database_.getSession(session_id);
-    const auto scenario = database_.getScenarioInternal(detail["session"]["scenarioId"].get<std::string>());
+    const auto detail = database_.getSession(user_id, session_id);
+    auto scenario = database_.getScenarioInternal(detail["session"]["scenarioId"].get<std::string>());
     const auto state = database_.getPatientState(session_id);
-    const auto model_reply = model_.patientReply(scenario, state, database_.getHistory(session_id));
-    const auto stored = database_.savePatientReply(session_id, saved["round"].get<int>(), model_reply);
-    bool should_finish = stored["shouldFinish"].get<bool>();
-    if (should_finish && database_.beginEvaluation(session_id, "max_rounds")) scheduleEvaluation(session_id);
-    const auto status = should_finish ? "completed" : "in_progress";
+
+    // Merge custom patient profile into scenario so the AI uses learner-defined traits
+    if (detail["session"].contains("customPatientProfile") &&
+        detail["session"]["customPatientProfile"].is_object()) {
+      const auto& custom = detail["session"]["customPatientProfile"];
+      if (scenario.contains("public") && scenario["public"].contains("patientProfile")) {
+        auto& profile = scenario["public"]["patientProfile"];
+        if (custom.contains("age")) profile["age"] = custom["age"];
+        if (custom.contains("description")) profile["description"] = custom["description"];
+      }
+      if (scenario.contains("hidden") && scenario["hidden"].contains("initialState")) {
+        auto& initial = scenario["hidden"]["initialState"];
+        if (custom.contains("emotion")) initial["emotion"] = custom["emotion"];
+      }
+    }
+
+    json model_reply;
+    try {
+      model_reply = model_.patientReply(scenario, state, database_.getHistory(session_id));
+    } catch (const ApiError& error) {
+      database_.markReplyFailed(session_id, saved["round"].get<int>(),
+                                saved["attemptToken"].get<std::string>(), error.code);
+      throw;
+    } catch (...) {
+      database_.markReplyFailed(session_id, saved["round"].get<int>(),
+                                saved["attemptToken"].get<std::string>(), "MODEL_ERROR");
+      throw;
+    }
+    const auto stored = database_.savePatientReply(
+        user_id, session_id, saved["round"].get<int>(), saved["attemptToken"].get<std::string>(), model_reply);
+    const bool should_finish = stored["shouldFinish"].get<bool>();
+    if (should_finish) wakeWorkers();
+    const auto& session = stored["session"];
     return {{"userMessage", saved["userMessage"]}, {"patientMessage", stored["patientMessage"]},
-            {"session", {{"currentRound", saved["round"]}, {"remainingRounds", std::max(0, detail["session"]["maxRounds"].get<int>() - saved["round"].get<int>())}, {"status", status}, {"shouldFinish", should_finish}}}};
+            {"session", {{"currentRound", session["currentRound"]},
+                         {"remainingRounds", std::max(0, session["maxRounds"].get<int>() - session["currentRound"].get<int>())},
+                         {"status", session["status"]}, {"shouldFinish", should_finish}}}};
   }
 
-  void scheduleEvaluation(const std::string& session_id) {
-    std::thread([this, session_id] {
-      try {
-        const auto detail = database_.getSession(session_id);
-        const auto scenario = database_.getScenarioInternal(detail["session"]["scenarioId"].get<std::string>());
-        const auto history = database_.getHistory(session_id);
-        database_.saveEvaluation(session_id, normalizeReport(model_.evaluate(scenario, history), history), model_.modelVersion());
-      } catch (const ApiError& error) {
-        database_.markEvaluationFailed(session_id, error.code);
-      } catch (...) {
-        database_.markEvaluationFailed(session_id, "EVALUATION_ERROR");
-      }
-    }).detach();
+  json finishEvaluation(const std::string& user_id, const std::string& session_id) {
+    const auto result = database_.finish(user_id, session_id);
+    if (result["evaluationStatus"] == "generating") wakeWorkers();
+    return result;
   }
 
-  json sendRoleplayMessage(const std::string& session_id, const std::string& client_message_id,
-                           const std::string& content) {
-    const auto saved = roleplay_database_.saveLearnerMessageOrLoadPending(session_id, client_message_id, content);
+  void retryEvaluation(const std::string& user_id, const std::string& session_id) {
+    database_.retryEvaluation(user_id, session_id);
+    wakeWorkers();
+  }
+
+  json sendRoleplayMessage(const std::string& user_id, const std::string& session_id,
+                           const std::string& client_message_id, const std::string& content) {
+    const auto saved = roleplay_database_.claimLearnerMessage(
+        user_id, session_id, client_message_id, content);
     if (saved["isComplete"].get<bool>()) {
-      auto detail = roleplay_database_.getSession(session_id);
-      auto session = detail["session"];
-      bool should_finish = session["status"] == "completed";
-      if (!should_finish && session["currentRound"].get<int>() >= session["maxRounds"].get<int>()) {
-        if (roleplay_database_.beginSummary(session_id, "max_rounds")) scheduleRoleplaySummary(session_id);
-        detail = roleplay_database_.getSession(session_id);
-        session = detail["session"];
-        should_finish = true;
-      }
+      const auto session = roleplay_database_.getSession(user_id, session_id)["session"];
+      const bool should_finish = session["status"] == "completed";
       return {{"learnerMessage", saved["learnerMessage"]},
               {"standardCustomerMessage", saved["standardCustomerMessage"]},
               {"session", {{"currentRound", session["currentRound"]},
@@ -1751,41 +1244,151 @@ class Service {
                            {"status", session["status"]}, {"shouldFinish", should_finish}}}};
     }
 
-    const auto detail = roleplay_database_.getSession(session_id);
+    const auto detail = roleplay_database_.getSession(user_id, session_id);
     const auto scenario = roleplay_database_.getScenarioInternal(detail["session"]["scenarioId"].get<std::string>());
     const auto history = roleplay_database_.getHistory(session_id);
-    const auto model_reply = normalizeRoleplayReply(model_.standardServiceReply(scenario, history));
-    const auto stored = roleplay_database_.saveStandardCustomerReply(session_id, saved["round"].get<int>(), model_reply);
-    bool should_finish = stored["shouldFinish"].get<bool>();
-    if (should_finish && roleplay_database_.beginSummary(session_id, "max_rounds")) scheduleRoleplaySummary(session_id);
-    const auto status = should_finish ? "completed" : "in_progress";
+    json model_reply;
+    try {
+      model_reply = normalizeRoleplayReply(model_.standardServiceReply(scenario, history));
+    } catch (const ApiError& error) {
+      roleplay_database_.markReplyFailed(session_id, saved["round"].get<int>(),
+                                         saved["attemptToken"].get<std::string>(), error.code);
+      throw;
+    } catch (...) {
+      roleplay_database_.markReplyFailed(session_id, saved["round"].get<int>(),
+                                         saved["attemptToken"].get<std::string>(), "MODEL_ERROR");
+      throw;
+    }
+    const auto stored = roleplay_database_.saveStandardCustomerReply(
+        user_id, session_id, saved["round"].get<int>(),
+        saved["attemptToken"].get<std::string>(), model_reply);
+    const bool should_finish = stored["shouldFinish"].get<bool>();
+    if (should_finish) wakeWorkers();
+    const auto& session = stored["session"];
     return {{"learnerMessage", saved["learnerMessage"]},
             {"standardCustomerMessage", stored["standardCustomerMessage"]},
-            {"session", {{"currentRound", saved["round"]},
-                         {"remainingRounds", std::max(0, detail["session"]["maxRounds"].get<int>() - saved["round"].get<int>())},
-                         {"status", status}, {"shouldFinish", should_finish}}}};
+            {"session", {{"currentRound", session["currentRound"]},
+                         {"remainingRounds", std::max(0, session["maxRounds"].get<int>() - session["currentRound"].get<int>())},
+                         {"status", session["status"]}, {"shouldFinish", should_finish}}}};
   }
 
-  void scheduleRoleplaySummary(const std::string& session_id) {
-    std::thread([this, session_id] {
-      try {
-        const auto detail = roleplay_database_.getSession(session_id);
-        const auto scenario = roleplay_database_.getScenarioInternal(detail["session"]["scenarioId"].get<std::string>());
-        const auto history = roleplay_database_.getHistory(session_id);
-        roleplay_database_.saveSummary(
-            session_id, normalizeRoleplaySummary(model_.roleplaySummary(scenario, history), history), model_.modelVersion());
-      } catch (const ApiError& error) {
-        roleplay_database_.markSummaryFailed(session_id, error.code);
-      } catch (...) {
-        roleplay_database_.markSummaryFailed(session_id, "ROLEPLAY_SUMMARY_ERROR");
-      }
-    }).detach();
+  json finishSummary(const std::string& user_id, const std::string& session_id) {
+    const auto result = roleplay_database_.finish(user_id, session_id);
+    if (result["summaryStatus"] == "generating") wakeWorkers();
+    return result;
+  }
+
+  void retrySummary(const std::string& user_id, const std::string& session_id) {
+    roleplay_database_.retrySummary(user_id, session_id);
+    wakeWorkers();
   }
 
  private:
-  Database database_;
-  RoleplayDatabase roleplay_database_;
+  static bool retryableJobError(const std::string& code) {
+    return code != "MODEL_AUTH_FAILED" && code != "MODEL_NOT_CONFIGURED" &&
+           code != "MODEL_CONTENT_FILTERED" && code != "MODEL_UNSAFE_RESPONSE" &&
+           code != "SESSION_NOT_FOUND" && code != "ROLEPLAY_SESSION_NOT_FOUND" &&
+           code != "SCENARIO_NOT_FOUND" && code != "UNKNOWN_JOB_TYPE" &&
+           code != "JOB_LEASE_LOST";
+  }
+
+  void processJob(const AiJob& job) {
+    if (job.type == "evaluation") {
+      const auto detail = database_.getSessionInternal(job.target_id);
+      const auto scenario = database_.getScenarioInternal(
+          detail["session"]["scenarioId"].get<std::string>());
+      const auto history = database_.getHistory(job.target_id);
+      const auto report = normalizeReport(model_.evaluate(scenario, history), history);
+      database_.saveEvaluation(job, report, model_.modelVersion());
+      return;
+    }
+    if (job.type == "roleplay_summary") {
+      const auto detail = roleplay_database_.getSessionInternal(job.target_id);
+      const auto scenario = roleplay_database_.getScenarioInternal(
+          detail["session"]["scenarioId"].get<std::string>());
+      const auto history = roleplay_database_.getHistory(job.target_id);
+      const auto summary = normalizeRoleplaySummary(model_.roleplaySummary(scenario, history), history);
+      roleplay_database_.saveSummary(job, summary, model_.modelVersion());
+      return;
+    }
+    throw ApiError(500, "UNKNOWN_JOB_TYPE", "未知 AI 任务类型");
+  }
+
+  void workerLoop(int index) noexcept {
+    running_workers_.fetch_add(1);
+    const auto worker_id = makeId("worker") + '_' + std::to_string(index);
+    int database_backoff_seconds = 1;
+    while (!stopping_.load()) {
+      try {
+        const auto job = queue_.claim(worker_id);
+        database_backoff_seconds = 1;
+        if (!job.has_value()) {
+          std::unique_lock<std::mutex> lock(worker_mutex_);
+          worker_signal_.wait_for(lock, std::chrono::seconds(1), [this] { return stopping_.load(); });
+          continue;
+        }
+        try {
+          processJob(*job);
+        } catch (const ApiError& error) {
+          try {
+            queue_.fail(*job, error.code, error.what(), retryableJobError(error.code));
+          } catch (const std::exception& persist_error) {
+            std::cerr << json({{"event", "job_failure_persist_error"}, {"jobId", job->id},
+                              {"error", persist_error.what()}}).dump() << '\n';
+          }
+        } catch (const std::exception& error) {
+          try {
+            queue_.fail(*job, job->type == "evaluation" ? "EVALUATION_ERROR" : "ROLEPLAY_SUMMARY_ERROR",
+                        error.what(), true);
+          } catch (const std::exception& persist_error) {
+            std::cerr << json({{"event", "job_failure_persist_error"}, {"jobId", job->id},
+                              {"error", persist_error.what()}}).dump() << '\n';
+          }
+        } catch (...) {
+          try {
+            queue_.fail(*job, "UNKNOWN_WORKER_ERROR", "unknown worker exception", true);
+          } catch (...) {
+          }
+        }
+      } catch (const std::exception& error) {
+        std::cerr << json({{"event", "worker_database_error"}, {"workerId", worker_id},
+                          {"backoffSeconds", database_backoff_seconds},
+                          {"error", error.what()}}).dump() << '\n';
+        std::unique_lock<std::mutex> lock(worker_mutex_);
+        worker_signal_.wait_for(lock, std::chrono::seconds(database_backoff_seconds),
+                                [this] { return stopping_.load(); });
+        database_backoff_seconds = std::min(database_backoff_seconds * 2, 30);
+      } catch (...) {
+        std::cerr << json({{"event", "worker_unknown_error"}, {"workerId", worker_id}}).dump() << '\n';
+      }
+    }
+    running_workers_.fetch_sub(1);
+  }
+
+  void startWorkers() {
+    for (int index = 0; index < worker_concurrency_; ++index) {
+      workers_.emplace_back([this, index] { workerLoop(index); });
+    }
+  }
+
+  void stopWorkers() {
+    stopping_.store(true);
+    worker_signal_.notify_all();
+    for (auto& worker : workers_) if (worker.joinable()) worker.join();
+  }
+
+  void wakeWorkers() { worker_signal_.notify_all(); }
+
+  ReliableDatabase database_;
+  ReliableRoleplayDatabase roleplay_database_;
   ModelGateway model_;
+  AiJobQueue queue_;
+  int worker_concurrency_;
+  std::atomic<bool> stopping_{false};
+  std::atomic<int> running_workers_{0};
+  std::vector<std::thread> workers_;
+  std::mutex worker_mutex_;
+  std::condition_variable worker_signal_;
 };
 
 }  // namespace
@@ -1793,146 +1396,377 @@ class Service {
 #ifndef ORAL_TRAINING_NO_MAIN
 int main() {
   const auto config = Config::fromEnvironment();
+  g_allowed_origin = config.allowed_origin;
   Service service(config);
+  IdentityService identity(config);
   crow::SimpleApp app;
 
-  CROW_ROUTE(app, "/api/health").methods(crow::HTTPMethod::GET)([&service] {
-    return ok({{"database", service.database().healthy()}, {"modelConfigured", service.model().configured()}});
+  CROW_ROUTE(app, "/api/health").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto stats = service.jobStats();
+      return ok({{"database", service.database().healthy()},
+                 {"modelConfigured", service.model().configured()},
+                 {"workerRunning", service.workerRunning()},
+                 {"pendingJobs", stats["pendingJobs"]}, {"deadJobs", stats["deadJobs"]},
+                 {"runtimeApiKeyAllowed", identity.runtimeKeyAllowed()},
+                 {"authMode", identity.authMode()}, {"production", identity.production()}});
+    });
   });
 
-  CROW_ROUTE(app, "/api/config/deepseek-key").methods(crow::HTTPMethod::POST)([&service](const crow::request& request) {
-    return handle([&] {
+  CROW_ROUTE(app, "/api/auth/wechat").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto body = parseRequest(request);
+      return ok(identity.login(request, jsonString(body, "code")), "authenticated");
+    });
+  });
+
+  CROW_ROUTE(app, "/api/auth/switch-role").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto body = parseRequest(request);
+      return ok(identity.switchRole(request, jsonString(body, "role")), "role switched");
+    });
+  });
+
+  CROW_ROUTE(app, "/api/config/deepseek-key").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      identity.authorize(request, true);
       const auto body = parseRequest(request);
       service.model().setRuntimeKey(jsonString(body, "apiKey"));
       return ok({{"configured", true}}, "configured");
     });
   });
 
-  CROW_ROUTE(app, "/api/scenarios").methods(crow::HTTPMethod::GET)([&service] {
-    return handle([&] { return ok(service.database().listScenarios()); });
-  });
-
-  CROW_ROUTE(app, "/api/roleplay/scenarios").methods(crow::HTTPMethod::GET)([&service] {
-    return handle([&] { return ok(service.roleplayDatabase().listScenarios()); });
-  });
-
-  CROW_ROUTE(app, "/api/roleplay/sessions").methods(crow::HTTPMethod::POST)([&service](const crow::request& request) {
-    return handle([&] {
-      const auto body = parseRequest(request);
-      const auto scenario_id = jsonString(body, "scenarioId");
-      if (scenario_id.empty()) throw ApiError(400, "INVALID_ARGUMENT", "scenarioId 不能为空");
-      return ok(service.roleplayDatabase().createSession(scenario_id), "created", 201);
+  CROW_ROUTE(app, "/api/scenarios").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().listScenarios(user.id));
     });
   });
 
-  CROW_ROUTE(app, "/api/roleplay/sessions").methods(crow::HTTPMethod::GET)([&service](const crow::request& request) {
-    return handle([&] {
+  CROW_ROUTE(app, "/api/roleplay/scenarios").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.roleplayDatabase().listScenarios(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/roleplay/sessions").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      const auto scenario_id = jsonString(body, "scenarioId");
+      if (scenario_id.empty()) throw ApiError(400, "INVALID_ARGUMENT", "scenarioId 不能为空");
+      return ok(service.roleplayDatabase().createSession(user.id, scenario_id), "created", 201);
+    });
+  });
+
+  CROW_ROUTE(app, "/api/roleplay/sessions").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
       const auto* status = request.url_params.get("status");
       const auto* scenario_id = request.url_params.get("scenarioId");
       const auto* limit = request.url_params.get("limit");
       int requested_limit = 50;
       if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
       return ok(service.roleplayDatabase().listSessions(
-          status == nullptr ? "all" : status, scenario_id == nullptr ? "" : scenario_id, requested_limit));
+          user.id, status == nullptr ? "all" : status,
+          scenario_id == nullptr ? "" : scenario_id, requested_limit));
     });
   });
 
-  CROW_ROUTE(app, "/api/roleplay/sessions/<string>").methods(crow::HTTPMethod::GET)([&service](const std::string& session_id) {
-    return handle([&] { return ok(service.roleplayDatabase().getSession(session_id)); });
-  });
-
-  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/restart").methods(crow::HTTPMethod::POST)([&service](const std::string& session_id) {
-    return handle([&] { return ok(service.roleplayDatabase().restartSession(session_id), "created", 201); });
-  });
-
-  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/messages").methods(crow::HTTPMethod::POST)([&service](const crow::request& request, const std::string& session_id) {
-    return handle([&] {
-      const auto body = parseRequest(request);
-      return ok(service.sendRoleplayMessage(session_id, jsonString(body, "clientMessageId"), jsonString(body, "content")));
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>").methods(crow::HTTPMethod::GET)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.roleplayDatabase().getSession(user.id, session_id));
     });
   });
 
-  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/finish").methods(crow::HTTPMethod::POST)([&service](const crow::request& request, const std::string& session_id) {
-    return handle([&] {
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/restart").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.roleplayDatabase().restartSession(user.id, session_id), "created", 201);
+    });
+  });
+
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/abandon").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.roleplayDatabase().abandonSession(user.id, session_id), "accepted", 202);
+    });
+  });
+
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/messages").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
       const auto body = parseRequest(request);
-      const auto should_schedule = service.roleplayDatabase().beginSummary(session_id, jsonString(body, "reason", "manual"));
-      if (should_schedule) service.scheduleRoleplaySummary(session_id);
-      const auto session = service.roleplayDatabase().getSession(session_id)["session"];
+      return ok(service.sendRoleplayMessage(user.id, session_id,
+          jsonString(body, "clientMessageId"), jsonString(body, "content")));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/finish").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      const auto session = service.finishSummary(user.id, session_id);
       return ok({{"sessionId", session_id}, {"status", session["status"]}, {"summaryStatus", session["summaryStatus"]}}, "accepted", 202);
     });
   });
 
-  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/summary").methods(crow::HTTPMethod::GET)([&service](const std::string& session_id) {
-    return handle([&] { return ok(service.roleplayDatabase().getSummary(session_id)); });
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/summary").methods(crow::HTTPMethod::GET)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.roleplayDatabase().getSummary(user.id, session_id));
+    });
   });
 
-  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/summary/retry").methods(crow::HTTPMethod::POST)([&service](const std::string& session_id) {
-    return handle([&] {
-      service.roleplayDatabase().retrySummary(session_id);
-      service.scheduleRoleplaySummary(session_id);
+  CROW_ROUTE(app, "/api/roleplay/sessions/<string>/summary/retry").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      service.retrySummary(user.id, session_id);
       return ok({{"sessionId", session_id}, {"status", "generating"}, {"retryable", false}}, "accepted", 202);
     });
   });
 
-  CROW_ROUTE(app, "/api/sessions").methods(crow::HTTPMethod::POST)([&service](const crow::request& request) {
-    return handle([&] {
+  CROW_ROUTE(app, "/api/sessions").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
       const auto body = parseRequest(request);
       const auto scenario_id = jsonString(body, "scenarioId");
       if (scenario_id.empty()) throw ApiError(400, "INVALID_ARGUMENT", "scenarioId 不能为空");
-      return ok(service.database().createSession(scenario_id), "created", 201);
+      json custom_profile = nullptr;
+      if (body.contains("customPatientProfile") && body["customPatientProfile"].is_object()) {
+        custom_profile = body["customPatientProfile"];
+      }
+      return ok(service.database().createSession(user.id, scenario_id, custom_profile), "created", 201);
     });
   });
 
-  CROW_ROUTE(app, "/api/sessions").methods(crow::HTTPMethod::GET)([&service](const crow::request& request) {
-    return handle([&] {
+  CROW_ROUTE(app, "/api/sessions").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
       const auto* status = request.url_params.get("status");
       const auto* scenario_id = request.url_params.get("scenarioId");
       const auto* limit = request.url_params.get("limit");
       int requested_limit = 50;
       if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
-      return ok(service.database().listSessions(status == nullptr ? "all" : status, scenario_id == nullptr ? "" : scenario_id, requested_limit));
+      return ok(service.database().listSessions(user.id, status == nullptr ? "all" : status,
+          scenario_id == nullptr ? "" : scenario_id, requested_limit));
     });
   });
 
-  CROW_ROUTE(app, "/api/sessions/<string>").methods(crow::HTTPMethod::GET)([&service](const std::string& session_id) {
-    return handle([&] { return ok(service.database().getSession(session_id)); });
-  });
-
-  CROW_ROUTE(app, "/api/sessions/<string>/restart").methods(crow::HTTPMethod::POST)([&service](const std::string& session_id) {
-    return handle([&] { return ok(service.database().restartSession(session_id), "created", 201); });
-  });
-
-  CROW_ROUTE(app, "/api/sessions/<string>/messages").methods(crow::HTTPMethod::POST)([&service](const crow::request& request, const std::string& session_id) {
-    return handle([&] {
-      const auto body = parseRequest(request);
-      return ok(service.sendMessage(session_id, jsonString(body, "clientMessageId"), jsonString(body, "content")));
+  CROW_ROUTE(app, "/api/sessions/<string>").methods(crow::HTTPMethod::GET)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().getSession(user.id, session_id));
     });
   });
 
-  CROW_ROUTE(app, "/api/sessions/<string>/finish").methods(crow::HTTPMethod::POST)([&service](const crow::request& request, const std::string& session_id) {
-    return handle([&] {
+  CROW_ROUTE(app, "/api/sessions/<string>/restart").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().restartSession(user.id, session_id), "created", 201);
+    });
+  });
+
+  CROW_ROUTE(app, "/api/sessions/<string>/messages").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
       const auto body = parseRequest(request);
-      const auto should_schedule = service.database().beginEvaluation(session_id, jsonString(body, "reason", "manual"));
-      if (should_schedule) service.scheduleEvaluation(session_id);
-      const auto session = service.database().getSession(session_id)["session"];
+      return ok(service.sendMessage(user.id, session_id,
+          jsonString(body, "clientMessageId"), jsonString(body, "content")));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/sessions/<string>/hint").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.database().requestTrainingHint(user.id, session_id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/sessions/<string>/finish").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      const auto session = service.finishEvaluation(user.id, session_id);
       return ok({{"sessionId", session_id}, {"status", session["status"]}, {"evaluationStatus", session["evaluationStatus"]}}, "accepted", 202);
     });
   });
 
-  CROW_ROUTE(app, "/api/sessions/<string>/evaluation").methods(crow::HTTPMethod::GET)([&service](const std::string& session_id) {
-    return handle([&] { return ok(service.database().getEvaluation(session_id)); });
+  CROW_ROUTE(app, "/api/sessions/<string>/evaluation").methods(crow::HTTPMethod::GET)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().getEvaluation(user.id, session_id));
+    });
   });
 
-  CROW_ROUTE(app, "/api/sessions/<string>/evaluation/retry").methods(crow::HTTPMethod::POST)([&service](const std::string& session_id) {
-    return handle([&] {
-      service.database().retryEvaluation(session_id);
-      service.scheduleEvaluation(session_id);
+  CROW_ROUTE(app, "/api/sessions/<string>/evaluation/retry").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      service.retryEvaluation(user.id, session_id);
       return ok({{"sessionId", session_id}, {"status", "generating"}, {"retryable", false}}, "accepted", 202);
     });
   });
 
-  CROW_ROUTE(app, "/api/dashboard/summary").methods(crow::HTTPMethod::GET)([&service] {
-    return handle([&] { return ok(service.database().dashboard()); });
+  CROW_ROUTE(app, "/api/learning/phrases").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto* search = request.url_params.get("search");
+      const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* favorites_only = request.url_params.get("favoritesOnly");
+      const auto* limit = request.url_params.get("limit");
+      bool requested_favorites_only = false;
+      if (favorites_only != nullptr) {
+        const auto value = std::string(favorites_only);
+        if (value == "true" || value == "1") requested_favorites_only = true;
+        else if (value != "false" && value != "0") throw ApiError(400, "INVALID_ARGUMENT", "favoritesOnly 参数无效");
+      }
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listLearningPhrases(
+          user.id, search == nullptr ? "" : search, scenario_id == nullptr ? "" : scenario_id,
+          requested_favorites_only, requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/phrases/<string>/<string>/favorite").methods(crow::HTTPMethod::PUT)(
+      [&](const crow::request& request, const std::string& session_id, const std::string& phrase_key) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      if (!body.is_object() || !body.contains("favorite") || !body["favorite"].is_boolean()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "favorite 必须为布尔值");
+      }
+      return ok(service.database().setLearningPhraseFavorite(
+          user.id, session_id, phrase_key, body["favorite"].get<bool>()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mistakes").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* include_mastered = request.url_params.get("includeMastered");
+      const auto* limit = request.url_params.get("limit");
+      bool requested_include_mastered = false;
+      if (include_mastered != nullptr) {
+        const auto value = std::string(include_mastered);
+        if (value == "true" || value == "1") requested_include_mastered = true;
+        else if (value != "false" && value != "0") throw ApiError(400, "INVALID_ARGUMENT", "includeMastered 参数无效");
+      }
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listLearningMistakes(user.id, scenario_id == nullptr ? "" : scenario_id,
+                                                         requested_include_mastered, requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mistakes/<string>/<string>").methods(crow::HTTPMethod::PUT)(
+      [&](const crow::request& request, const std::string& session_id, const std::string& mistake_key) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      if (!body.is_object() || !body.contains("mastered") || !body["mastered"].is_boolean()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "mastered 必须为布尔值");
+      }
+      return ok(service.database().setLearningMistakeMastery(
+          user.id, session_id, mistake_key, body["mastered"].get<bool>()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/profile").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().learningProfile(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mine").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().learningMine(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/checkins").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.database().checkIn(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/dashboard/summary").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      return ok(service.database().dashboard(user.id, user.isAdmin()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/dashboard").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看团队聚合数据");
+      const auto* range = request.url_params.get("range");
+      return ok(service.database().supervisorDashboard(range == nullptr ? "month" : range));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/members").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看成员详情");
+      const auto* limit = request.url_params.get("limit");
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listSupervisorMembers(requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/members/<string>").methods(crow::HTTPMethod::GET)(
+      [&](const crow::request& request, const std::string& member_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看成员详情");
+      return ok(service.database().supervisorMemberDetail(member_id));
+    });
+  });
+
+  CROW_CATCHALL_ROUTE(app)([&](const crow::request& request) {
+    return handle(request, [&] {
+      if (request.method != crow::HTTPMethod::OPTIONS) {
+        return makeResponse(404, {{"code", "NOT_FOUND"}, {"message", "接口不存在"}, {"data", nullptr}});
+      }
+      const auto origin = request.get_header_value("Origin");
+      if (!origin.empty() && config.allowed_origin != "*" && origin != config.allowed_origin) {
+        throw ApiError(403, "ORIGIN_FORBIDDEN", "请求来源不受信任");
+      }
+      crow::response response(204);
+      response.set_header("Access-Control-Allow-Origin", config.allowed_origin);
+      response.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+      response.set_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id");
+      response.set_header("Access-Control-Max-Age", "600");
+      response.set_header("Vary", "Origin");
+      response.set_header("X-Request-Id", g_request_id);
+      return response;
+    });
   });
 
   std::cout << "Oral training API listening at http://" << config.bind_address << ':' << config.port << "/api" << std::endl;

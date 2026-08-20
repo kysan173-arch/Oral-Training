@@ -1,59 +1,35 @@
-.member-detail-page { padding: 0 0 48rpx; }
-.member-header {
-  display: flex; align-items: center; margin: 24rpx 24rpx 20rpx; padding: 24rpx;
-}
-.mh-avatar { font-size: 52rpx; margin-right: 18rpx; }
-.mh-info { flex: 1; }
-.mh-name { display: block; font-size: 29rpx; font-weight: 700; color: #333; }
-.mh-role { display: block; margin-top: 4rpx; font-size: 21rpx; color: #667eea; }
-.mh-meta { display: block; margin-top: 4rpx; font-size: 19rpx; color: #aaa; }
-.mh-stats { display: flex; gap: 20rpx; }
-.mhs-item { display: flex; flex-direction: column; align-items: center; }
-.mhs-val { font-size: 28rpx; font-weight: 700; color: #667eea; }
-.mhs-label { font-size: 18rpx; color: #aaa; }
-
-.section-header { margin: 28rpx 28rpx 12rpx; }
-.section-title { font-size: 28rpx; font-weight: 700; color: #333; }
-
-.radar-wrap { margin: 0 24rpx; padding: 20rpx; }
-.radar-canvas { width: 100%; height: 360rpx; }
-.dim-bar-list { margin-top: 16rpx; }
-.dim-bar-row { display: flex; align-items: center; padding: 8rpx 0; }
-.dim-bar-name { width: 120rpx; font-size: 21rpx; color: #555; }
-.dim-bar-bar { flex: 1; height: 10rpx; border-radius: 5rpx; background: #f0f0f4; margin: 0 14rpx; overflow: hidden; }
-.dim-bar-fill { height: 100%; border-radius: 5rpx; transition: width .4s; }
-.dim-bar-val { width: 40rpx; font-size: 21rpx; color: #333; font-weight: 600; text-align: right; }
-
-.growth-card { margin: 0 24rpx; padding: 30rpx 20rpx 16rpx; }
-.growth-chart { position: relative; height: 240rpx; }
-.gc-point { position: absolute; width: 0; }
-.gc-dot { width: 12rpx; height: 12rpx; border-radius: 50%; background: #667eea; margin-left: -6rpx; }
-.gc-score { display: block; font-size: 16rpx; color: #667eea; margin-left: -16rpx; margin-top: -28rpx; text-align: center; }
-.gc-labels { position: relative; margin-top: 10rpx; }
-.gc-label { position: absolute; font-size: 16rpx; color: #aaa; white-space: nowrap; transform: translateX(-30%); }
-
-.warnings-list { margin: 0 24rpx; display: flex; flex-direction: column; gap: 14rpx; }
-.warning-card { padding: 20rpx; border-left: 6rpx solid #f0a34b; }
-.warning-card.high { border-left-color: #e85d75; background: #fff5f5; }
-.warn-head { display: flex; align-items: center; }
-.warn-icon { font-size: 24rpx; margin-right: 8rpx; }
-.warn-dim { flex: 1; font-size: 24rpx; font-weight: 700; color: #333; }
-.warn-severity { font-size: 19rpx; padding: 4rpx 14rpx; border-radius: 14rpx; }
-.warn-severity.high { background: #fde8e8; color: #e85d75; }
-.warn-severity.medium { background: #fef3e0; color: #f0a34b; }
-.warn-scores { display: block; margin-top: 8rpx; font-size: 21rpx; color: #888; }
-.warn-suggestion { display: block; margin-top: 8rpx; font-size: 21rpx; color: #666; line-height: 1.5; }
-
-.no-warnings { margin: 0 24rpx; padding: 24rpx; text-align: center; color: #52a67a; font-size: 23rpx; }
-
-.timeline { margin: 0 24rpx; display: flex; flex-direction: column; gap: 10rpx; }
-.tl-item { padding: 18rpx 22rpx; }
-.tl-head { display: flex; justify-content: space-between; align-items: center; }
-.tl-date { font-size: 21rpx; color: #aaa; }
-.tl-score { font-size: 24rpx; font-weight: 700; color: #e85d75; }
-.tl-score.pass { color: #52a67a; }
-.tl-scenario { display: block; margin-top: 6rpx; font-size: 22rpx; color: #555; }
-
-.no-data { margin: 0 24rpx; padding: 30rpx; text-align: center; color: #aaa; font-size: 23rpx; }
-
-.card { border-radius: 20rpx; background: #fff; box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04); }
+.member-page { padding: 30rpx 24rpx 48rpx; }
+.loading-card, .empty-card { padding: 48rpx 28rpx; color: #9198aa; font-size: 24rpx; text-align: center; }
+.member-hero { display: flex; align-items: center; padding: 28rpx; margin-bottom: 18rpx; }
+.hero-avatar { width: 88rpx; height: 88rpx; line-height: 88rpx; flex-shrink: 0; border-radius: 26rpx; color: #fff; background: linear-gradient(135deg, #5B6EF5, #5B6EF5); font-size: 38rpx; font-weight: 700; text-align: center; }
+.hero-copy { min-width: 0; margin-left: 18rpx; }
+.hero-name, .hero-meta, .hero-note { display: block; }
+.hero-name { color: #3e4863; font-size: 33rpx; font-weight: 700; }
+.hero-meta { margin-top: 7rpx; color: #8991a5; font-size: 21rpx; }
+.hero-note { margin-top: 9rpx; color: #a4a9b8; font-size: 19rpx; line-height: 1.45; }
+.stat-grid { display: flex; gap: 14rpx; margin-bottom: 28rpx; }
+.stat-card { flex: 1; padding: 21rpx 7rpx; text-align: center; }
+.stat-card text { display: block; }
+.stat-card text:first-child { color: #5B6EF5; font-size: 34rpx; font-weight: 700; }
+.stat-card text:last-child { margin-top: 6rpx; color: #7f879e; font-size: 20rpx; }
+.section-heading { display: flex; justify-content: space-between; margin: 0 5rpx 14rpx; }
+.section-heading text:first-child { color: #3f4860; font-size: 30rpx; font-weight: 700; }
+.section-heading text:last-child { color: #a0a6b7; font-size: 20rpx; }
+.radar-card { padding: 18rpx 22rpx 24rpx; margin-bottom: 28rpx; }
+.dimension-row { display: flex; align-items: center; gap: 12rpx; margin-top: 15rpx; color: #687188; font-size: 21rpx; }
+.dimension-row text:first-child { width: 148rpx; }
+.dimension-row text:last-child { width: 42rpx; text-align: right; font-weight: 700; }
+.dimension-track { height: 12rpx; flex: 1; overflow: hidden; border-radius: 8rpx; background: #eef0f5; }
+.dimension-fill { height: 100%; border-radius: 8rpx; }
+.weakness-card { padding: 22rpx; margin-bottom: 14rpx; border-left: 7rpx solid #e0ad54; }
+.weakness-card.high { border-left-color: #df7781; }
+.weakness-name { color: #505972; font-size: 26rpx; font-weight: 700; }
+.weakness-score { margin-left: 12rpx; color: #8c94a9; font-size: 22rpx; }
+.weakness-text { display: block; margin-top: 10rpx; color: #7c8496; font-size: 22rpx; line-height: 1.55; }
+.timeline-card { padding: 8rpx 24rpx; margin-bottom: 24rpx; }
+.timeline-row { display: flex; align-items: center; justify-content: space-between; padding: 18rpx 0; border-bottom: 1rpx solid #eef0f5; }
+.timeline-row:last-child { border-bottom: 0; }
+.timeline-name, .timeline-date { display: block; }
+.timeline-name { color: #566079; font-size: 24rpx; }
+.timeline-date { margin-top: 5rpx; color: #a0a6b7; font-size: 20rpx; }
+.timeline-score { color: #5B6EF5; font-size: 27rpx; font-weight: 700; }

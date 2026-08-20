@@ -2,111 +2,58 @@ const api = require('../../utils/api.js');
 
 Page({
   data: {
-    mistakes: [],
-    allMistakes: [],
     loading: true,
-    loadError: false,
-    scenarioFilter: '',
-    masteredIds: [],
-    showMastered: false,
-    scenarioOptions: [
-      { id: '', name: '全部场景' }
-    ]
+    mistakes: [],
+    includeMastered: false,
+    savingId: ''
   },
 
-  onLoad() {
-    this.setData({ masteredIds: wx.getStorageSync('mastered_mistakes') || [] });
-    this.loadMistakes();
-  },
+  onShow() { this.loadMistakes(); },
 
   loadMistakes() {
-    this.setData({ loading: true, loadError: false });
-    api.getProfile().then(data => {
-      const raw = data.mistakes || [];
-      // 去重
-      const seen = new Set();
-      const mistakes = [];
-      raw.forEach(m => {
-        const key = m.id;
-        if (!seen.has(key)) {
-          seen.add(key);
-          mistakes.push(m);
-        }
-      });
-
-      // 构建场景选项
-      const scenarioIds = new Set(mistakes.map(m => m.scenarioId));
-      const scenarioOptions = [
-        { id: '', name: '全部场景' },
-        ...Array.from(scenarioIds).map(id => {
-          const sample = mistakes.find(m => m.scenarioId === id);
-          return { id, name: sample.scenarioName };
-        })
-      ];
-
-      this.setData({ allMistakes: mistakes, scenarioOptions, loading: false });
-      this.applyFilters();
+    this.setData({ loading: true });
+    api.getLearningMistakes({ includeMastered: this.data.includeMastered, limit: 50 }).then(data => {
+      this.setData({ mistakes: data.items || [], loading: false });
     }).catch(error => {
-      this.setData({ loading: false, loadError: true });
-      wx.showToast({ title: error.message || '数据加载失败', icon: 'none' });
+      this.setData({ loading: false });
+      wx.showToast({ title: error.message || '错题加载失败', icon: 'none' });
     });
   },
 
-  applyFilters() {
-    const { allMistakes, scenarioFilter, masteredIds, showMastered } = this.data;
-    let mistakes = allMistakes;
-
-    if (scenarioFilter) {
-      mistakes = mistakes.filter(m => m.scenarioId === scenarioFilter);
-    }
-
-    if (!showMastered) {
-      mistakes = mistakes.filter(m => !masteredIds.includes(m.id));
-    }
-
-    this.setData({ mistakes });
-  },
-
-  onScenarioFilter(e) {
-    this.setData({ scenarioFilter: e.currentTarget.dataset.id }, () => this.applyFilters());
-  },
-
   toggleMastered() {
-    this.setData({ showMastered: !this.data.showMastered }, () => this.applyFilters());
+    this.setData({ includeMastered: !this.data.includeMastered }, () => this.loadMistakes());
   },
 
-  // 标记为已掌握
-  markMastered(e) {
-    const id = e.currentTarget.dataset.id;
-    const masteredIds = [...this.data.masteredIds];
-    if (!masteredIds.includes(id)) {
-      masteredIds.push(id);
-      wx.setStorageSync('mastered_mistakes', masteredIds);
-      this.setData({ masteredIds }, () => this.applyFilters());
-      wx.showToast({ title: '已标记为掌握', icon: 'success' });
-    }
+  toggleMastery(e) {
+    const { id, sessionId, mistakeKey, mastered } = e.currentTarget.dataset;
+    if (!id || !sessionId || !mistakeKey || this.data.savingId) return;
+    const isMastered = mastered === true || mastered === 'true';
+    this.setData({ savingId: id });
+    api.setLearningMistakeMastery(sessionId, mistakeKey, !isMastered).then(() => {
+      wx.showToast({ title: isMastered ? '已恢复为待练习' : '已标记掌握', icon: 'success' });
+      this.loadMistakes();
+    }).catch(error => wx.showToast({ title: error.message || '状态更新失败', icon: 'none' }))
+      .finally(() => this.setData({ savingId: '' }));
   },
 
-  // 取消已掌握标记
-  unmarkMastered(e) {
-    const id = e.currentTarget.dataset.id;
-    const masteredIds = this.data.masteredIds.filter(mid => mid !== id);
-    wx.setStorageSync('mastered_mistakes', masteredIds);
-    this.setData({ masteredIds }, () => this.applyFilters());
-    wx.showToast({ title: '已移除掌握标记', icon: 'none' });
+  retrain(e) {
+    const scenarioId = e.currentTarget.dataset.scenarioId;
+    if (!scenarioId) return;
+    api.getScenarios().then(data => {
+      const scenario = (data.items || []).find(item => item.id === scenarioId);
+      if (scenario && scenario.activeSession) {
+        wx.navigateTo({ url: `/pages/training/training?sessionId=${scenario.activeSession.id}` });
+        return null;
+      }
+      return api.createSession(scenarioId);
+    }).then(data => {
+      if (data && data.session) {
+        wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
+      }
+    }).catch(error => wx.showToast({ title: error.message || '创建复练失败', icon: 'none' }));
   },
 
-  // 去复练：跳转到对应场景的训练
-  goRetrain(e) {
-    const item = e.currentTarget.dataset.item;
-    if (!item || !item.scenarioId) return;
-    // 如果存在进行中的同场景会话则续练，否则新建
-    api.createSession(item.scenarioId).then(data => {
-      wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
-    }).catch(error => wx.showToast({ title: error.message || '创建训练失败', icon: 'none' }));
-  },
+  goPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
 
-  goProfile() {
-    wx.navigateTo({ url: '/pages/profile/profile' });
-  }
+  goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); }
 });

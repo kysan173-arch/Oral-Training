@@ -1,6 +1,3 @@
 {
-  "navigationBarTitleText": "错题本",
-  "navigationBarBackgroundColor": "#667eea",
-  "navigationBarTextStyle": "white",
-  "enablePullDownRefresh": false
+  "navigationBarTitleText": "错题复练"
 }

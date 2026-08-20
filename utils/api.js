@@ -1,6 +1,10 @@
 const { getApiBaseUrl } = require('./config.js');
 
-const request = (path, options = {}) => new Promise((resolve, reject) => {
+const TOKEN_KEY = 'oralTrainingAccessToken';
+const USER_KEY = 'oralTrainingUser';
+let loginPromise = null;
+
+const rawRequest = (path, options = {}) => new Promise((resolve, reject) => {
   let baseUrl = '';
   try {
     baseUrl = getApiBaseUrl();
@@ -12,10 +16,10 @@ const request = (path, options = {}) => new Promise((resolve, reject) => {
     url: `${baseUrl}${path}`,
     method: options.method || 'GET',
     data: options.data,
-    header: {
-      'content-type': 'application/json',
-      'X-Demo-User-Id': 'demo-user-001'
-    },
+    timeout: options.timeout || 30000,
+    header: Object.assign({ 'content-type': 'application/json' }, options.token
+      ? { Authorization: `Bearer ${options.token}` }
+      : {}),
     success: response => {
       const payload = response.data || {};
       if (response.statusCode >= 200 && response.statusCode < 300 && payload.code === 0) {
@@ -24,6 +28,7 @@ const request = (path, options = {}) => new Promise((resolve, reject) => {
       }
       const error = new Error(payload.message || '服务请求失败');
       error.code = payload.code || 'NETWORK_ERROR';
+      error.statusCode = response.statusCode;
       reject(error);
     },
     fail: error => {
@@ -34,20 +39,72 @@ const request = (path, options = {}) => new Promise((resolve, reject) => {
   });
 });
 
+const clearAuthentication = () => {
+  wx.removeStorageSync(TOKEN_KEY);
+  wx.removeStorageSync(USER_KEY);
+};
+
+const login = () => new Promise((resolve, reject) => {
+  wx.login({
+    success: result => {
+      if (!result.code) {
+        reject(Object.assign(new Error('微信登录未返回有效凭证'), { code: 'WECHAT_LOGIN_FAILED' }));
+        return;
+      }
+      rawRequest('/auth/wechat', { method: 'POST', data: { code: result.code } })
+        .then(data => {
+          wx.setStorageSync(TOKEN_KEY, data.accessToken);
+          wx.setStorageSync(USER_KEY, data.user);
+          resolve(data.accessToken);
+        }).catch(reject);
+    },
+    fail: error => reject(Object.assign(new Error(error.errMsg || '微信登录失败'), {
+      code: 'WECHAT_LOGIN_FAILED'
+    }))
+  });
+});
+
+const ensureAuthenticated = (force = false) => {
+  const existing = force ? '' : wx.getStorageSync(TOKEN_KEY);
+  if (existing) return Promise.resolve(existing);
+  if (!loginPromise) {
+    loginPromise = login().finally(() => { loginPromise = null; });
+  }
+  return loginPromise;
+};
+
+const request = (path, options = {}, retried = false) => {
+  if (options.public) return rawRequest(path, options);
+  return ensureAuthenticated().then(token => rawRequest(path, Object.assign({}, options, { token })))
+    .catch(error => {
+      if (!retried && (error.code === 'AUTH_EXPIRED' || error.code === 'AUTH_INVALID' || error.code === 'AUTH_REQUIRED')) {
+        clearAuthentication();
+        return ensureAuthenticated(true).then(() => request(path, options, true));
+      }
+      throw error;
+    });
+};
+
 const query = values => Object.keys(values)
   .filter(key => values[key] !== undefined && values[key] !== null && values[key] !== '')
   .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(values[key])}`)
   .join('&');
 
 module.exports = {
-  getHealth: () => request('/health'),
+  ensureAuthenticated,
+  clearAuthentication,
+  getCurrentUser: () => wx.getStorageSync(USER_KEY) || null,
+  getHealth: () => request('/health', { public: true }),
   setDeepSeekKey: apiKey => request('/config/deepseek-key', { method: 'POST', data: { apiKey } }),
   getScenarios: () => request('/scenarios'),
-  createSession: scenarioId => request('/sessions', { method: 'POST', data: { scenarioId } }),
+  createSession: (scenarioId, customPatientProfile) => request('/sessions', { method: 'POST', data: { scenarioId, customPatientProfile } }),
   restartSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/restart`, { method: 'POST', data: {} }),
   getSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}`),
   sendMessage: (sessionId, clientMessageId, content) => request(`/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST', data: { clientMessageId, content }
+  }),
+  requestTrainingHint: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/hint`, {
+    method: 'POST', data: {}
   }),
   finishSession: (sessionId, reason = 'manual') => request(`/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
@@ -65,35 +122,28 @@ module.exports = {
   finishRoleplaySession: (sessionId, reason = 'manual') => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
   }),
+  abandonRoleplaySession: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/abandon`, {
+    method: 'POST', data: {}
+  }),
   getRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary`),
   retryRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary/retry`, { method: 'POST', data: {} }),
   getRoleplaySessions: params => request(`/roleplay/sessions?${query(params || {})}`),
   getDashboard: () => request('/dashboard/summary'),
-  getHint: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/hint`, { method: 'POST', data: {} }),
-  getPhrases: (keyword) => {
-    const qs = keyword ? `?search=${encodeURIComponent(keyword)}` : '';
-    return request(`/phrases${qs}`);
-  },
-  getHomeOverview: () => request('/home/overview'),
-  getProfile: () => request('/profile'),
-  getMineDashboard: () => request('/mine/dashboard'),
-  mineCheckin: () => request('/mine/checkin', { method: 'POST' }),
-  getMineRules: () => request('/mine/rules'),
-  addMinePoints: (amount) => request('/mine/add-points', { method: 'POST', data: { amount } }),
-  // Admin / 主管端
-  getEnhancedDashboard: (params) => request(`/dashboard/enhanced?${query(params || {})}`),
-  getDashboardTrend: (params) => request(`/dashboard/trend?${query(params || {})}`),
-  getMembers: (params) => request(`/members?${query(params || {})}`),
-  getMemberProfile: (memberId) => request(`/members/${encodeURIComponent(memberId)}/profile`),
-  getWarnings: () => request('/warnings'),
-  getPlans: (params) => request(`/plans?${query(params || {})}`),
-  createPlan: (data) => request('/plans', { method: 'POST', data }),
-  updatePlan: (planId, data) => request(`/plans/${encodeURIComponent(planId)}`, { method: 'PUT', data }),
-  deletePlan: (planId) => request(`/plans/${encodeURIComponent(planId)}`, { method: 'DELETE' }),
-  getPlanTasks: (planId) => request(`/plans/${encodeURIComponent(planId)}/tasks`),
-  createPlanTask: (planId, data) => request(`/plans/${encodeURIComponent(planId)}/tasks`, { method: 'POST', data }),
-  updatePlanTask: (planId, taskId, data) => request(`/plans/${encodeURIComponent(planId)}/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', data }),
-  getViolationWords: () => request('/violations/words'),
-  getLeaderboard: (params) => request(`/leaderboard?${query(params || {})}`),
-  exportReport: (format = 'csv') => request(`/export/report?format=${encodeURIComponent(format)}`)
+  getLearningPhrases: params => request(`/learning/phrases?${query(params || {})}`),
+  setLearningPhraseFavorite: (sessionId, phraseKey, favorite) => request(
+    `/learning/phrases/${encodeURIComponent(sessionId)}/${encodeURIComponent(phraseKey)}/favorite`,
+    { method: 'PUT', data: { favorite } }
+  ),
+  getLearningMistakes: params => request(`/learning/mistakes?${query(params || {})}`),
+  setLearningMistakeMastery: (sessionId, mistakeKey, mastered) => request(
+    `/learning/mistakes/${encodeURIComponent(sessionId)}/${encodeURIComponent(mistakeKey)}`,
+    { method: 'PUT', data: { mastered } }
+  ),
+  getLearningProfile: () => request('/learning/profile'),
+  getLearningMine: () => request('/learning/mine'),
+  checkIn: () => request('/learning/checkins', { method: 'POST', data: {} }),
+  getSupervisorDashboard: params => request(`/supervisor/dashboard?${query(params || {})}`),
+  getSupervisorMembers: params => request(`/supervisor/members?${query(params || {})}`),
+  getSupervisorMember: memberId => request(`/supervisor/members/${encodeURIComponent(memberId)}`),
+  switchRole: role => request('/auth/switch-role', { method: 'POST', data: { role } })
 };

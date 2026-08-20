@@ -4,6 +4,14 @@
 #include <iostream>
 
 int main() {
+  if (utf8Length("口腔🙂") != 3 || utf8Truncate("口腔🙂训练", 3) != "口腔🙂") {
+    std::cerr << "UTF-8 character counting or truncation failed\n";
+    return 1;
+  }
+  if (aiJobRetryDelaySeconds(1) != 5 || aiJobRetryDelaySeconds(2) != 30) {
+    std::cerr << "AI job retry policy changed unexpectedly\n";
+    return 1;
+  }
   const auto expected_reply = std::string("我还想了解一下具体需要检查什么。");
   const auto plain = parseModelJsonContent("{\"reply\":\"" + expected_reply + "\"}");
   const auto fenced = parseModelJsonContent("```json\n{\"reply\":\"" + expected_reply + "\"}\n```");
@@ -85,6 +93,45 @@ int main() {
   if (normalized["roundComments"][0]["userMessage"] != messages[1]["content"]) {
     std::cerr << "round comment was not grounded in the user message\n";
     return 1;
+  }
+  if (normalized["recommendedPhrases"].size() != 1 ||
+      normalized["recommendedPhrases"][0]["patientSays"] != messages[0]["content"] ||
+      normalized["recommendedPhrases"][0]["csReply"] !=
+          normalized["roundComments"][0]["recommendedRewrite"]) {
+    std::cerr << "report-derived phrase insight was not grounded correctly\n";
+    return 1;
+  }
+  if (normalized["learningMistakes"].size() != 1 ||
+      normalized["learningMistakes"][0]["kind"] != "improvement" ||
+      normalized["learningMistakes"][0]["originalQuote"] != messages[1]["content"]) {
+    std::cerr << "report-derived learning mistake was not created correctly\n";
+    return 1;
+  }
+
+  auto capped_deduction_report = safe_report;
+  capped_deduction_report["dimensionScores"]["medicalCompliance"] = 60;
+  capped_deduction_report["violations"] = json::array({
+      {{"round", 1}, {"originalQuote", "是否需要拔牙"}, {"type", "越权判断"},
+       {"reason", "具体诊疗判断需要医生结合检查评估。"}, {"deduction", 80},
+       {"recommendedRewrite", "是否需要拔牙，要由医生结合检查结果评估。"}}});
+  const auto normalized_deduction = normalizeReport(capped_deduction_report, messages);
+  if (normalized_deduction["violations"][0]["deduction"] != 50) {
+    std::cerr << "violation deduction was not capped at 50\n";
+    return 1;
+  }
+  if (normalized_deduction["learningMistakes"].size() != 1 ||
+      normalized_deduction["learningMistakes"][0]["kind"] != "violation" ||
+      normalized_deduction["learningMistakes"][0]["priority"] != "high") {
+    std::cerr << "violation learning mistake was not classified correctly\n";
+    return 1;
+  }
+  capped_deduction_report["dimensionScores"]["medicalCompliance"] = 61;
+  try {
+    (void)normalizeReport(capped_deduction_report, messages);
+    std::cerr << "inconsistent severe violation score was accepted\n";
+    return 1;
+  } catch (const ApiError& error) {
+    if (error.code != "MODEL_SCORE_INCONSISTENT") throw;
   }
 
   auto unsafe_report = safe_report;

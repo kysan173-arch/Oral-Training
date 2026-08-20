@@ -2,67 +2,105 @@ const api = require('../../utils/api.js');
 
 Page({
   data: {
-    groups: [],
-    totalPhrases: 0,
     loading: true,
-    searchKeyword: '',
-    isSearching: false
+    keyword: '',
+    phrases: [],
+    scenarioFilters: [{ id: '', name: '全部场景' }],
+    selectedScenarioId: '',
+    favoritesOnly: false,
+    favoriteBusyId: ''
   },
 
   onLoad(options) {
-    // 从首页搜索传入
-    if (options && options.search) {
-      this.setData({ searchKeyword: decodeURIComponent(options.search) });
-      this.loadPhrases(options.search);
-    }
+    this.setData({ keyword: options.search || '', favoritesOnly: options.favorites === '1' });
+    this.loadScenarioFilters();
+    this.loadPhrases();
   },
 
-  onShow() {
-    if (!this.data.isSearching) {
-      this.loadPhrases(this.data.searchKeyword || '');
-    }
+  loadScenarioFilters() {
+    api.getScenarios().then(data => {
+      const scenarioFilters = [{ id: '', name: '全部场景' }].concat((data.items || []).map(item => ({
+        id: item.id,
+        name: item.name
+      })));
+      this.setData({ scenarioFilters });
+    }).catch(() => {});
   },
 
-  loadPhrases(keyword) {
+  onSearchInput(e) { this.setData({ keyword: e.detail.value }); },
+
+  onSearchConfirm() { this.loadPhrases(); },
+
+  clearSearch() { this.setData({ keyword: '' }, () => this.loadPhrases()); },
+
+  selectScenario(e) {
+    const selectedScenarioId = e.currentTarget.dataset.id || '';
+    this.setData({ selectedScenarioId }, () => this.loadPhrases());
+  },
+
+  loadPhrases() {
     this.setData({ loading: true });
-    api.getPhrases(keyword || '').then(data => {
-      this.setData({
-        groups: data.groups || [],
-        totalPhrases: data.totalPhrases || 0,
-        loading: false,
-        isSearching: !!(data.keyword)
-      });
+    api.getLearningPhrases({
+      search: this.data.keyword.trim(),
+      scenarioId: this.data.selectedScenarioId,
+      favoritesOnly: this.data.favoritesOnly,
+      limit: 50
+    }).then(data => {
+      this.setData({ phrases: data.items || [], loading: false });
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '加载失败', icon: 'none' });
+      wx.showToast({ title: error.message || '话术加载失败', icon: 'none' });
     });
-  },
-
-  onSearchInput(e) {
-    this.setData({ searchKeyword: e.detail.value });
-  },
-
-  onSearchConfirm() {
-    const keyword = this.data.searchKeyword.trim();
-    this.loadPhrases(keyword);
-  },
-
-  onClearSearch() {
-    this.setData({ searchKeyword: '', isSearching: false });
-    this.loadPhrases('');
   },
 
   copyPhrase(e) {
     const phrase = e.currentTarget.dataset.phrase;
     if (!phrase) return;
-    wx.setClipboardData({ data: phrase, success: () => wx.showToast({ title: '已复制', icon: 'success' }) });
+    wx.setClipboardData({ data: phrase, success: () => wx.showToast({ title: '已复制话术', icon: 'success' }) });
   },
 
-  goTraining(e) {
-    const id = e.currentTarget.dataset.id;
-    if (!id) return;
-    api.createSession(id).then(data => {
-      wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
-    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
-  }
+  selectPhraseView(e) {
+    const favoritesOnly = e.currentTarget.dataset.favorites === 'true';
+    if (favoritesOnly === this.data.favoritesOnly) return;
+    this.setData({ favoritesOnly }, () => this.loadPhrases());
+  },
+
+  toggleFavorite(e) {
+    const { sessionId, phraseKey } = e.currentTarget.dataset;
+    const phrase = this.data.phrases.find(item => item.sessionId === sessionId && item.phraseKey === phraseKey);
+    if (!phrase || this.data.favoriteBusyId) return;
+    const favorite = !phrase.favorited;
+    this.setData({ favoriteBusyId: phrase.id });
+    api.setLearningPhraseFavorite(sessionId, phraseKey, favorite).then(() => {
+      const phrases = this.data.favoritesOnly && !favorite
+        ? this.data.phrases.filter(item => item.id !== phrase.id)
+        : this.data.phrases.map(item => item.id === phrase.id ? Object.assign({}, item, { favorited: favorite }) : item);
+      this.setData({ phrases, favoriteBusyId: '' });
+      wx.showToast({ title: favorite ? '已收藏话术' : '已取消收藏', icon: 'success' });
+    }).catch(error => {
+      this.setData({ favoriteBusyId: '' });
+      wx.showToast({ title: error.message || '收藏操作失败', icon: 'none' });
+    });
+  },
+
+  startScenario(e) {
+    const scenarioId = e.currentTarget.dataset.id;
+    if (!scenarioId) return;
+    api.getScenarios().then(data => {
+      const scenario = (data.items || []).find(item => item.id === scenarioId);
+      if (scenario && scenario.activeSession) {
+        wx.navigateTo({ url: `/pages/training/training?sessionId=${scenario.activeSession.id}` });
+        return null;
+      }
+      return api.createSession(scenarioId);
+    }).then(data => {
+      if (data && data.session) {
+        wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
+      }
+    }).catch(error => wx.showToast({ title: error.message || '创建训练失败', icon: 'none' }));
+  },
+
+  goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+
+  goMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); }
 });

@@ -1,82 +1,115 @@
 <view class="page-shell profile-page">
-  <view class="profile-header">
-    <text class="eyebrow">成长档案 / ABILITY</text>
-    <text class="page-title">能力画像</text>
-    <text class="page-intro">基于历史训练数据生成个人能力趋势分析与短板诊断。</text>
+  <!-- 骨架加载 -->
+  <view class="skeleton-block" wx:if="{{loading}}">
+    <view class="skeleton-hero"></view>
+    <view class="skeleton-stats">
+      <view class="skeleton-stat"></view>
+      <view class="skeleton-stat"></view>
+      <view class="skeleton-stat"></view>
+    </view>
+    <view class="skeleton-row-short"></view>
+    <view class="skeleton-bars">
+      <view class="skeleton-bar"></view>
+      <view class="skeleton-bar"></view>
+      <view class="skeleton-bar"></view>
+      <view class="skeleton-bar"></view>
+      <view class="skeleton-bar"></view>
+    </view>
+    <view class="skeleton-row"></view>
+    <view class="skeleton-row"></view>
   </view>
 
-  <!-- 加载态 -->
-  <view class="loading-card card" wx:if="{{loading}}">
-    <text class="loading-text">正在生成能力画像…</text>
-  </view>
+  <block wx:elif="{{profile}}">
+    <!-- Hero 卡片 -->
+    <view class="profile-hero-card">
+      <view class="ph-deco ph-deco-1"></view>
+      <view class="ph-deco ph-deco-2"></view>
+      <view class="ph-accent-bar"></view>
+      <text class="eyebrow">MY LEARNING</text>
+      <text class="page-title">个人成长</text>
+      <text class="page-intro">你的数据仅基于本人完成的客服训练报告，用于回顾练习重点，不用于排名或正式考核。</text>
+    </view>
 
-  <block wx:elif="{{!loadError}}">
+    <!-- 统计卡 横滑 -->
+    <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="stat-row">
+        <view class="stat-card stat-card-blue">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{profile.overall.totalCompleted}}</text>
+          <text class="stat-lbl">完成训练</text>
+        </view>
+        <view class="stat-card stat-card-purple">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{profile.overall.averageScore}}</text>
+          <text class="stat-lbl">平均得分</text>
+        </view>
+        <view class="stat-card stat-card-delta {{profile.overall.scoreDelta > 0 ? 'delta-positive' : profile.overall.scoreDelta < 0 ? 'delta-negative' : ''}}">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/tools/growth.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{profile.overall.scoreDelta > 0 ? '+' : ''}}{{profile.overall.scoreDelta}}</text>
+          <text class="stat-lbl">首末变化</text>
+        </view>
+      </view>
+    </scroll-view>
 
-    <!-- 能力标签 -->
-    <view class="tags-section" wx:if="{{tags.length > 0}}">
-      <text class="section-label">能力标签</text>
-      <view class="tags-row">
-        <view class="tag-chip card" wx:for="{{tags}}" wx:key="name">
-          <text class="tag-emoji">{{item.emoji}}</text>
-          <text class="tag-name">{{item.name}}</text>
-          <text class="tag-dim">{{item.dimensionName}} {{item.score > 0 ? item.score + '分' : ''}}</text>
+    <!-- 能力画像 -->
+    <view class="section-heading"><text>能力画像</text></view>
+    <view class="dimension-card card">
+      <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
+        <view class="dimension-head">
+          <text class="dim-name">{{item.name}}</text>
+          <text class="dim-score" style="color: {{item.color}};">{{item.score}}</text>
+        </view>
+        <view class="score-bar">
+          <view class="score-fill" style="width: {{item.score}}%; background: {{item.color}};"></view>
         </view>
       </view>
     </view>
 
-    <!-- 总体概览 -->
-    <view class="overview-card card">
-      <view class="ov-item">
-        <text class="ov-value">{{overall.averageScore}}</text>
-        <text class="ov-label">综合均分</text>
+    <!-- 下一步练习重点 -->
+    <view class="section-heading"><text>下一步练习重点</text></view>
+    <view class="weakness-card card" wx:for="{{weaknesses}}" wx:key="key">
+      <view class="weakness-head">
+        <text class="weakness-tag">优先提升</text>
+        <text>{{item.name}}</text>
+        <text class="weakness-score">{{item.score}} 分</text>
       </view>
-      <view class="ov-divider"></view>
-      <view class="ov-item">
-        <text class="ov-value level-{{levelEn}}">{{overall.level}}</text>
-        <text class="ov-label">当前等级</text>
+      <text class="weakness-body">{{item.suggestion}}</text>
+    </view>
+
+    <!-- 错题掌握进度 -->
+    <view class="learning-summary card">
+      <view class="ls-header">
+        <text class="ls-title">错题掌握进度</text>
+        <text class="ls-link" bindtap="goMistakes">去复练 ›</text>
       </view>
-      <view class="ov-divider"></view>
-      <view class="ov-item">
-        <text class="ov-value">{{overall.totalCompleted}}</text>
-        <text class="ov-label">完成训练</text>
+      <text class="ls-stats">{{profile.mistakes.mastered}} / {{profile.mistakes.total}} 项已标记掌握</text>
+      <view class="ls-bar">
+        <view class="ls-fill" style="width: {{mistakePercent}}%;"></view>
       </view>
     </view>
 
-    <!-- 五维成长曲线 -->
-    <view class="section-label">近30天五维成长曲线</view>
-    <view class="chart-container card" wx:if="{{showChart}}">
-      <canvas type="2d" id="growth-canvas" class="growth-canvas" style="width:340px;height:280px;"></canvas>
-      <view class="chart-legend">
-        <text class="legend-item" wx:for="{{dimLabel}}" wx:key="*this" style="color:{{dimColors[['knowledgeAccuracy','medicalCompliance','empathy','needsDiscovery','serviceEtiquette'][index]]}}">● {{item}}</text>
+    <!-- 最近训练走势 -->
+    <view class="section-heading">
+      <text>最近训练走势</text>
+      <text class="section-link" bindtap="goHistory">历史记录 ›</text>
+    </view>
+    <view class="empty-card card" wx:if="{{trend.length === 0}}"><text>完成一次客服训练后，这里会出现真实的成长记录。</text></view>
+    <view class="trend-card card" wx:for="{{trend}}" wx:key="sessionId">
+      <view class="trend-left">
+        <text class="trend-scene">{{item.scenarioName}}</text>
+        <text class="trend-date">{{item.date}}</text>
+      </view>
+      <view class="trend-right">
+        <text class="trend-score tier-{{item.tier}}">{{item.scoreLabel}}</text>
+        <text wx:if="{{item.arrow}}" class="trend-arrow arrow-{{item.arrowClass}}">{{item.arrow}}</text>
       </view>
     </view>
-    <view class="empty-chart card" wx:elif="{{trend.length < 2}}">
-      <text>数据不足</text>
-      <text class="empty-sub">至少完成2次训练才能生成成长曲线，请继续训练。</text>
-    </view>
 
-    <!-- 短板诊断 -->
-    <view class="section-label">能力短板诊断</view>
-    <view class="weakness-card card" wx:if="{{weaknessDiagnosis.length > 0}}">
-      <view class="weakness-item" wx:for="{{weaknessDiagnosis}}" wx:key="dimension">
-        <view class="weakness-top">
-          <text class="weakness-dim">{{item.dimensionName}}</text>
-          <text class="weakness-scores">最近得分：{{item.recentScores.join('、')}}</text>
-        </view>
-        <text class="weakness-advice">💡 {{item.suggestion}}</text>
-      </view>
-    </view>
-    <view class="empty-weakness card" wx:else>
-      <text>暂无显著短板</text>
-      <text class="empty-sub">各维度表现均衡，继续保持！</text>
-    </view>
-
-    <!-- 操作入口 -->
-    <view class="profile-actions">
-      <button class="primary-button" bindtap="goMistakes">查看错题本</button>
-      <button class="secondary-button" bindtap="goHistory">返回训练报告</button>
+    <!-- 底部操作 -->
+    <button class="primary-button train-button" bindtap="goTraining">开始下一次训练</button>
+    <view class="aux-links">
+      <view class="aux-link" bindtap="goPhrases"><image class="aux-link-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image><text>话术锦囊 ›</text></view>
+      <view class="aux-link" bindtap="goMistakes"><image class="aux-link-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image><text>错题复练 ›</text></view>
     </view>
   </block>
-
-  <text class="disclaimer">AI模拟训练，评分基于固定规则，不替代正式考核。</text>
 </view>

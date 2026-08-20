@@ -1,74 +1,39 @@
-.phrases-page { padding: 0 24rpx 48rpx; }
-
-/* 搜索 */
-.phrases-search-section { margin-top: 20rpx; }
-.phrases-search-box {
-  display: flex;
-  align-items: center;
-  padding: 14rpx 22rpx;
-  border-radius: 40rpx;
-  background: #fff;
-  box-shadow: 0 2rpx 14rpx rgba(0,0,0,.05);
-}
-.search-icon { font-size: 28rpx; margin-right: 10rpx; opacity: .5; }
-.search-input { flex: 1; height: 52rpx; font-size: 25rpx; color: #333; }
-.search-clear { padding: 6rpx 12rpx; color: #bbb; font-size: 26rpx; }
-
-/* Hero */
-.phrases-hero { padding: 36rpx 28rpx; margin-top: 20rpx; border-radius: 24rpx; color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); }
-.phrases-title { display: block; font-size: 40rpx; font-weight: 700; }
-.phrases-desc { display: block; margin-top: 12rpx; font-size: 23rpx; opacity: .8; line-height: 1.55; }
-.phrases-stat { display: flex; align-items: baseline; gap: 8rpx; margin-top: 20rpx; padding-top: 20rpx; border-top: 1rpx solid rgba(255,255,255,.15); font-size: 22rpx; opacity: .75; }
-.stat-big { font-size: 36rpx; font-weight: 700; opacity: 1; }
-
-/* 空态 */
-.empty-state { display: flex; flex-direction: column; align-items: center; padding: 60rpx 30rpx; margin-top: 30rpx; }
-.empty-icon { font-size: 64rpx; }
-.empty-title { margin-top: 16rpx; font-size: 28rpx; font-weight: 700; color: #666; }
-.empty-desc { margin-top: 10rpx; color: #999; font-size: 23rpx; line-height: 1.6; text-align: center; }
-.empty-reset { margin-top: 20rpx; padding: 12rpx 36rpx; border-radius: 30rpx; color: #667eea; font-size: 23rpx; background: #eef2ff; }
-
-.loading-state { padding: 60rpx; text-align: center; }
-.loading-text { color: #999; font-size: 25rpx; }
-
-/* 分组列表 */
-.phrase-groups { margin-top: 24rpx; }
-.group-block { margin-bottom: 28rpx; }
-.group-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14rpx; padding: 0 4rpx; }
-.group-name-row { display: flex; align-items: center; gap: 12rpx; }
-.group-name { font-size: 28rpx; font-weight: 700; color: #333; }
-.group-count { padding: 4rpx 16rpx; border-radius: 16rpx; font-size: 20rpx; }
-.tag-basic { color: #5672bd; background: #eef2ff; }
-.tag-adv { color: #bd7a35; background: #fff2df; }
-.group-train-link { color: #667eea; font-size: 23rpx; font-weight: 600; }
-
-/* 话术卡片 - 对话式 */
-.group-phrases { display: flex; flex-direction: column; gap: 12rpx; }
-.phrase-full-card {
-  padding: 24rpx;
-  border-radius: 20rpx;
-  background: #fff;
-  box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04);
-}
-
-/* 迷你对话 */
-.phrase-dialogue-mini { margin-bottom: 10rpx; }
-.pdm-row { display: flex; padding: 12rpx; border-radius: 12rpx; }
-.pdm-patient { background: #faf6f0; border-left: 4rpx solid #e0a860; }
-.pdm-cs { background: #f2f4ff; border-left: 4rpx solid #667eea; }
-.pdm-role {
-  flex-shrink: 0;
-  width: 60rpx;
-  font-size: 19rpx;
-  font-weight: 700;
-}
-.pdm-patient .pdm-role { color: #c28b3c; }
-.pdm-cs .pdm-role { color: #667eea; }
-.pdm-text { flex: 1; font-size: 23rpx; color: #555; line-height: 1.5; }
-.pdm-arrow { display: block; text-align: center; color: #ccc; font-size: 20rpx; margin: 2rpx 0; }
-
-.phrase-copy-hint { display: block; margin-top: 10rpx; color: #bbb; font-size: 20rpx; text-align: right; }
-
-.disclaimer { display: block; margin-top: 30rpx; color: #aaa; font-size: 21rpx; line-height: 1.5; text-align: center; }
-
-.card { border-radius: 20rpx; background: #fff; box-shadow: 0 3rpx 14rpx rgba(0,0,0,.04); }
+.phrases-page { padding: 28rpx 24rpx 48rpx; }
+.page-header { padding: 4rpx 4rpx 22rpx; }
+.eyebrow, .page-title, .page-intro { display: block; }
+.eyebrow { color: #5B6EF5; font-size: 20rpx; letter-spacing: 2rpx; font-weight: 700; }
+.page-title { margin-top: 12rpx; color: #303046; font-size: 42rpx; font-weight: 700; }
+.page-intro { margin-top: 12rpx; color: #888; font-size: 23rpx; line-height: 1.65; }
+.phrase-view-switch { display: flex; padding: 6rpx; margin: -4rpx 0 20rpx; border-radius: 18rpx; background: #e9ebf8; }
+.phrase-view { flex: 1; padding: 13rpx 10rpx; border-radius: 14rpx; color: #7780aa; font-size: 23rpx; text-align: center; }
+.phrase-view.selected { color: #fff; background: #5B6EF5; font-weight: 700; }
+.search-card { display: flex; align-items: center; padding: 10rpx 16rpx; }
+.search-input { flex: 1; height: 64rpx; color: #444; font-size: 24rpx; }
+.search-action, .clear-action { margin-left: 16rpx; color: #5B6EF5; font-size: 23rpx; }
+.clear-action { color: #999; }
+.filter-scroll { margin: 20rpx -24rpx 22rpx; white-space: nowrap; }
+.filter-row { display: inline-flex; padding: 0 24rpx; gap: 12rpx; }
+.filter-chip { display: inline-block; padding: 10rpx 18rpx; border-radius: 24rpx; color: #777; background: #eceef5; font-size: 22rpx; }
+.filter-chip.selected { color: #fff; background: #5B6EF5; }
+.loading-card, .empty-card { padding: 38rpx 28rpx; color: #888; text-align: center; font-size: 24rpx; }
+.empty-title, .empty-text { display: block; }
+.empty-title { color: #444; font-size: 29rpx; font-weight: 700; }
+.empty-text { margin-top: 12rpx; line-height: 1.6; }
+.empty-card button { width: 100%; margin-top: 24rpx; }
+.phrase-list { display: flex; flex-direction: column; gap: 18rpx; }
+.phrase-card { padding: 24rpx; }
+.phrase-head, .phrase-actions { display: flex; align-items: center; justify-content: space-between; }
+.scene-tag { max-width: 75%; overflow: hidden; color: #5B6EF5; font-size: 23rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.round-tag { color: #aaa; font-size: 21rpx; }
+.patient-box, .phrase-box { display: flex; flex-direction: column; margin-top: 18rpx; padding: 16rpx; border-radius: 14rpx; color: #666; background: #f8f8fb; font-size: 23rpx; line-height: 1.55; }
+.patient-label, .phrase-label { margin-bottom: 5rpx; color: #999; font-size: 20rpx; }
+.phrase-box { color: #4a5b9a; background: #f0f3ff; }
+.phrase-label { color: #5B6EF5; font-weight: 700; }
+.phrase-text { color: #44558f; font-size: 25rpx; }
+.reason-text { display: block; margin-top: 15rpx; color: #999; font-size: 21rpx; line-height: 1.55; }
+.phrase-actions { margin-top: 20rpx; font-size: 23rpx; }
+.copy-action { color: #5B6EF5; }
+.favorite-action { color: #9b83c4; }
+.favorite-action.active { color: #d19040; }
+.train-action { color: #4b9b72; }
+.bottom-links { display: flex; justify-content: space-around; margin-top: 32rpx; color: #5B6EF5; font-size: 23rpx; }

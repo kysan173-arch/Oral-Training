@@ -1,102 +1,189 @@
-/* app.wxss - 全局样式 */
+/* ============================================================
+   app.wxss - 全局设计系统（Design Tokens + 通用工具类）
+   ============================================================ */
+
+/* ── 1. 设计 Token ─────────────────────────────── */
 page {
-  background-color: #f5f5f5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  /* 品牌色板 */
+  --color-primary: #5B6EF5;          /* 主色 */
+  --color-primary-dark: #4A5CD8;     /* 主色·按压/深 */
+  --color-primary-light: #EEF0FF;    /* 主色·浅底 */
+  --color-primary-pale: #F5F6FF;     /* 主色·极浅底 */
+
+  /* 语义色 */
+  --color-success: #34C759;          /* 成功 */
+  --color-success-light: #EAF9EF;    /* 成功·浅底 */
+  --color-warning: #FF9500;          /* 警告 */
+  --color-warning-light: #FFF5E6;    /* 警告·浅底 */
+  --color-danger: #FF3B30;           /* 危险 */
+  --color-danger-light: #FFF0F0;     /* 危险·浅底 */
+
+  /* 中性色 */
+  --text-strong: #1F1D28;            /* 标题文字 */
+  --text-body: #3C3A44;              /* 正文 */
+  --text-secondary: #6E6C76;         /* 次级文字 */
+  --text-muted: #A6A3AC;             /* 弱文字/占位 */
+  --text-disabled: #CCC9CE;          /* 禁用 */
+  --color-border: #ECE9E4;           /* 分隔线/边框 */
+  --color-bg: #FBFAF8;               /* 页面背景（暖白） */
+  --bg-grad: linear-gradient(180deg, #FCFBF9 0%, #F7F5F1 100%);  /* 暖白渐变 */
+
+  /* 圆角 */
+  --radius-lg: 24rpx;                /* 大卡 */
+  --radius-md: 16rpx;                /* 中卡/按钮 */
+  --radius-sm: 10rpx;                /* 标签/输入 */
+
+  /* 阴影 */
+  --shadow-sm: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
+
+  /* 基础 */
+  background-color: var(--color-bg);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 28rpx;
-  color: #333;
+  color: var(--text-body);
   box-sizing: border-box;
 }
 
-/* 通用容器 */
+/* ── 2. 布局容器 ─────────────────────────────── */
+.page-shell {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding-bottom: 40rpx;
+  background: var(--bg-grad, var(--color-bg));
+}
+
 .container {
   min-height: 100vh;
   padding-bottom: 30rpx;
 }
 
-/* 卡片样式 */
+/* ── 3. 卡片 ─────────────────────────────────── */
 .card {
-  background: #fff;
-  border-radius: 24rpx;
+  background: var(--color-surface, #fff);
+  border-radius: var(--radius-lg);
   padding: 30rpx;
-  margin: 20rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-sm);
+}
+.card.card-press {
+  transition: transform .15s, box-shadow .15s;
+}
+.card.card-press:active {
+  transform: scale(.99);
+  box-shadow: var(--shadow-md);
 }
 
+/* ── 4. 标题层级 ─────────────────────────────── */
+.section-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 4rpx;
+  margin: 8rpx 0 16rpx;
+}
+.section-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--text-strong);
+  letter-spacing: .5rpx;
+}
+.section-caption {
+  font-size: 22rpx;
+  color: var(--text-muted);
+}
+
+/* ── 5. 文本工具 ─────────────────────────────── */
+.text-strong { color: var(--text-strong); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.muted { color: var(--text-muted); }
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clearfix::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+/* ── 6. 按钮 ─────────────────────────────────── */
 button {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
+button::after { border: none; }
 
-button::after {
-  border: none;
-}
-
-/* 按钮样式 */
 .btn {
   border-radius: 60rpx;
   font-size: 30rpx;
   padding: 20rpx 0;
   text-align: center;
+  transition: opacity .15s;
 }
+.btn:active { opacity: .85; }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--color-primary);
   color: #fff;
 }
-
 .btn-secondary {
-  background: #f0f0f0;
-  color: #666;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
-
 .btn-disabled {
-  background: #ccc;
-  color: #999;
-}
-
-.page-shell {
-  min-height: 100vh;
-  box-sizing: border-box;
-  padding-bottom: 40rpx;
-  background: #f5f5f5;
+  background: #E8E9F0;
+  color: var(--text-muted);
 }
 
 .primary-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--color-primary);
   color: #fff;
   border-radius: 46rpx;
   font-size: 30rpx;
   font-weight: 600;
+  transition: opacity .15s, transform .1s;
 }
+.primary-button:active { opacity: .88; }
 
 .secondary-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef3ff;
-  color: #5268c9;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
   border-radius: 40rpx;
   font-size: 26rpx;
+  font-weight: 500;
+  transition: opacity .15s;
 }
+.secondary-button:active { opacity: .85; }
 
-.muted {
-  color: #999;
+/* ── 7. 标签 ─────────────────────────────────── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+  font-size: 20rpx;
+  font-weight: 500;
+  line-height: 1.4;
 }
+.tag-primary { color: var(--color-primary); background: var(--color-primary-light); }
+.tag-success { color: var(--color-success); background: var(--color-success-light); }
+.tag-warning { color: var(--color-warning); background: var(--color-warning-light); }
+.tag-danger  { color: var(--color-danger); background: var(--color-danger-light); }
+.tag-neutral { color: var(--text-secondary); background: var(--color-bg); }
 
-/* 文本省略 */
-.ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 清除浮动 */
-.clearfix::after {
-  content: '';
-  display: table;
-  clear: both;
-}
+/* ── 8. 通用间距工具（倍距体系 8/12/16/20/24） ── */
+.mt-8 { margin-top: 8rpx; } .mb-8 { margin-bottom: 8rpx; }
+.mt-12 { margin-top: 12rpx; } .mb-12 { margin-bottom: 12rpx; }
+.mt-16 { margin-top: 16rpx; } .mb-16 { margin-bottom: 16rpx; }
+.mt-20 { margin-top: 20rpx; } .mb-20 { margin-bottom: 20rpx; }
+.mt-24 { margin-top: 24rpx; } .mb-24 { margin-bottom: 24rpx; }

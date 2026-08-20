@@ -1,56 +1,161 @@
 <view class="page-shell scene-page">
-  <view class="scene-header">
-    <text class="eyebrow">STEP 01 / SCENE</text>
-    <text class="page-title">{{trainingMode === 'patient_simulation' ? '选择患者模拟场景' : '选择客服训练场景'}}</text>
-    <text class="page-intro">{{trainingMode === 'patient_simulation' ? '你将扮演患者，向标准口腔客服自由提问并学习其合规答复。' : '先了解患者公开画像，再开始一段不提供提示的真实对练。'}}</text>
+  <!-- 主管阻断 -->
+  <view class="role-blocked-card" wx:if="{{roleBlocked}}">
+    <view class="blocked-icon">锁</view>
+    <text class="blocked-title">当前是主管身份，无法使用训练功能</text>
+    <text class="blocked-desc">训练场景和模拟对话面向学员开放，主管可在「数据」Tab 查看机构整体训练情况。</text>
+    <view class="blocked-action" bindtap="switchRole"><text>切换为学员身份</text></view>
   </view>
 
+  <block wx:else>
+  <!-- 顶部标题区 -->
+  <view class="scene-header">
+    <view class="header-title-row">
+      <view>
+        <text class="eyebrow">{{trainingMode === 'patient_simulation' ? '自由模拟' : '场景选择'}}</text>
+        <text class="page-title">{{trainingMode === 'patient_simulation' ? '患者模拟训练' : '选择训练场景'}}</text>
+      </view>
+    </view>
+    <text class="page-intro">{{trainingMode === 'patient_simulation' ? '自由描述场景，模拟真实工作中遇到的各种患者情况' : '4 大场景分类，覆盖口腔客服核心沟通能力'}}</text>
+  </view>
+
+  <!-- 模式切换 -->
   <view class="mode-switch" aria-label="训练模式切换">
+    <view class="mode-indicator {{trainingMode === 'patient_simulation' ? 'mode-indicator-right' : ''}}"></view>
     <view class="mode-option {{trainingMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchMode" data-mode="customer_service">客服训练</view>
     <view class="mode-option {{trainingMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchMode" data-mode="patient_simulation">患者模拟</view>
   </view>
 
   <view class="boundary-tip"><text class="boundary-icon">i</text><text>{{trainingMode === 'patient_simulation' ? '标准客服会展示答复思路与合规边界；不提供诊断、治疗承诺或未经确认的价格信息。' : '患者隐藏信息不会直接展示，训练中请通过提问逐步了解。'}}</text></view>
 
-  <view class="scenario-list">
-    <view class="category-card card" wx:for="{{categories}}" wx:key="id" wx:for-item="cat">
-      <view class="cat-header" bindtap="toggleCategory" data-cat-id="{{cat.id}}">
-        <view class="cat-left">
-          <text class="cat-icon">{{cat.icon}}</text>
-          <view class="cat-info">
-            <text class="cat-name">{{cat.name}}</text>
-            <text class="cat-progress">{{cat.scenarios.length}}个场景</text>
+  <!-- ═══════════════════════════════════════ -->
+  <!-- 患者模拟模式：自由提问面板 -->
+  <!-- ═══════════════════════════════════════ -->
+  <view class="free-roleplay-panel" wx:if="{{trainingMode === 'patient_simulation'}}">
+    <view class="free-roleplay-header">
+      <text class="free-roleplay-title">你想模拟什么场景？</text>
+      <text class="free-roleplay-subtitle">描述你在实际工作中遇到的患者情况，AI 会扮演标准客服进行回复与学习</text>
+    </view>
+
+    <textarea class="free-roleplay-textarea"
+      placeholder="例如：一位 45 岁的男性患者来咨询种植牙，他对价格很敏感，同时担心手术风险和恢复期……"
+      value="{{freeDescription}}"
+      bindinput="onFreeDescriptionChange"
+      maxlength="500"
+    />
+
+    <view class="free-roleplay-meta">
+      <text class="meta-count">{{freeDescription.length}}/500</text>
+    </view>
+
+    <view class="free-roleplay-examples">
+      <text class="example-label">快速参考</text>
+      <view class="example-list">
+        <view class="example-chip" bindtap="fillExample" data-example="一位 28 岁女性来咨询隐形矫正，她比较在意美观和复诊频率，预算有限，在对比多家诊所。">隐形矫正咨询</view>
+        <view class="example-chip" bindtap="fillExample" data-example="一位 55 岁大叔刚拔完智齿，现在持续流血且伴有低烧，他很焦虑，打电话来询问是否正常，需要怎么处理。">术后异常处理</view>
+        <view class="example-chip" bindtap="fillExample" data-example="一位妈妈带 8 岁孩子来看牙，孩子非常害怕哭闹，不配合检查，妈妈希望我们能耐心引导，不要强制治疗。">儿童牙科恐惧</view>
+        <view class="example-chip" bindtap="fillExample" data-example="一位患者做完根管治疗后觉得还是疼，怀疑治疗没做好，要求退费或者重新治疗，态度比较强硬。">治疗效果质疑</view>
+      </view>
+    </view>
+
+    <button class="primary-button free-start-btn {{freeDescription ? '' : 'is-disabled'}}" bindtap="startFreeRoleplay">开始模拟</button>
+
+    <!-- 历史自由模拟会话（如果有） -->
+    <view class="active-session-bar" wx:if="{{activeFreeSession}}">
+      <view class="active-session-copy">
+        <text class="active-session-label">你有进行中的模拟</text>
+        <text class="active-session-sub">可继续上次的问答，或放弃后重新开始</text>
+      </view>
+      <view class="active-session-actions">
+        <text class="active-session-btn active-session-abandon" bindtap="abandonFreeRoleplay" data-sessionid="{{activeFreeSession.id}}">放弃</text>
+        <text class="active-session-btn active-session-continue" bindtap="continueFreeRoleplay" data-sessionid="{{activeFreeSession.id}}">继续 ›</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- 客服训练模式：4 张可折叠分类卡 -->
+  <!-- ═══════════════════════════════════════ -->
+  <view class="category-cards" wx:if="{{trainingMode === 'customer_service'}}">
+    <view class="category-card {{item.expanded ? 'expanded' : ''}}" wx:for="{{categories}}" wx:key="id">
+      <!-- 分类卡头部 -->
+      <view class="category-header" bindtap="toggleCategory" data-id="{{item.id}}">
+        <view class="category-header-left">
+          <text class="category-icon">{{item.icon}}</text>
+          <view class="category-header-text">
+            <text class="category-name">{{item.name}}</text>
+            <text class="category-desc">{{item.description}}</text>
           </view>
         </view>
-        <text class="cat-arrow {{cat.expanded ? 'open' : ''}}">▼</text>
+        <view class="category-header-right">
+          <text class="category-progress">{{item.completedCount}}/{{item.totalCount}} 题已练</text>
+          <text class="category-arrow {{item.expanded ? 'rotated' : ''}}">▼</text>
+        </view>
       </view>
 
-      <view class="cat-body" wx:if="{{cat.expanded}}">
-        <view class="scenario-card card" wx:for="{{cat.scenarios}}" wx:key="id" wx:for-item="item">
+      <!-- 展开后的情景题目列表 -->
+      <view class="category-body" wx:if="{{item.expanded}}">
+        <view wx:if="{{item.items.length === 0}}" class="category-empty">暂无题目</view>
+        <view class="scenario-card card scenario-level-{{scenario.difficultyLevel}}" wx:for="{{item.items}}" wx:for-item="scenario" wx:for-index="scenarioIndex" wx:key="id">
+          <!-- 顶部标签行 -->
           <view class="scenario-topline">
-            <text class="scenario-index">0{{index + 1}}</text>
-            <text class="difficulty {{item.difficultyText === '进阶' ? 'advanced' : ''}}">{{item.difficultyText}}</text>
-            <text class="active-mark" wx:if="{{item.activeSession}}">进行中 · {{item.activeSessionRounds}}</text>
+            <text class="scenario-index">0{{scenarioIndex + 1}}</text>
+            <text class="difficulty difficulty-{{scenario.difficultyLevel}}">{{scenario.difficultyLabel}}</text>
+            <text class="active-mark" wx:if="{{scenario.activeSession}}">进行中 · {{scenario.activeSession.currentRound}}/10轮</text>
           </view>
-          <text class="scenario-name">{{item.name}}</text>
-          <text class="scenario-summary">{{item.summary || item.description}}</text>
+
+          <!-- 题目名称与描述 -->
+          <text class="scenario-name">{{scenario.name}}</text>
+          <text class="scenario-summary">{{scenario.summary}}</text>
+
+          <!-- 分数行 -->
+          <view class="score-row">
+            <text class="pass-score">及格分：{{scenario.passScore || 60}}分</text>
+            <text class="best-score" wx:if="{{scenario.bestScore !== null && scenario.bestScore !== undefined}}">历史最佳：{{scenario.bestScore}}分</text>
+          </view>
+
+          <!-- 患者画像（支持自定义） -->
           <view class="profile-row">
-            <view class="profile-avatar">{{item.patientAge}}</view>
-            <view class="profile-copy"><text class="profile-label">{{trainingMode === 'patient_simulation' ? '患者提问场景' : '患者基础画像'}}</text><text class="profile-text">{{item.patientConcern}}，{{item.patientEmotion}}</text></view>
+            <view class="profile-avatar">{{(customProfiles[scenario.id] && customProfiles[scenario.id].age) ? customProfiles[scenario.id].age + '岁' : scenario.patientAge}}</view>
+            <view class="profile-copy">
+              <view class="profile-header-line">
+                <text class="profile-label">患者基础画像</text>
+                <text class="profile-edit-btn" bindtap="toggleCustomProfile" data-id="{{scenario.id}}">{{showCustomProfileId === scenario.id ? '收起' : '自定义画像'}}</text>
+              </view>
+              <text class="profile-text">{{(customProfiles[scenario.id] && customProfiles[scenario.id].description) ? customProfiles[scenario.id].description : scenario.patientConcern}}，{{(customProfiles[scenario.id] && customProfiles[scenario.id].emotion) ? customProfiles[scenario.id].emotion : scenario.patientEmotion}}</text>
+            </view>
           </view>
-          <view class="focus-row" bindtap="toggleProfile" data-id="{{item.id}}"><text class="focus-label">{{trainingMode === 'patient_simulation' ? '服务学习重点' : '训练重点'}}</text><text class="focus-hint">{{expandedId === item.id ? '收起' : '查看'}} ›</text></view>
-          <view class="focus-list" wx:if="{{expandedId === item.id}}"><text class="focus-tag" wx:for="{{item.focus}}" wx:for-item="focus" wx:key="*this">{{focus}}</text></view>
-          <view class="suggestion-block" wx:if="{{trainingMode === 'patient_simulation' && expandedId === item.id && item.suggestedQuestions.length}}">
-            <text class="suggestion-label">可直接作为患者提问</text>
-            <view class="suggestion-list"><text class="suggestion-chip" wx:for="{{item.suggestedQuestions}}" wx:for-item="question" wx:key="*this" bindtap="openSuggestion" data-id="{{item.id}}" data-prompt="{{question}}">{{question}}</text></view>
+
+          <!-- 自定义画像输入面板 -->
+          <view class="custom-profile-panel" wx:if="{{showCustomProfileId === scenario.id}}">
+            <view class="custom-profile-title">自定义该场景的患者画像</view>
+            <view class="custom-input-row">
+              <text class="custom-input-label">年龄</text>
+              <input class="custom-input custom-input-short" type="number" placeholder="例如：35" value="{{customProfiles[scenario.id] ? customProfiles[scenario.id].age : ''}}" bindinput="onCustomProfileChange" data-id="{{scenario.id}}" data-field="age" />
+            </view>
+            <view class="custom-input-row">
+              <text class="custom-input-label">描述</text>
+              <input class="custom-input" placeholder="例如：刚拔完智齿，担心感染" value="{{customProfiles[scenario.id] ? customProfiles[scenario.id].description : ''}}" bindinput="onCustomProfileChange" data-id="{{scenario.id}}" data-field="description" />
+            </view>
+            <view class="custom-input-row">
+              <text class="custom-input-label">情绪</text>
+              <input class="custom-input" placeholder="例如：焦虑、犹豫" value="{{customProfiles[scenario.id] ? customProfiles[scenario.id].emotion : ''}}" bindinput="onCustomProfileChange" data-id="{{scenario.id}}" data-field="emotion" />
+            </view>
+            <text class="custom-profile-hint">自定义画像仅影响本次训练显示，提交后 AI 患者将基于你设定的画像进行对话</text>
           </view>
+
+          <!-- 操作按钮 -->
           <view class="scenario-actions">
-            <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{item.id}}" data-mode="{{item.activeSession ? 'continue' : 'new'}}">{{item.actionText}}</button>
-            <text class="restart-link" wx:if="{{item.activeSession}}" bindtap="restartTraining" data-id="{{item.id}}">重新开始</text>
+            <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{scenario.id}}" data-mode="{{scenario.activeSession ? 'continue' : 'new'}}">
+              {{scenario.actionText}}
+            </button>
+            <text class="restart-link" wx:if="{{scenario.activeSession}}" bindtap="restartTraining" data-id="{{scenario.id}}">重新开始</text>
           </view>
         </view>
       </view>
     </view>
   </view>
-  <text class="disclaimer">AI模拟训练，不构成医疗建议；客服不替代医生进行诊断或确定治疗方案。</text>
+
+  <text class="disclaimer">AI 模拟训练，不构成医疗建议；客服不替代医生进行诊断或确定治疗方案。</text>
+  </block>
 </view>

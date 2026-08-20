@@ -1,144 +1,82 @@
 const api = require('../../utils/api.js');
 
-const SCENARIO_FILTERS = [
-  { id: '', name: '全部场景' },
-  { id: 'implant-basic', name: '种植牙咨询' },
-  { id: 'orthodontic-basic', name: '正畸咨询' },
-  { id: 'price-comparison', name: '比价异议' },
-  { id: 'post-treatment-discomfort', name: '术后不适' }
-];
-
-const DIFF_MAP = { basic: '基础', advanced: '进阶' };
-const DIFF_COLOR = { basic: '#5672bd', advanced: '#bd7a35' };
-
 const dimensionsFrom = score => [
-  { key: 'knowledgeAccuracy', name: '知识准确性', score: score.knowledgeAccuracy || 0, color: '#667eea' },
-  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance || 0, color: '#52a67a' },
-  { key: 'empathy', name: '同理心', score: score.empathy || 0, color: '#f0a34b' },
-  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery || 0, color: '#6b9de8' },
-  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette || 0, color: '#e85d75' }
+  { key: 'empathy', name: '同理心', score: score.empathy || 0, color: '#667eea' },
+  { key: 'knowledgeAccuracy', name: '知识准确性', score: score.knowledgeAccuracy || 0, color: '#52a67a' },
+  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery || 0, color: '#f0a34b' },
+  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette || 0, color: '#6b9de8' },
+  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance || 0, color: '#8b75c9' }
 ];
-
-const normalizeEvaluation = evaluation => Object.assign({}, evaluation, {
-  strengths: (evaluation.strengths || []).map(item => item.content || item.evidence || item),
-  improvements: (evaluation.improvements || []).map(item => item.content || item),
-  violations: (evaluation.violations || []).map((item, index) => Object.assign({}, item, {
-    id: item.id || `violation-${index}`,
-    quote: item.originalQuote || item.quote || '',
-    rewrite: item.recommendedRewrite || item.rewrite || ''
-  })),
-  roundComments: (evaluation.roundComments || []).map(item => Object.assign({}, item, {
-    userQuote: item.userMessage || item.userQuote || '',
-    rewrite: item.recommendedRewrite || item.rewrite || ''
-  })),
-  recommendedPhrases: (evaluation.recommendedPhrases || [])
-});
-
-const getPassStatus = (item) => {
-  if (item.status !== 'completed' || item.totalScore === null) return null;
-  return item.totalScore >= 60 ? 'passed' : 'failed';
-};
 
 Page({
   data: {
     sessions: [],
-    allSessions: [],
     expandedId: '',
-    expandedEval: null,
-    expandedDims: [],
-    expandedLoading: false,
+    expandedEvaluationId: '',
     historyMode: 'customer_service',
-    statusFilter: 'all',       // 'all' | 'passed' | 'failed'
-    scenarioFilter: '',        // scenarioId or ''
-    scenarioFilters: SCENARIO_FILTERS,
-    scenarioFilterLabel: '场景分类 ▾',
-    showScenarioFilter: false
+    statusFilters: [
+      { id: 'all', name: '全部' }, { id: 'completed', name: '已完成' },
+      { id: 'in_progress', name: '进行中' }, { id: 'abandoned', name: '已放弃' }
+    ],
+    selectedStatus: 'all',
+    roleBlocked: false
   },
 
-  onShow() { this.loadSessions(); },
+  onShow() {
+    const user = api.getCurrentUser();
+    if (user && user.role === 'admin') {
+      this.setData({ roleBlocked: true });
+      return;
+    }
+    this.setData({ roleBlocked: false });
+    this.loadSessions();
+  },
+
+  goAdminDashboard() { wx.switchTab({ url: '/pages/admin/admin' }); },
 
   loadSessions() {
-    const isRoleplay = this.data.historyMode === 'patient_simulation';
-    const request = isRoleplay ? api.getRoleplaySessions({ status: 'all', limit: 50 }) : api.getSessions({ status: 'all', limit: 50 });
+    this.historyRequestVersion = (this.historyRequestVersion || 0) + 1;
+    const requestVersion = this.historyRequestVersion;
+    const requestedMode = this.data.historyMode;
+    const isRoleplay = requestedMode === 'patient_simulation';
+    const params = {
+      status: this.data.selectedStatus,
+      limit: 50
+    };
+    const request = isRoleplay ? api.getRoleplaySessions(params) : api.getSessions(params);
     request.then(data => {
-      const sessions = (data.items || []).map(item => {
-        const passStatus = getPassStatus(item);
-        return Object.assign({}, item, {
-          statusText: item.status === 'in_progress' ? '进行中' : item.status === 'completed' ? '已完成' : '已放弃',
-          statusClass: item.status,
-          actionText: item.status === 'in_progress'
-            ? (isRoleplay ? '继续模拟' : '继续训练')
-            : item.status === 'completed'
-              ? (isRoleplay ? '查看复盘' : '查看报告')
-              : '查看对话',
-          evaluation: !isRoleplay && item.totalScore !== null ? { totalScore: item.totalScore } : null,
-          isRoleplay,
-          messages: [],
-          passStatus,
-          passLabel: passStatus === 'passed' ? '已通过' : passStatus === 'failed' ? '未通过' : '',
-          totalScore: item.totalScore
-        });
-      });
-      this.setData({ allSessions: sessions, expandedId: '', expandedEval: null });
-      this.applyFilters();
-    }).catch(error => wx.showToast({ title: error.message || '历史记录加载失败', icon: 'none' }));
-  },
-
-  applyFilters() {
-    let sessions = this.data.allSessions;
-    const { statusFilter, scenarioFilter } = this.data;
-
-    // 按通过状态筛选（仅对已完成的客服训练）
-    if (statusFilter !== 'all') {
-      sessions = sessions.filter(s => {
-        if (s.status !== 'completed' || s.isRoleplay) return false;
-        return statusFilter === 'passed' ? (s.totalScore >= 60) : (s.totalScore < 60);
-      });
-    }
-
-    // 按场景筛选
-    if (scenarioFilter) {
-      sessions = sessions.filter(s => s.scenarioId === scenarioFilter);
-    }
-
-    this.setData({ sessions });
-  },
-
-  onStatusFilter(e) {
-    const status = e.currentTarget.dataset.status;
-    this.setData({ statusFilter: status }, () => this.applyFilters());
-  },
-
-  toggleScenarioFilter() {
-    this.setData({ showScenarioFilter: !this.data.showScenarioFilter });
-  },
-
-  onScenarioFilter(e) {
-    const id = e.currentTarget.dataset.id;
-    const label = this.computeFilterLabel(id);
-    this.setData({ scenarioFilter: id, scenarioFilterLabel: label, showScenarioFilter: false }, () => this.applyFilters());
-  },
-
-  computeFilterLabel(filterId) {
-    if (!filterId) return '场景分类 ▾';
-    const match = SCENARIO_FILTERS.find(f => f.id === filterId);
-    return match ? '场景：' + match.name : '场景分类 ▾';
+      if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
+      const sessions = data.items.map(item => Object.assign({}, item, {
+        statusText: item.status === 'in_progress' ? '进行中' : item.status === 'completed' ? '已完成' : '已放弃',
+        statusClass: item.status,
+        actionText: item.status === 'in_progress'
+          ? (isRoleplay ? '继续模拟' : '继续训练')
+          : item.status === 'completed'
+            ? (isRoleplay ? '查看复盘' : '查看报告')
+            : '查看对话',
+        evaluation: !isRoleplay && item.totalScore !== null ? { totalScore: item.totalScore } : null,
+        isRoleplay,
+        messages: [],
+        evaluationDetail: null,
+        evaluationLoading: false
+      }));
+      this.setData({ sessions, expandedId: '', expandedEvaluationId: '' });
+    }).catch(error => {
+      if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
+      wx.showToast({ title: error.message || '历史记录加载失败', icon: 'none' });
+    });
   },
 
   switchHistoryMode(e) {
     const mode = e.currentTarget.dataset.mode;
     if (!mode || mode === this.data.historyMode) return;
-    this.setData({
-      historyMode: mode,
-      sessions: [],
-      allSessions: [],
-      expandedId: '',
-      expandedEval: null,
-      statusFilter: 'all',
-      scenarioFilter: '',
-      scenarioFilterLabel: '场景分类 ▾',
-      showScenarioFilter: false
-    }, () => this.loadSessions());
+    this.setData({ historyMode: mode, sessions: [], expandedId: '', expandedEvaluationId: '' }, () => this.loadSessions());
+  },
+
+  selectStatus(e) {
+    const selectedStatus = e.currentTarget.dataset.id || 'all';
+    if (selectedStatus === this.data.selectedStatus) return;
+    this.setData({ selectedStatus }, () => this.loadSessions());
   },
 
   handleAction(e) {
@@ -158,47 +96,61 @@ Page({
   toggleConversation(e) {
     const id = e.currentTarget.dataset.id;
     if (this.data.expandedId === id) {
-      this.setData({ expandedId: '', expandedEval: null, expandedDims: [] });
+      this.setData({ expandedId: '' });
       return;
     }
     const session = this.data.sessions.find(item => item.id === id);
     if (!session) return;
-
-    this.setData({ expandedId: id, expandedEval: null, expandedDims: [], expandedLoading: true });
-
+    const requestedMode = this.data.historyMode;
+    this.conversationRequestVersion = (this.conversationRequestVersion || 0) + 1;
+    const requestVersion = this.conversationRequestVersion;
     const request = session.isRoleplay ? api.getRoleplaySession(id) : api.getSession(id);
     request.then(data => {
+      if (requestVersion !== this.conversationRequestVersion || requestedMode !== this.data.historyMode) return;
       const messages = (data.messages || []).map(message => Object.assign({}, message, {
         learningPoints: message.learningPoints || []
       }));
       const sessions = this.data.sessions.map(item => item.id === id
         ? Object.assign({}, item, { messages })
         : item);
-      this.setData({ sessions, expandedLoading: false });
+      this.setData({ sessions, expandedId: id });
     }).catch(error => {
+      if (requestVersion !== this.conversationRequestVersion || requestedMode !== this.data.historyMode) return;
       wx.showToast({ title: error.message, icon: 'none' });
-      this.setData({ expandedLoading: false });
     });
+  },
 
-    // 如果是已完成的客服训练，加载评估数据
-    if (session.status === 'completed' && !session.isRoleplay) {
-      api.getEvaluation(id).then(report => {
-        if (report.status === 'ready' && report.evaluation) {
-          const evaluation = normalizeEvaluation(report.evaluation);
-          this.setData({
-            expandedEval: evaluation,
-            expandedDims: dimensionsFrom(evaluation.dimensionScores)
-          });
-        }
-      }).catch(() => {});
+  toggleEvaluation(e) {
+    const id = e.currentTarget.dataset.id;
+    const session = this.data.sessions.find(item => item.id === id);
+    if (!session || session.isRoleplay || session.status !== 'completed') return;
+    if (this.data.expandedEvaluationId === id) {
+      this.setData({ expandedEvaluationId: '' });
+      return;
     }
-  },
-
-  goProfile() {
-    wx.navigateTo({ url: '/pages/profile/profile' });
-  },
-
-  goMistakes() {
-    wx.navigateTo({ url: '/pages/mistakes/mistakes' });
+    if (session.evaluationDetail) {
+      this.setData({ expandedEvaluationId: id });
+      return;
+    }
+    this.evaluationRequestVersion = (this.evaluationRequestVersion || 0) + 1;
+    const requestVersion = this.evaluationRequestVersion;
+    const sessions = this.data.sessions.map(item => item.id === id
+      ? Object.assign({}, item, { evaluationLoading: true }) : item);
+    this.setData({ sessions, expandedEvaluationId: id });
+    api.getEvaluation(id).then(data => {
+      if (requestVersion !== this.evaluationRequestVersion || this.data.historyMode !== 'customer_service') return;
+      const detail = data.status === 'ready' && data.evaluation ? Object.assign({}, data.evaluation, {
+        dimensions: dimensionsFrom(data.evaluation.dimensionScores || {})
+      }) : { status: data.status, pending: true };
+      const nextSessions = this.data.sessions.map(item => item.id === id
+        ? Object.assign({}, item, { evaluationDetail: detail, evaluationLoading: false }) : item);
+      this.setData({ sessions: nextSessions });
+    }).catch(error => {
+      if (requestVersion !== this.evaluationRequestVersion) return;
+      const nextSessions = this.data.sessions.map(item => item.id === id
+        ? Object.assign({}, item, { evaluationLoading: false }) : item);
+      this.setData({ sessions: nextSessions, expandedEvaluationId: '' });
+      wx.showToast({ title: error.message || '报告加载失败', icon: 'none' });
+    });
   }
 });

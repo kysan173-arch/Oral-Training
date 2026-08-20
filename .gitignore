@@ -22,6 +22,25 @@ backend/.local-postgres.log
 backend/.backend.stdout.log
 backend/.backend.stderr.log
 backend/.env
+
+# Secrets - NEVER commit API keys or credentials
+backend.env
+backend/backend.env
 backend/portable/backend.env
-newbackend/backend.env
-server/.env
+backend/run-backend.bat
+
+# Build artifacts & local runtime
+*.exe
+*.dll
+*.o
+*.obj
+backend/server_out.txt
+backend/server_err.txt
+server_out.txt
+query
+
+# IDE / tooling
+.workbuddy/
+.vscode/
+.project/
+*.log

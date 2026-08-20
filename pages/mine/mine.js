@@ -1,212 +1,194 @@
 const api = require('../../utils/api.js');
 
-const POINTS_PER_TRAINING = 100;
-const POINTS_PER_PASS = 50;
+const buildCalendar = checkin => {
+  const year = checkin.year;
+  const month = checkin.month;
+  const checkedDates = new Set(checkin.checkedDates || []);
+  const today = checkin.today || '';
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells = [];
+  for (let index = 0; index < firstWeekday; index += 1) cells.push({ empty: true });
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    cells.push({ day, checked: checkedDates.has(date), isToday: date === today, empty: false });
+  }
+  return cells;
+};
+
+const computeLevel = points => {
+  const levels = [
+    { level: 1, name: '见习客服', min: 0, max: 49 },
+    { level: 2, name: '初级客服', min: 50, max: 149 },
+    { level: 3, name: '资深客服', min: 150, max: 299 },
+    { level: 4, name: '高级顾问', min: 300, max: 499 },
+    { level: 5, name: '首席顾问', min: 500, max: Infinity }
+  ];
+  const current = levels.find(l => points >= l.min && points <= l.max) || levels[0];
+  const progress = current.max === Infinity ? 100
+    : Math.min(100, Math.round((points - current.min) / (current.max - current.min) * 100));
+  return {
+    level: current.level,
+    levelName: current.name,
+    currentPoints: points,
+    nextLevelPoints: current.max === Infinity ? points : current.max,
+    progress,
+    isMax: current.level === 5
+  };
+};
 
 Page({
   data: {
-    points: 0,
-    level: { name: '见习客服', icon: '🆕' },
-    levelProgress: 0,
-    calendar: { year: 2026, month: 1, days: [] },
-    checkedToday: false,
-    streakDays: 0,
-    checkinDays: 0,
-    stats: { totalCompleted: 0, passRate: 0, avgScore: 0, checkinDays: 0 },
-    leaderboard: [],
-    favoritesCount: 0,
-    showRules: false,
-    pointsRules: []
+    loading: true,
+    checkingIn: false,
+    isAdmin: false,
+    mine: null,
+    adminData: null,
+    calendarDays: [],
+    streakText: '',
+    currentRole: '',
+    switchingRole: false,
+    loadError: false,
+    loadErrorMsg: '',
+    displayName: '',
+    avatar: '',
+    levelInfo: { level: 1, levelName: '见习客服', currentPoints: 0, nextLevelPoints: 50, progress: 0, isMax: false },
+    rulesExpanded: false,
+    checkinBurst: false
   },
 
   onShow() {
-    this.loadDashboard();
-  },
-
-  loadDashboard() {
-    api.getMineDashboard().then(data => {
-      this.setData({
-        points: data.points,
-        level: data.level,
-        levelProgress: this.calcLevelProgress(data.points),
-        calendar: data.calendar,
-        checkedToday: data.calendar.checkedToday,
-        streakDays: data.calendar.streakDays,
-        checkinDays: data.calendar.checkinDays,
-        stats: data.stats,
-        leaderboard: data.leaderboard,
-        favoritesCount: data.favoritesCount
-      });
-    }).catch(error => {
-      // 后端不可用时，使用本地 storage
-      this.loadFromLocal();
-      wx.showToast({ title: error.message || '数据加载失败', icon: 'none', duration: 1500 });
-    });
-  },
-
-  loadFromLocal() {
-    try {
-      const local = wx.getStorageSync('mineData') || {};
-      const points = local.points || 0;
-      const checkinDates = local.checkinDates || [];
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const firstDayOfWeek = new Date(year, month, 1).getDay();
-      const calendarDays = [];
-      for (let i = 0; i < firstDayOfWeek; i++) calendarDays.push({ day: '', checked: false, isToday: false });
-      for (let d = 1; d <= daysInMonth; d++) {
-        const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        calendarDays.push({ day: d, checked: checkinDates.includes(ds), isToday: ds === todayStr });
-      }
-      const checkedToday = checkinDates.includes(todayStr);
-
-      const levelMap = [
-        { min: 0, name: '见习客服', icon: '🆕' },
-        { min: 200, name: '初级客服', icon: '🌱' },
-        { min: 500, name: '进阶客服', icon: '📈' },
-        { min: 1000, name: '资深客服', icon: '💎' },
-        { min: 2000, name: '金牌客服', icon: '👑' },
-        { min: 4000, name: '首席客服', icon: '🏆' }
-      ];
-      const level = [...levelMap].reverse().find(l => points >= l.min) || levelMap[0];
-
-      this.setData({
-        points,
-        level,
-        levelProgress: this.calcLevelProgress(points),
-        calendar: { year, month: month + 1, days: calendarDays },
-        checkedToday,
-        streakDays: 0,
-        checkinDays: checkinDates.length,
-        stats: local.stats || { totalCompleted: 0, passRate: 0, avgScore: 0, checkinDays: checkinDates.length },
-        favoritesCount: (local.favorites || []).length
-      });
-    } catch (e) {}
-  },
-
-  calcLevelProgress(points) {
-    const thresholds = [200, 500, 1000, 2000, 4000];
-    for (const t of thresholds) {
-      if (points < t) return Math.min(100, Math.round((points / t) * 100));
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 3 });
     }
-    return 100;
-  },
-
-  // 打卡
-  onCheckin() {
-    if (this.data.checkedToday) {
-      wx.showToast({ title: '今日已打卡', icon: 'none' });
+    const user = api.getCurrentUser();
+    if (user && user.role) {
+      this.setData({ currentRole: user.role });
+    }
+    if (user && user.role === 'admin') {
+      this.setData({ isAdmin: true });
+      this.loadAdminMine();
       return;
     }
-    api.mineCheckin().then(data => {
-      this.saveLocalCheckin(data);
-    }).catch(() => {
-      // 本地打卡
-      this.localCheckin();
-    });
+    this.setData({ isAdmin: false });
+    this.loadMine();
   },
 
-  saveLocalCheckin(data) {
-    wx.showToast({ title: data.message, icon: 'success' });
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    this.setData({ points: data.points, checkedToday: true });
-    this.updateCalendarCell(todayStr);
-    this.persistLocal();
-  },
-
-  localCheckin() {
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const local = wx.getStorageSync('mineData') || {};
-    local.points = (local.points || 0) + 10;
-    local.checkinDates = local.checkinDates || [];
-    local.checkinDates.push(todayStr);
-    wx.setStorageSync('mineData', local);
-    wx.showToast({ title: '打卡成功 +10 积分', icon: 'success' });
-    this.updateCalendarCell(todayStr);
-    this.setData({
-      points: local.points,
-      level: this.getLevel(local.points),
-      levelProgress: this.calcLevelProgress(local.points),
-      checkedToday: true,
-      checkinDays: local.checkinDates.length
-    });
-  },
-
-  updateCalendarCell(dateStr) {
-    const days = this.data.calendar.days.map(d => {
-      if (!d.day) return d;
-      const now = new Date();
-      const ds = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
-      if (ds === dateStr) return Object.assign({}, d, { checked: true });
-      return d;
-    });
-    this.setData({ 'calendar.days': days });
-  },
-
-  persistLocal() {
-    const local = wx.getStorageSync('mineData') || {};
-    local.points = this.data.points;
-    const dates = this.data.calendar.days.filter(d => d.checked).map(d => {
-      const c = this.data.calendar;
-      return `${c.year}-${String(c.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
-    });
-    local.checkinDates = dates;
-    wx.setStorageSync('mineData', local);
-  },
-
-  getLevel(points) {
-    const levelMap = [
-      { min: 0, name: '见习客服', icon: '🆕' },
-      { min: 200, name: '初级客服', icon: '🌱' },
-      { min: 500, name: '进阶客服', icon: '📈' },
-      { min: 1000, name: '资深客服', icon: '💎' },
-      { min: 2000, name: '金牌客服', icon: '👑' },
-      { min: 4000, name: '首席客服', icon: '🏆' }
-    ];
-    return [...levelMap].reverse().find(l => points >= l.min) || levelMap[0];
-  },
-
-  // 积分规则
-  toggleRules() {
-    if (!this.data.pointsRules.length) {
-      api.getMineRules().then(data => {
-        this.setData({ pointsRules: data.rules, showRules: true });
-      }).catch(() => {
-        this.setData({
-          showRules: true,
-          pointsRules: [
-            { action: '每日打卡', points: '+10', desc: '每天可打卡一次' },
-            { action: '完成一次训练', points: '+100', desc: '完成任意模式训练' },
-            { action: '训练通过（≥60分）', points: '+50', desc: '额外奖励' },
-            { action: '连续打卡3天', points: '+30', desc: '连续奖励' },
-            { action: '连续打卡7天', points: '+80', desc: '周奖励' }
-          ]
-        });
+  loadAdminMine() {
+    this.setData({ loading: true, loadError: false, loadErrorMsg: '' });
+    Promise.all([
+      api.getSupervisorDashboard({ range: 'month' }),
+      api.getSupervisorMembers({ limit: 100 })
+    ]).then(([dashboard, memberData]) => {
+      const savedAvatar = wx.getStorageSync('mine_avatar') || '';
+      const savedNickname = wx.getStorageSync('mine_nickname') || '';
+      const user = api.getCurrentUser();
+      const displayName = savedNickname || (user && user.displayName) || '主管';
+      const memberCount = (memberData.members || []).length;
+      const avgScore = typeof dashboard.averageScore === 'number'
+        ? (Math.round(dashboard.averageScore * 10) / 10).toFixed(1)
+        : dashboard.averageScore || 0;
+      this.setData({
+        displayName,
+        avatar: savedAvatar,
+        adminData: {
+          studentCount: dashboard.studentCount || memberCount || 0,
+          totalSessions: dashboard.totalSessions || 0,
+          averageScore: avgScore,
+          passRate: dashboard.passRate || 0
+        },
+        loading: false,
+        loadError: false
       });
-    } else {
-      this.setData({ showRules: !this.data.showRules });
+    }).catch(error => {
+      this.setData({ loading: false, loadError: true, loadErrorMsg: error.message || '管理数据加载失败' });
+      wx.showToast({ title: error.message || '管理数据加载失败', icon: 'none' });
+    });
+  },
+
+  loadMine() {
+    this.setData({ loading: true, loadError: false, loadErrorMsg: '' });
+    api.getLearningMine().then(data => {
+      const savedAvatar = wx.getStorageSync('mine_avatar') || '';
+      const savedNickname = wx.getStorageSync('mine_nickname') || '';
+      const displayName = savedNickname || data.user.displayName;
+      const levelInfo = computeLevel(data.points);
+      const streakDays = data.checkin.streakDays;
+      let streakText = '从今天开始记录';
+      if (streakDays >= 30) streakText = `🔥 已连续 ${streakDays} 天，太厉害了！`;
+      else if (streakDays >= 7) streakText = `🔥 连续签到 ${streakDays} 天，保持节奏`;
+      else if (streakDays > 0) streakText = `🔥 连续签到 ${streakDays} 天`;
+      this.setData({
+        mine: data,
+        displayName,
+        avatar: savedAvatar,
+        levelInfo,
+        calendarDays: buildCalendar(data.checkin),
+        streakText,
+        loading: false,
+        loadError: false
+      });
+    }).catch(error => {
+      this.setData({ loading: false, loadError: true, loadErrorMsg: error.message || '成长数据加载失败' });
+      wx.showToast({ title: error.message || '成长数据加载失败', icon: 'none' });
+    });
+  },
+
+  checkIn() {
+    if (!this.data.mine || this.data.checkingIn) return;
+    if (this.data.mine.checkin.checkedToday) {
+      wx.showToast({ title: '今日已签到', icon: 'none' });
+      return;
     }
+    this.setData({ checkingIn: true });
+    api.checkIn().then(data => {
+      this.setData({ checkingIn: false });
+      wx.showToast({ title: data.checkedIn ? `签到成功 +${data.pointsAwarded} 积分` : '今日已签到', icon: 'success' });
+      if (data.checkedIn) {
+        this.setData({ checkinBurst: true });
+        setTimeout(() => this.setData({ checkinBurst: false }), 700);
+      }
+      this.loadMine();
+    }).catch(error => {
+      this.setData({ checkingIn: false });
+      wx.showToast({ title: error.message || '签到失败', icon: 'none' });
+    });
   },
 
-  // 导航
-  goPhrases() {
-    wx.switchTab({ url: '/pages/home/home' });
+  switchRole() {
+    if (this.data.switchingRole) return;
+    const targetRole = this.data.currentRole === 'admin' ? 'learner' : 'admin';
+    wx.showModal({
+      title: '切换身份',
+      content: `确定要切换为「${targetRole === 'admin' ? '主管' : '学员'}」身份吗？`,
+      success: res => {
+        if (!res.confirm) return;
+        this.setData({ switchingRole: true });
+        api.switchRole(targetRole).then(data => {
+          wx.setStorageSync('oralTrainingAccessToken', data.accessToken);
+          wx.setStorageSync('oralTrainingUser', data.user);
+          wx.showToast({ title: '已切换，即将刷新', icon: 'success', duration: 1500 });
+          setTimeout(() => {
+            this.setData({ switchingRole: false });
+            wx.switchTab({ url: targetRole === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
+          }, 1600);
+        }).catch(error => {
+          this.setData({ switchingRole: false });
+          wx.showToast({ title: error.message || '切换失败', icon: 'none' });
+        });
+      }
+    });
   },
 
-  goProfile() {
-    wx.navigateTo({ url: '/pages/profile/profile' });
+  goAdminDashboard() { wx.switchTab({ url: '/pages/admin/admin' }); },
+  goAdminMembers() { wx.switchTab({ url: '/pages/admin/admin' }); },
+
+  toggleRules() {
+    this.setData({ rulesExpanded: !this.data.rulesExpanded });
   },
 
-  goMistakes() {
-    wx.navigateTo({ url: '/pages/mistakes/mistakes' });
-  },
-
-  goFavorites() {
-    wx.navigateTo({ url: '/pages/phrase-vault/phrase-vault' });
-  }
+  goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+  goMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
+  goPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
+  goFavorites() { wx.navigateTo({ url: '/pages/phrases/phrases?favorites=1' }); }
 });

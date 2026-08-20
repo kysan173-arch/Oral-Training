@@ -1,6 +1,6 @@
 {
-  "navigationBarTitleText": "训练报告",
-  "navigationBarBackgroundColor": "#667eea",
+  "navigationBarTitleText": "历史记录",
+  "navigationBarBackgroundColor": "#5B6EF5",
   "navigationBarTextStyle": "white",
   "enablePullDownRefresh": false,
   "usingComponents": {

@@ -1,5 +1,6 @@
 {
-  "navigationBarTitleText": "成员画像",
-  "navigationBarBackgroundColor": "#667eea",
-  "navigationBarTextStyle": "white"
+  "navigationBarTitleText": "成员学习详情",
+  "usingComponents": {
+    "radar-chart": "/components/radar-chart/radar-chart"
+  }
 }

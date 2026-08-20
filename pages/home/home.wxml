@@ -1,81 +1,144 @@
-<view class="page-shell home-v2">
-  <!-- 搜索框 -->
-  <view class="search-section">
-    <view class="search-box">
-      <text class="search-icon">🔍</text>
-      <input class="search-input"
-             placeholder="搜索话术（如「种植牙」「价格」）"
-             value="{{searchKeyword}}"
-             bindinput="onSearchInput"
-             bindconfirm="onSearchConfirm"
-             confirm-type="search" />
-      <text class="search-btn" bindtap="onSearchConfirm" wx:if="{{searchKeyword}}">搜索</text>
+<view class="page-shell home-page">
+  <!-- 品牌问候横幅（LOGO + 问候，单行） -->
+  <view class="brand-greet">
+    <view class="brand-logo-wrap">
+      <image class="brand-logo" src="/static/logo/logo.jpg" mode="aspectFill"></image>
+    </view>
+    <view class="brand-greet-copy">
+      <text class="brand-greet-name">口腔客服智能陪练</text>
+      <text class="brand-greet-text">{{greeting}}{{currentUserName ? '，' + currentUserName : '，欢迎回来'}}</text>
     </view>
   </view>
 
-  <!-- 热门话术轮播 — 简洁卡片，点击跳话术锦囊 -->
-  <view class="phrase-carousel-section" wx:if="{{phrasePreview.length > 0}}">
-    <view class="section-header">
-      <text class="section-head">热门话术</text>
-      <text class="section-more" bindtap="goPhrases">话术锦囊 ›</text>
+  <!-- 主管提示 -->
+  <view class="admin-hint" wx:if="{{isAdmin}}">
+    <view class="admin-hint-icon">!</view>
+    <text>当前为机构主管视图，点击「查看机构数据」可查看成员训练概况与统计。</text>
+  </view>
+
+  <block wx:if="{{!isAdmin}}">
+  <!-- 搜索框 -->
+  <view class="search-bar {{searchFocused ? 'search-bar-focused' : ''}}">
+    <text class="search-icon">Q</text>
+    <input class="search-input" placeholder="搜索话术（如「种植牙」「价格」）" value="{{searchQuery}}" bindinput="onSearchInput" confirm-type="search" bindconfirm="onSearch" bindfocus="onSearchFocus" bindblur="onSearchBlur" />
+    <text class="search-btn" wx:if="{{searchQuery}}" bindtap="onSearchTap">搜索</text>
+  </view>
+
+  <!-- 数据概览卡（主视觉） -->
+  <view class="overview-card">
+    <view class="overview-deco overview-deco-1"></view>
+    <view class="overview-deco overview-deco-2"></view>
+    <view class="overview-head">
+      <text class="overview-title">我的训练概览</text>
+      <text class="overview-sub">持续练习，不断进步</text>
     </view>
-    <swiper class="phrase-swiper"
-            indicator-dots="{{true}}"
-            indicator-color="rgba(102,126,234,.25)"
-            indicator-active-color="#667eea"
-            autoplay="{{true}}"
-            interval="{{4000}}"
-            circular="{{true}}">
-      <swiper-item wx:for="{{phrasePreview}}" wx:key="csReplies">
-        <view class="phrase-swiper-card" bindtap="goPhrases">
-          <view class="psc-header">
-            <text class="psc-scenario-tag">{{item.scenarioName}}</text>
-            <text class="psc-tap-hint">点击查看完整对话 ›</text>
+    <view class="overview-stats">
+      <view class="overview-stat">
+        <text class="overview-val">{{overview.totalCount}}</text>
+        <text class="overview-lbl">累计训练</text>
+      </view>
+      <view class="overview-divider"></view>
+      <view class="overview-stat">
+        <text class="overview-val">{{overview.averageScore}}</text>
+        <text class="overview-lbl">平均得分</text>
+      </view>
+      <view class="overview-divider"></view>
+      <view class="overview-stat">
+        <text class="overview-val">{{overview.latestScore}}</text>
+        <text class="overview-lbl">最近得分</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 推荐场景（2 列卡片，重点模块） -->
+  <view class="section-heading">
+    <view>
+      <view class="section-title-row">
+        <text class="section-title">推荐场景</text>
+      </view>
+      <text class="section-caption">精选训练，快速开始</text>
+    </view>
+    <view class="section-link" bindtap="startFromHome">更多 ›</view>
+  </view>
+  <view class="scene-grid" wx:if="{{recommendScenarios.length}}">
+    <view class="scene-card card scene-level-{{item.difficulty}}" wx:for="{{recommendScenarios}}" wx:key="id" hover-class="scene-card-hover" bindtap="startFromHome">
+      <view class="scene-card-top">
+        <text class="scene-card-diff diff-{{item.difficulty}}">{{item.difficulty === 'advanced' ? '进阶' : '入门'}}</text>
+        <text class="scene-card-go">去训练 ›</text>
+      </view>
+      <text class="scene-card-name">{{item.name}}</text>
+      <text class="scene-card-summary">{{item.summary}}</text>
+    </view>
+  </view>
+
+  <!-- 最近训练（单列精简列表） -->
+  <view class="section-heading">
+    <view>
+      <view class="section-title-row">
+        <text class="section-title">最近训练</text>
+      </view>
+      <text class="section-caption">回顾最近练习</text>
+    </view>
+    <view class="section-link" bindtap="viewHistory">更多 ›</view>
+  </view>
+  <view class="recent-list card" wx:if="{{recentSessions.length}}">
+    <view class="recent-row" wx:for="{{recentSessions}}" wx:key="id" hover-class="recent-row-hover" bindtap="viewHistory">
+      <view class="recent-row-icon icon-{{item.statusType}}"><image class="recent-row-img" src="/static/image/tools/status/{{item.statusType}}.png" mode="aspectFit"></image></view>
+      <view class="recent-row-copy">
+        <text class="recent-row-name">{{item.scenarioName}}</text>
+        <text class="recent-row-time">{{item.time}}</text>
+      </view>
+      <text class="recent-row-status status-{{item.statusType}}">{{item.statusText}}</text>
+      <text class="recent-row-arrow">›</text>
+    </view>
+  </view>
+  <view class="empty-hint" wx:if="{{!recentSessions.length}}">还没有训练记录，去练一个场景吧</view>
+
+  <!-- 热门话术轮播 -->
+  <view class="section-heading">
+    <view>
+      <view class="section-title-row">
+        <text class="section-title">热门话术</text>
+      </view>
+      <text class="section-caption">左滑浏览更多</text>
+    </view>
+    <view class="section-link pill-btn" bindtap="viewPhrases">话术锦囊 ›</view>
+  </view>
+  <view class="swiper-wrap">
+    <swiper class="phrase-swiper" autoplay="{{true}}" interval="4000" duration="500" circular="{{true}}" current="{{swiperCurrent}}" bindchange="onSwiperChange" indicator-dots="{{false}}">
+      <swiper-item wx:for="{{hotPhrases}}" wx:key="id">
+        <view class="phrase-card card">
+          <view class="phrase-header">
+            <view class="phrase-meta">
+              <text class="phrase-scene-tag">{{item.tag}}</text>
+              <text class="phrase-difficulty" wx:if="{{item.difficulty}}">{{item.difficulty}}</text>
+            </view>
+            <text class="phrase-title">{{item.title}}</text>
+            <text class="phrase-subtitle">适用场景：{{item.scenario}} · 患者类型：{{item.patientType}}</text>
           </view>
-          <text class="psc-phrase-text">"{{item.csReplies}}"</text>
+          <view class="phrase-preview">
+            <view class="preview-item">
+              <text class="preview-role preview-role-patient">患者：</text>
+              <text class="preview-line preview-patient">{{item.dialog[0].text}}</text>
+            </view>
+            <view class="preview-item">
+              <text class="preview-role preview-role-agent">客服：</text>
+              <text class="preview-line preview-agent">{{item.dialog[1].text}}</text>
+            </view>
+          </view>
+          <view class="phrase-footer">
+            <text class="phrase-expand-btn" bindtap="viewPhraseDetail" data-tag="{{item.tag}}">查看标准对话示范</text>
+            <button class="phrase-train-btn" bindtap="goTrainingFromHome" data-scenario="{{item.scenario}}">去训练</button>
+          </view>
         </view>
       </swiper-item>
     </swiper>
-  </view>
-  <view class="empty-hint card" wx:elif="{{overview && phrasePreview.length === 0}}">
-    <text>完成训练后，这里会展示热门话术卡片。点击可跳转话术锦囊查看完整对话示范。</text>
-  </view>
-
-  <!-- 场景训练入口 -->
-  <view class="section-header">
-    <text class="section-head">训练场景</text>
-    <text class="section-more" bindtap="goTraining">全部场景 ›</text>
-  </view>
-  <view class="scenario-grid" wx:if="{{scenarioStatus.length > 0}}">
-    <view class="scenario-grid-card card" wx:for="{{scenarioStatus}}" wx:key="scenarioId" bindtap="startScenario" data-id="{{item.scenarioId}}">
-      <view class="sgc-top">
-        <text class="sgc-name">{{item.name}}</text>
-        <text class="sgc-diff {{item.difficulty === 'advanced' ? 'diff-adv' : 'diff-basic'}}">{{item.difficultyText}}</text>
-      </view>
-      <text class="sgc-desc">{{item.summary}}</text>
-      <view class="sgc-bottom">
-        <text class="sgc-progress {{item.completedCount > 0 ? 'progress-done' : ''}}">{{item.progressText}}</text>
-        <text class="sgc-arrow">开始训练 ›</text>
-      </view>
+    <!-- 页码指示器 -->
+    <view class="swiper-page-indicator">
+      <view class="page-dot {{index === swiperCurrent ? 'active' : ''}}" wx:for="{{hotPhrases}}" wx:key="id" wx:for-index="index"></view>
     </view>
   </view>
+  </block>
 
-  <!-- 成长档案入口 -->
-  <view class="section-header">
-    <text class="section-head">成长档案</text>
-  </view>
-  <view class="growth-entries">
-    <view class="growth-entry card" bindtap="goProfile">
-      <text class="ge-emoji">📊</text>
-      <view class="ge-info"><text class="ge-title">能力画像</text><text class="ge-desc">五维成长曲线 · 短板诊断</text></view>
-      <text class="ge-arrow">›</text>
-    </view>
-    <view class="growth-entry card" bindtap="goMistakes">
-      <text class="ge-emoji">📝</text>
-      <view class="ge-info"><text class="ge-title">错题本</text><text class="ge-desc">待改进回合 · 复练提升</text></view>
-      <text class="ge-arrow">›</text>
-    </view>
-  </view>
-
-  <text class="disclaimer">AI模拟训练，不构成医疗建议；评分不替代医生、客服专家或正式培训考核。</text>
+  <text class="disclaimer">AI 模拟训练，不构成医疗建议；评分不替代医生、客服专家或正式培训考核。</text>
 </view>

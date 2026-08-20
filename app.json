@@ -8,25 +8,25 @@
     "pages/roleplay-result/roleplay-result",
     "pages/report/report",
     "pages/admin/admin",
-    "pages/phrases/phrases",
-    "pages/profile/profile",
-    "pages/mistakes/mistakes",
-    "pages/mine/mine",
     "pages/member-detail/member-detail",
-    "pages/phrase-vault/phrase-vault"
+    "pages/mine/mine",
+    "pages/phrases/phrases",
+    "pages/mistakes/mistakes",
+    "pages/profile/profile"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#667eea",
+    "navigationBarBackgroundColor": "#5B6EF5",
     "navigationBarTitleText": "口腔客服智能陪练",
     "navigationBarTextStyle": "white",
-    "backgroundColor": "#f5f5f5",
+    "backgroundColor": "#F7F8FA",
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#007aff",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "custom": true,
+    "color": "#A1A1AA",
+    "selectedColor": "#5B6EF5",
+    "backgroundColor": "#EEF0FF",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/home/home",
@@ -41,8 +41,8 @@
         "selectedIconPath": "static/image/tabbar/training_selected.png"
       },
       {
-        "pagePath": "pages/report/report",
-        "text": "历史",
+        "pagePath": "pages/admin/admin",
+        "text": "数据",
         "iconPath": "static/image/tabbar/report.png",
         "selectedIconPath": "static/image/tabbar/report_selected.png"
       },
@@ -51,12 +51,6 @@
         "text": "我的",
         "iconPath": "static/image/tabbar/mine.png",
         "selectedIconPath": "static/image/tabbar/mine_selected.png"
-      },
-      {
-        "pagePath": "pages/admin/admin",
-        "text": "数据",
-        "iconPath": "static/image/tabbar/admin.png",
-        "selectedIconPath": "static/image/tabbar/admin_selected.png"
       }
     ]
   },

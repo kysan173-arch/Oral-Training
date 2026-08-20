@@ -1,121 +1,264 @@
-<view class="mine-page">
-  <!-- 用户信息卡 -->
-  <view class="user-card">
-    <view class="user-info">
-      <view class="avatar">{{level.icon}}</view>
-      <view class="user-text">
-        <text class="user-name">客服学员</text>
-        <text class="user-level">{{level.name}}</text>
-      </view>
+<view class="page-shell mine-page">
+  <!-- 骨架加载态 -->
+  <view class="skeleton-block" wx:if="{{loading}}">
+    <view class="skeleton-hero"></view>
+    <view class="skeleton-stats">
+      <view class="skeleton-stat"></view>
+      <view class="skeleton-stat"></view>
+      <view class="skeleton-stat"></view>
+      <view class="skeleton-stat"></view>
     </view>
-    <view class="user-stats">
-      <view class="user-points">
-        <text class="up-value">{{points}}</text>
-        <text class="up-label">积分</text>
+    <view class="skeleton-row-short"></view>
+    <view class="skeleton-calendar"></view>
+    <view class="skeleton-row"></view>
+    <view class="skeleton-row"></view>
+  </view>
+  <view class="loading-card card" wx:elif="{{loadError}}">
+    <text>{{loadErrorMsg}}</text>
+    <view class="role-redirect" bindtap="{{isAdmin ? 'loadAdminMine' : 'loadMine'}}"><text>重新加载</text></view>
+  </view>
+
+  <!-- ── 主管个人中心 ── -->
+  <block wx:elif="{{isAdmin && adminData}}">
+    <!-- Admin Hero -->
+    <view class="mine-hero admin-hero">
+      <view class="hero-deco hero-deco-1"></view>
+      <view class="hero-deco hero-deco-2"></view>
+      <view class="hero-avatar">
+        <image wx:if="{{avatar}}" src="{{avatar}}" class="hero-avatar-img" mode="aspectFill"></image>
+        <text wx:else class="hero-avatar-text">{{displayName.charAt(0)}}</text>
       </view>
-      <view class="level-bar-wrap">
-        <view class="level-bar">
-          <view class="level-bar-fill" style="width:{{levelProgress}}%;"></view>
+      <view class="hero-info">
+        <view class="hero-name-row">
+          <text class="hero-name">{{displayName}}</text>
+          <view class="admin-role-badge">主管</view>
         </view>
-        <text class="level-hint">距下一级还需升级</text>
+        <text class="hero-subtitle">团队管理 · 数据洞察 · 辅导复盘</text>
+        <view class="hero-footer">
+          <view class="hero-points">
+            <text class="hero-points-val">{{adminData.studentCount}} 人</text>
+            <text class="hero-points-lbl">在训学员</text>
+          </view>
+          <view class="hero-role-switch" bindtap="switchRole">
+            <text class="hero-role-icon">切换</text>
+            <text class="hero-role-label">切换学员视角</text>
+          </view>
+        </view>
       </view>
     </view>
-  </view>
 
-  <!-- 训练统计 -->
-  <view class="stats-row">
-    <view class="stats-item">
-      <text class="si-value">{{stats.totalCompleted}}</text>
-      <text class="si-label">累计训练</text>
-    </view>
-    <view class="stats-item">
-      <text class="si-value">{{stats.passRate}}%</text>
-      <text class="si-label">通过率</text>
-    </view>
-    <view class="stats-item">
-      <text class="si-value">{{stats.avgScore}}</text>
-      <text class="si-label">平均分</text>
-    </view>
-    <view class="stats-item">
-      <text class="si-value">{{stats.checkinDays}}</text>
-      <text class="si-label">打卡天数</text>
-    </view>
-  </view>
+    <!-- 团队概览 -->
+    <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="stat-row">
+        <view class="stat-card stat-card-blue">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{adminData.totalSessions}}</text>
+          <text class="stat-lbl">本月训练</text>
+        </view>
+        <view class="stat-card stat-card-purple">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{adminData.averageScore}}</text>
+          <text class="stat-lbl">团队均分</text>
+        </view>
+        <view class="stat-card stat-card-green">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/target.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{adminData.passRate}}%</text>
+          <text class="stat-lbl">达标率</text>
+        </view>
+      </view>
+    </scroll-view>
 
-  <!-- 打卡日历 -->
-  <view class="section-header">
-    <text class="section-title">打卡日历</text>
-    <view class="section-right">
-      <text class="streak-info" wx:if="{{streakDays > 0}}">连续 {{streakDays}} 天</text>
-      <view class="checkin-btn {{checkedToday ? 'checked' : ''}}" bindtap="onCheckin">
-        <text>{{checkedToday ? '✓ 已打卡' : '点我打卡 +10'}}</text>
+    <!-- 管理中心入口 -->
+    <view class="section-heading">
+      <view><text>管理中心</text></view>
+    </view>
+    <view class="tool-card card tool-accent-blue" bindtap="goAdminDashboard">
+      <text class="tool-icon">数据</text>
+      <view><text>数据看板</text><text>五维能力 · 场景分布 · 辅导建议</text></view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-accent-green" bindtap="goAdminMembers">
+      <text class="tool-icon">成员</text>
+      <view><text>学员管理</text><text>成员学习摘要与详情</text></view>
+      <text class="tool-arrow">›</text>
+    </view>
+
+    <!-- 账号信息 -->
+    <view class="section-heading">
+      <view><text>账号信息</text></view>
+    </view>
+    <view class="admin-account card">
+      <view class="admin-account-row">
+        <text class="admin-account-label">当前身份</text>
+        <text class="admin-account-value">主管</text>
+      </view>
+      <view class="admin-account-row">
+        <text class="admin-account-label">登录方式</text>
+        <text class="admin-account-value">微信授权</text>
       </view>
     </view>
-  </view>
-  <view class="calendar-card card">
-    <view class="calendar-header">
-      <text>{{calendar.year}}年{{calendar.month}}月</text>
-    </view>
-    <view class="weekday-row">
-      <text class="weekday" wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text>
-    </view>
-    <view class="day-grid">
-      <view class="day-cell {{item.checked ? 'checked' : ''}} {{item.isToday ? 'today' : ''}}" wx:for="{{calendar.days}}" wx:key="index">
-        <text class="day-num" wx:if="{{item.day}}">{{item.day}}</text>
+  </block>
+
+  <block wx:elif="{{mine}}">
+    <!-- Hero 个人卡片 -->
+    <view class="mine-hero">
+      <view class="hero-deco hero-deco-1"></view>
+      <view class="hero-deco hero-deco-2"></view>
+      <view class="hero-avatar">
+        <image wx:if="{{avatar}}" src="{{avatar}}" class="hero-avatar-img" mode="aspectFill"></image>
+        <text wx:else class="hero-avatar-text">{{displayName.charAt(0)}}</text>
+      </view>
+      <view class="hero-info">
+        <view class="hero-name-row">
+          <text class="hero-name">{{displayName}}</text>
+          <view class="hero-level-tag">Lv.{{levelInfo.level}}</view>
+        </view>
+        <text class="hero-subtitle">把每一次练习沉淀为自己的沟通能力</text>
+        <view class="hero-level-row" wx:if="{{!levelInfo.isMax}}">
+          <view class="hero-level-bar">
+            <view class="hero-level-fill" style="width:{{levelInfo.progress}}%;"></view>
+          </view>
+          <text class="hero-level-text">{{levelInfo.currentPoints}}/{{levelInfo.nextLevelPoints}}</text>
+        </view>
+        <text class="hero-level-max" wx:else>{{levelInfo.levelName}} · 已达最高等级</text>
+        <view class="hero-footer">
+          <view class="hero-points">
+            <text class="hero-points-val">{{mine.points}}</text>
+            <text class="hero-points-lbl">学习积分</text>
+          </view>
+          <view class="hero-role-switch" bindtap="switchRole">
+            <text class="hero-role-icon">{{currentRole === 'admin' ? '管理' : '学员'}}</text>
+            <text class="hero-role-label">{{currentRole === 'admin' ? '主管' : '学员'}} · 点击切换</text>
+          </view>
+        </view>
       </view>
     </view>
-  </view>
 
-  <!-- 积分规则 -->
-  <view class="section-header">
-    <text class="section-title">积分规则</text>
-    <text class="section-link" bindtap="toggleRules">{{showRules ? '收起 ▲' : '展开 ▼'}}</text>
-  </view>
-  <view class="rules-card card" wx:if="{{showRules}}">
-    <view class="rule-row" wx:for="{{pointsRules}}" wx:key="action">
-      <text class="rule-action">{{item.action}}</text>
-      <text class="rule-points">{{item.points}}</text>
-      <text class="rule-desc">{{item.desc}}</text>
-    </view>
-  </view>
+    <!-- 统计卡 横滑 -->
+    <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="stat-row">
+        <view class="stat-card stat-card-blue">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{mine.stats.totalCompleted}}</text>
+          <text class="stat-lbl">完成训练</text>
+        </view>
+        <view class="stat-card stat-card-purple">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{mine.stats.averageScore}}</text>
+          <text class="stat-lbl">平均得分</text>
+        </view>
+        <view class="stat-card stat-card-green">
+          <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/target.png" mode="aspectFit"></image></view>
+          <text class="stat-val">{{mine.stats.passRate}}%</text>
+          <text class="stat-lbl">练习达标率</text>
+        </view>
+      </view>
+    </scroll-view>
 
-  <!-- 快捷入口 -->
-  <view class="section-header">
-    <text class="section-title">快捷入口</text>
-  </view>
-  <view class="shortcuts">
-    <view class="shortcut-item card" bindtap="goProfile">
-      <text class="sc-emoji">📊</text>
-      <text class="sc-text">能力画像</text>
-      <text class="sc-arrow">›</text>
+    <!-- 签到板块 -->
+    <view class="section-heading">
+      <view><text>每日签到</text><text class="streak-sub {{mine.checkin.streakDays >= 7 ? 'streak-hot' : ''}}">{{streakText}}</text></view>
+      <view class="checkin-wrap">
+        <button class="checkin-button {{mine.checkin.checkedToday ? 'checked' : ''}}" bindtap="checkIn" disabled="{{checkingIn || mine.checkin.checkedToday}}">{{checkingIn ? '签到中' : mine.checkin.checkedToday ? '今日已签到' : '签到 +10'}}</button>
+        <view class="checkin-burst {{checkinBurst ? 'checkin-burst-active' : ''}}">+10</view>
+      </view>
     </view>
-    <view class="shortcut-item card" bindtap="goMistakes">
-      <text class="sc-emoji">📝</text>
-      <text class="sc-text">错题本</text>
-      <text class="sc-arrow">›</text>
-    </view>
-    <view class="shortcut-item card" bindtap="goFavorites">
-      <text class="sc-emoji">⭐</text>
-      <text class="sc-text">话术收藏
-      <text class="sc-tag" wx:if="{{favoritesCount > 0}}">{{favoritesCount}}</text></text>
-      <text class="sc-arrow">›</text>
-    </view>
-  </view>
 
-  <!-- 排行榜 -->
-  <view class="section-header">
-    <text class="section-title">积分排行</text>
-  </view>
-  <view class="leader-card card">
-    <view class="leader-row" wx:for="{{leaderboard}}" wx:key="rank">
-      <text class="lr-rank {{item.rank <= 3 ? 'top-' + item.rank : ''}}">{{item.rank <= 3 ? ['🥇','🥈','🥉'][item.rank-1] : item.rank}}</text>
-      <text class="lr-name">{{item.name}}</text>
-      <text class="lr-points">{{item.points}} 分</text>
+    <!-- 签到数据（列表式，与上方卡片区分） -->
+    <view class="checkin-list card">
+      <view class="checkin-item">
+        <view class="checkin-item-icon"><image class="checkin-item-img" src="/static/image/checkin/trophy.png" mode="aspectFit"></image></view>
+        <text class="checkin-item-label">连续打卡</text>
+        <text class="checkin-item-value">{{mine.checkin.streakDays}}<text class="checkin-item-unit">天</text></text>
+      </view>
+      <view class="checkin-item">
+        <view class="checkin-item-icon"><image class="checkin-item-img" src="/static/image/checkin/star.png" mode="aspectFit"></image></view>
+        <text class="checkin-item-label">累计打卡</text>
+        <text class="checkin-item-value">{{mine.checkin.checkinDays}}<text class="checkin-item-unit">天</text></text>
+      </view>
+      <view class="checkin-item">
+        <view class="checkin-item-icon"><image class="checkin-item-img" src="/static/image/checkin/heart.png" mode="aspectFit"></image></view>
+        <text class="checkin-item-label">累计积分</text>
+        <text class="checkin-item-value">{{mine.points}}<text class="checkin-item-unit">分</text></text>
+      </view>
+      <view class="checkin-item">
+        <view class="checkin-item-icon"><image class="checkin-item-img" src="/static/image/checkin/check.png" mode="aspectFit"></image></view>
+        <text class="checkin-item-label">今日签到</text>
+        <text class="checkin-item-value {{mine.checkin.checkedToday ? 'item-done' : 'item-todo'}}">{{mine.checkin.checkedToday ? '已签到' : '未签到'}}</text>
+      </view>
     </view>
-    <view class="leader-empty" wx:if="{{leaderboard.length === 0}}">
-      <text>暂无排行数据</text>
-    </view>
-  </view>
 
-  <text class="disclaimer">积分与等级主要用于激励训练，不具备实际考核效力。</text>
+    <!-- 日历（参考图风格：居中大标题 + 圆角方块 + 今天紫色实心） -->
+    <view class="calendar-card card">
+      <text class="calendar-title">{{mine.checkin.year}} 年 {{mine.checkin.month}} 月</text>
+      <view class="weekdays"><text wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text></view>
+      <view class="calendar-grid">
+        <view wx:for="{{calendarDays}}" wx:key="index" class="calendar-cell {{item.empty ? 'is-empty' : ''}} {{item.checked ? 'checked' : ''}} {{item.isToday ? 'today' : ''}}">
+          <text wx:if="{{!item.empty}}">{{item.day}}</text>
+        </view>
+      </view>
+    </view>
+    <!-- 积分规则（可折叠） -->
+    <view class="rules-card card">
+      <view class="rules-header" bindtap="toggleRules">
+        <view class="rules-header-left">
+          <text class="rules-header-icon">规则</text>
+          <text class="rules-header-title">积分规则</text>
+        </view>
+        <text class="rules-toggle-icon {{rulesExpanded ? 'expanded' : ''}}">{{rulesExpanded ? '收起 ▲' : '展开 ▼'}}</text>
+      </view>
+      <view class="rules-summary"><text>积分仅来自每日签到，不设兑换、排行或其他获取方式。</text></view>
+      <view wx:if="{{rulesExpanded}}" class="rules-detail">
+        <view class="rules-divider"></view>
+        <view wx:for="{{mine.rules}}" wx:key="action" class="rule-row">
+          <view>
+            <text class="rule-name">{{item.action}}</text>
+            <text class="rule-description">{{item.description}}</text>
+          </view>
+          <text class="rule-points">{{item.points}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section-spacer"></view>
+
+    <!-- 学习工具 -->
+    <view class="section-heading"><view><text>学习工具</text><text>全部基于本人记录</text></view></view>
+    <view class="tool-card card tool-tool-growth tool-prominent" bindtap="goProfile">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/growth.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">个人成长</text>
+        <text class="tool-sub">GROWTH · 五维能力与训练走势</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-tool-mistake" bindtap="goMistakes">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">错题复练</text>
+        <text class="tool-sub">MISTAKES · 回到需要调整的表达</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-tool-phrase" bindtap="goPhrases">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">话术锦囊</text>
+        <text class="tool-sub">PHRASES · 从报告中提炼的合规表达</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-tool-favorite" bindtap="goFavorites">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/favorite.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">我的话术收藏</text>
+        <text class="tool-sub">FAVORITES · 已收藏 {{mine.favoritesCount}} 条</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+  </block>
+  <view class="disclaimer-wrap">
+    <text class="disclaimer" wx:if="{{isAdmin}}">主管数据仅供管理辅导使用，不涉及学员对话内容。</text>
+    <text class="disclaimer" wx:else>学习积分和训练数据不用于排名、兑换或正式考核。</text>
+  </view>
 </view>

@@ -1,777 +1,259 @@
-# AI 口腔客服智能陪练系统 API 契约
+# 口腔客服智能陪练 API 契约
 
-> 版本：v2.0 MVP
->
-> 本契约以《口腔医疗客服智能陪练系统 MVP 产品设计文档》为唯一产品依据，服务于一天内可演示的最小闭环：场景选择 → 创建/恢复会话 → 多轮对练 → 自动评分 → 查看报告 → 历史回顾 → 演示数据。
+版本：v3.2（训练体验、主管摘要与个人成长）
 
-## 1. 设计边界
+Base URL 为 `https://<host>/api`。本机开发可使用 `http://127.0.0.1:8080/api`；体验版和正式版必须使用 HTTPS。
 
-### 1.1 MVP 范围
+## 1. 通用约定
 
-- 固定演示用户，不提供微信授权、手机号登录和正式权限体系。
-- 固定 4 个训练场景：种植牙基础咨询、正畸基础咨询、与其他诊所比价、术后不适咨询。
-- 只支持文字对话。
-- 训练轮数为 5—10 轮；用户完成至少 1 轮后可以主动结束，第 10 轮 AI 回复完成后自动结束。
-- 每轮消息提交后由服务端持久化；中途退出不需要额外保存接口，下一次通过会话详情恢复。
-- 评分由独立评分服务生成，结果包含五维得分、总结、优势、改进、违规说明和关键轮次点评。
-- 统计页只展示演示数据，不包含团队成员、权限、排行榜和导出。
-
-### 1.2 暂不提供的能力
-
-- 登录、刷新 token、角色权限。
-- 语音、ASR、黄金话术、快捷回复、实时评分。
-- 打卡、积分、等级、排行榜、错题本和主管后台。
-- 真实患者信息、诊疗记录和医疗建议。
-
-## 2. 服务约定
-
-### 2.1 Base URL
-
-```text
-https://<host>/api
-```
-
-开发环境可以使用局域网地址，但生产环境必须使用 HTTPS。前端只保存 Base URL，不保存任何模型 API Key。
-
-### 2.2 演示用户
-
-MVP 不做登录。服务端默认使用固定用户：
-
-```text
-demo-user-001
-```
-
-如需在开发环境区分多个演示数据集，可增加请求头；正式 MVP 不由用户填写或修改：
+除健康检查和登录外，所有接口必须携带服务端会话令牌：
 
 ```http
-X-Demo-User-Id: demo-user-001
-```
-
-### 2.3 请求头
-
-```http
-Content-Type: application/json
-X-Demo-User-Id: demo-user-001
-```
-
-### 2.4 统一响应结构
-
-成功响应：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {}
-}
-```
-
-失败响应：
-
-```json
-{
-  "code": "SESSION_FINISHED",
-  "message": "训练已结束，不能继续发送消息",
-  "data": null
-}
-```
-
-前端请求封装只在 HTTP 状态码成功且 `code === 0` 时返回 `data`；其他情况统一进入错误处理。
-
-### 2.5 时间、分数和分页
-
-- 时间统一使用 ISO 8601，带时区，例如 `2026-07-15T14:30:00+08:00`。
-- 分数统一为 0—100 的整数；平均分可以保留 1 位小数。
-- 历史记录默认返回最近 50 条，MVP 不强制分页。
-- 所有 ID 使用字符串，避免前端因 JavaScript 数字精度导致会话 ID 变化。
-
-## 3. 核心数据对象
-
-### 3.1 Scenario 场景
-
-```json
-{
-  "id": "implant-basic",
-  "name": "种植牙基础咨询",
-  "summary": "患者咨询种植牙流程、疼痛和治疗周期",
-  "difficulty": "basic",
-  "focus": ["基础信息解释", "需求挖掘", "回应担忧", "医疗边界"],
-  "patientProfile": {
-    "age": 52,
-    "gender": "unknown",
-    "description": "缺失一颗后牙，对种植牙了解较少，初始情绪平静但谨慎"
-  },
-  "maxRounds": 10,
-  "bestScore": 0,
-  "activeSession": null
-}
-```
-
-`patientProfile` 只包含用户可见信息。隐藏顾虑、风险信号、情绪和信任度只保存在服务端，不得通过接口返回给小程序。
-
-### 3.2 Session 会话
-
-```json
-{
-  "id": "sess_01JZ...",
-  "scenarioId": "implant-basic",
-  "scenarioName": "种植牙基础咨询",
-  "status": "in_progress",
-  "currentRound": 2,
-  "maxRounds": 10,
-  "startedAt": "2026-07-15T14:30:00+08:00",
-  "updatedAt": "2026-07-15T14:32:10+08:00",
-  "finishedAt": null,
-  "totalScore": null,
-  "evaluationStatus": "not_started"
-}
-```
-
-状态：
-
-| 状态 | 含义 | 允许操作 |
-|---|---|---|
-| `in_progress` | 训练进行中或中途退出 | 查看、继续、发送、结束、重新开始 |
-| `completed` | 对话结束，评分已生成或正在生成 | 查看会话、查看报告、重新训练 |
-| `abandoned` | 用户选择重新开始后，旧会话被放弃 | 只读查看 |
-
-评分状态：
-
-| 状态 | 含义 |
-|---|---|
-| `not_started` | 尚未结束训练 |
-| `generating` | 已结束，评分生成中 |
-| `ready` | 评分已生成 |
-| `failed` | 评分失败，可重试 |
-
-### 3.3 Message 消息
-
-```json
-{
-  "id": "msg_01JZ...",
-  "role": "patient",
-  "content": "我主要担心手术会不会很疼。",
-  "round": 2,
-  "createdAt": "2026-07-15T14:32:08+08:00"
-}
-```
-
-`role` 只能为 `patient` 或 `user`。患者消息由服务端生成，用户消息由前端提交。
-
-### 3.4 Evaluation 评分报告
-
-```json
-{
-  "sessionId": "sess_01JZ...",
-  "status": "ready",
-  "totalScore": 82,
-  "dimensionScores": {
-    "knowledgeAccuracy": 80,
-    "medicalCompliance": 90,
-    "empathy": 88,
-    "needsDiscovery": 75,
-    "serviceEtiquette": 86
-  },
-  "summary": "能够先回应患者担忧，但对预算和疼痛的追问还不够完整。",
-  "strengths": [
-    {
-      "round": 1,
-      "evidence": "先回应了患者对疼痛的担心",
-      "content": "表达了基本的同理和安抚"
-    }
-  ],
-  "improvements": [
-    {
-      "round": 2,
-      "content": "继续询问疼痛担忧、预算和时间安排，再介绍检查流程。"
-    }
-  ],
-  "violations": [
-    {
-      "round": 3,
-      "originalQuote": "我们保证种植一定成功。",
-      "type": "疗效保证",
-      "reason": "客服不能对个体治疗效果作绝对承诺。",
-      "deduction": 30,
-      "recommendedRewrite": "具体效果需要医生检查后结合您的情况评估。"
-    }
-  ],
-  "roundComments": [
-    {
-      "round": 2,
-      "userMessage": "......",
-      "comment": "回应了情绪，但没有追问患者最主要的顾虑。",
-      "recommendedRewrite": "我理解您担心疼痛，您更担心手术过程，还是术后恢复呢？"
-    }
-  ],
-  "modelVersion": "provider-model-v1",
-  "promptVersion": "score-prompt-v1",
-  "generatedAt": "2026-07-15T14:32:30+08:00"
-}
-```
-
-五维权重固定为：
-
-| 字段 | 中文名称 | 权重 |
-|---|---|---:|
-| `knowledgeAccuracy` | 口腔知识准确性 | 25% |
-| `medicalCompliance` | 医疗合规 | 25% |
-| `empathy` | 情绪识别与同理心 | 20% |
-| `needsDiscovery` | 需求挖掘 | 20% |
-| `serviceEtiquette` | 服务礼仪 | 10% |
-
-## 4. 接口清单
-
-| 方法 | 路径 | 用途 |
-|---|---|---|
-| `GET` | `/scenarios` | 获取 4 个场景及当前用户的进行中会话 |
-| `POST` | `/sessions` | 创建新训练会话 |
-| `POST` | `/sessions/{sessionId}/restart` | 放弃旧会话并重新创建同场景会话 |
-| `GET` | `/sessions/{sessionId}` | 恢复会话、消息和当前轮次 |
-| `POST` | `/sessions/{sessionId}/messages` | 提交用户消息并获取患者回复 |
-| `POST` | `/sessions/{sessionId}/finish` | 主动或自动结束训练并触发评分 |
-| `GET` | `/sessions/{sessionId}/evaluation` | 获取评分状态或完整评分报告 |
-| `POST` | `/sessions/{sessionId}/evaluation/retry` | 评分失败后重新评分 |
-| `GET` | `/sessions` | 获取历史训练记录 |
-| `GET` | `/dashboard/summary` | 获取演示数据汇总 |
-
-## 5. 场景接口
-
-### 5.1 获取场景列表
-
-```http
-GET /api/scenarios
-```
-
-响应：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "items": [
-      {
-        "id": "implant-basic",
-        "name": "种植牙基础咨询",
-        "summary": "咨询种植牙流程、疼痛和时间",
-        "difficulty": "basic",
-        "focus": ["基础信息解释", "需求挖掘", "医疗边界"],
-        "patientProfile": {
-          "age": 52,
-          "gender": "unknown",
-          "description": "缺失一颗后牙，对种植牙了解较少，初始情绪平静但谨慎"
-        },
-        "maxRounds": 10,
-        "bestScore": 0,
-        "activeSession": null
-      }
-    ]
-  }
-}
-```
-
-`activeSession` 不为空时，场景页显示“继续训练”；为空时显示“开始训练”。
-
-四个固定场景 ID：
-
-| ID | 名称 |
-|---|---|
-| `implant-basic` | 种植牙基础咨询 |
-| `orthodontic-basic` | 正畸基础咨询 |
-| `price-comparison` | 与其他诊所比价 |
-| `post-treatment-discomfort` | 术后不适咨询 |
-
-## 6. 会话与对练接口
-
-### 6.1 创建会话
-
-```http
-POST /api/sessions
+Authorization: Bearer <accessToken>
 Content-Type: application/json
 ```
+
+服务端不读取或信任 `X-Demo-User-Id`。成功与失败结构保持统一：
+
+```json
+{"code":0,"message":"ok","data":{}}
+```
+
+```json
+{"code":"SESSION_ABANDONED","message":"已放弃的训练不能结束或恢复","data":null}
+```
+
+每个响应包含 `X-Request-Id`。时间为带时区的 ISO 8601 字符串；业务 ID 均为字符串。所有用户输入先去除首尾空白，再按 UTF-8 字符数校验，消息长度为 1—1000 个字符。
+
+## 2. 登录、角色与数据范围
+
+### `POST /auth/wechat`
 
 请求：
 
 ```json
-{
-  "scenarioId": "implant-basic"
-}
+{"code":"wx.login 返回的临时 code"}
 ```
 
-成功响应使用 `201`：
+服务端在 `AUTH_MODE=wechat` 时通过微信 `jscode2session` 换取 `openid`，创建或读取本地用户，并返回不透明会话令牌。`AUTH_MODE=demo` 仅供本机和受控局域网使用，同一路径会登录保留的演示用户。
 
 ```json
 {
-  "code": 0,
-  "message": "created",
-  "data": {
-    "session": {
-      "id": "sess_01JZ...",
-      "scenarioId": "implant-basic",
-      "status": "in_progress",
-      "currentRound": 0,
-      "maxRounds": 10,
-      "evaluationStatus": "not_started"
-    },
-    "messages": [
-      {
-        "id": "msg_01JZ...",
-        "role": "patient",
-        "content": "您好，我想了解一下种植牙，大概需要多久？",
-        "round": 0,
-        "createdAt": "2026-07-15T14:30:00+08:00"
-      }
-    ]
-  }
+  "accessToken":"仅此处返回的令牌",
+  "expiresIn":604800,
+  "user":{"id":"wx_...","role":"learner","displayName":"微信用户"}
 }
 ```
 
-如果该场景已有 `in_progress` 会话，返回 `409 SESSION_IN_PROGRESS`，前端应提示用户选择继续或调用重新开始接口。
+角色只有：
 
-为便于前端直接恢复会话，建议错误响应携带当前会话 ID：
+- `learner`：只能访问自己的场景进度、会话、消息、历史和个人看板。
+- `admin`：可读取当前单一机构的聚合看板及成员学习摘要（完成次数、分数均值、五维均值和训练趋势），但不返回原始对话、报告原文、话术或错题；不能使用训练和个人成长接口。
+
+主管角色只能通过受控的服务端数据库运维流程授予已验证的用户，客户端没有自助提权接口。
+
+本轮不提供多机构租户、排行榜或团队运营接口。
+
+## 3. 健康检查
+
+### `GET /health`
+
+无需登录。响应不包含任务内容、Prompt 或密钥：
 
 ```json
 {
-  "code": "SESSION_IN_PROGRESS",
-  "message": "该场景已有进行中的训练",
-  "data": {
-    "sessionId": "sess_01JZ..."
-  }
+  "database":true,
+  "modelConfigured":true,
+  "workerRunning":true,
+  "pendingJobs":0,
+  "deadJobs":0,
+  "runtimeApiKeyAllowed":false,
+  "authMode":"wechat",
+  "production":true
 }
 ```
 
-### 6.2 重新开始会话
+## 4. 客服训练
 
-```http
-POST /api/sessions/{sessionId}/restart
-```
-
-服务端执行以下原子操作：
-
-1. 将原 `in_progress` 会话标记为 `abandoned`。
-2. 创建同一场景的新会话。
-3. 返回新会话及患者开场消息。
-
-响应结构与“创建会话”一致。已完成或已放弃的会话不能再次重开，应从场景页创建新会话。
-
-### 6.3 获取会话详情
-
-```http
-GET /api/sessions/{sessionId}
-```
-
-响应：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "session": {
-      "id": "sess_01JZ...",
-      "scenarioId": "implant-basic",
-      "scenarioName": "种植牙基础咨询",
-      "status": "in_progress",
-      "currentRound": 2,
-      "maxRounds": 10,
-      "startedAt": "2026-07-15T14:30:00+08:00",
-      "updatedAt": "2026-07-15T14:32:10+08:00",
-      "finishedAt": null,
-      "totalScore": null,
-      "evaluationStatus": "not_started"
-    },
-    "messages": [],
-    "pendingMessage": null
-  }
-}
-```
-
-接口返回完整消息，供“继续训练”和历史详情使用。模型超时且用户消息已经保存时，`pendingMessage` 返回 `{ clientMessageId, content, round }`，前端必须使用相同的 `clientMessageId` 和内容重试；没有待回复消息时为 `null`。不要返回隐藏信息、Prompt、情绪内部状态或模型原始响应。
-
-### 6.4 发送用户消息
-
-```http
-POST /api/sessions/{sessionId}/messages
-Content-Type: application/json
-```
-
-请求：
-
-```json
-{
-  "clientMessageId": "client-msg-0002",
-  "content": "我理解您的担心，可以先了解一下您最在意疼痛还是恢复时间吗？"
-}
-```
-
-约束：
-
-- `content` 去除首尾空白后长度为 1—1000 个字符。
-- 会话必须为 `in_progress`。
-- 当前轮数达到 10 后拒绝发送。
-- `clientMessageId` 用于幂等，网络重试不能生成重复用户消息或重复患者回复。
-
-成功响应：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "userMessage": {
-      "id": "msg_user_0002",
-      "role": "user",
-      "content": "我理解您的担心，可以先了解一下您最在意疼痛还是恢复时间吗？",
-      "round": 1,
-      "createdAt": "2026-07-15T14:32:00+08:00"
-    },
-    "patientMessage": {
-      "id": "msg_patient_0002",
-      "role": "patient",
-      "content": "我最担心的是手术疼不疼，另外预算也有限。",
-      "round": 1,
-      "createdAt": "2026-07-15T14:32:08+08:00"
-    },
-    "session": {
-      "currentRound": 1,
-      "remainingRounds": 9,
-      "status": "in_progress",
-      "shouldFinish": false
-    }
-  }
-}
-```
-
-若模型调用超时，返回 `503 MODEL_TIMEOUT`。服务端不得删除已保存的用户消息，前端可以使用同一个 `clientMessageId` 重试。
-
-### 6.5 结束训练
-
-```http
-POST /api/sessions/{sessionId}/finish
-Content-Type: application/json
-```
-
-请求：
-
-```json
-{
-  "reason": "manual"
-}
-```
-
-`reason` 可选值：`manual`、`max_rounds`、`model_error`。
-
-规则：
-
-- `currentRound === 0` 时返回 `422 MIN_ROUNDS_NOT_REACHED`。
-- 结束操作必须幂等；已结束的会话再次调用时返回当前会话状态，不重复创建评分任务。
-- 会话立即变为 `completed`，评分状态变为 `generating` 或 `ready`。
-
-响应：
-
-```json
-{
-  "code": 0,
-  "message": "accepted",
-  "data": {
-    "sessionId": "sess_01JZ...",
-    "status": "completed",
-    "evaluationStatus": "generating"
-  }
-}
-```
-
-HTTP 状态使用 `202` 表示评分仍在生成。前端跳转结果页后轮询评分接口，不要把分数拼到 URL 中。
-
-## 7. 评分接口
-
-### 7.1 获取评分报告
-
-```http
-GET /api/sessions/{sessionId}/evaluation
-```
-
-评分生成中：
-
-```json
-{
-  "code": 0,
-  "message": "evaluation_generating",
-  "data": {
-    "sessionId": "sess_01JZ...",
-    "status": "generating",
-    "retryable": false,
-    "evaluation": null
-  }
-}
-```
-
-评分完成：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "sessionId": "sess_01JZ...",
-    "status": "ready",
-    "retryable": false,
-    "evaluation": {}
-  }
-}
-```
-
-评分失败：
-
-```json
-{
-  "code": 0,
-  "message": "evaluation_failed",
-  "data": {
-    "sessionId": "sess_01JZ...",
-    "status": "failed",
-    "retryable": true,
-    "evaluation": null
-  }
-}
-```
-
-### 7.2 重试评分
-
-```http
-POST /api/sessions/{sessionId}/evaluation/retry
-```
-
-只允许对 `evaluationStatus = failed` 的已完成会话调用。成功返回 `202`，响应结构与评分生成中一致。
-
-评分服务要求：
-
-- 一次性读取完整对话，而不是只评价最后一轮。
-- 使用固定评分 Prompt 和 JSON Schema。
-- 识别严重医疗错误、疗效保证、风险处理不当和贬低其他机构等问题。
-- JSON 解析失败最多自动重试一次；仍失败则将状态设为 `failed`。
-- 评分建议不得写成医学诊断或治疗指令。
-
-## 8. 历史记录接口
-
-### 8.1 获取训练历史
-
-```http
-GET /api/sessions?status=all&scenarioId=&limit=50
-```
-
-查询参数：
-
-| 参数 | 必填 | 说明 |
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| `status` | 否 | `all`、`in_progress`、`completed`、`abandoned`，默认 `all` |
-| `scenarioId` | 否 | 按场景筛选 |
-| `limit` | 否 | 1—50，默认 50 |
+| `GET` | `/scenarios` | 场景、本人最佳分和本人进行中会话 |
+| `POST` | `/sessions` | 创建会话，body 为 `{"scenarioId":"implant-basic"}` |
+| `GET` | `/sessions` | 本人历史；支持 `status`、`scenarioId`、`limit` |
+| `GET` | `/sessions/{id}` | 会话、完整消息和待恢复输入 |
+| `POST` | `/sessions/{id}/restart` | 放弃进行中会话并创建新会话 |
+| `POST` | `/sessions/{id}/messages` | 提交客服输入并获取模拟患者回复 |
+| `POST` | `/sessions/{id}/hint` | 获取本次训练的合规沟通提示，最多 3 条 |
+| `POST` | `/sessions/{id}/finish` | 结束会话并可靠入队评分任务 |
+| `GET` | `/sessions/{id}/evaluation` | 获取 `not_started/generating/ready/failed` |
+| `POST` | `/sessions/{id}/evaluation/retry` | 仅对失败评分人工重试 |
 
-响应：
+### 消息幂等与回复租约
+
+请求：
+
+```json
+{"clientMessageId":"client-msg-123","content":"我理解您的担忧……"}
+```
+
+- 相同 `clientMessageId` 和相同清理后内容返回原消息对。
+- 相同 ID 与不同内容返回 `409 IDEMPOTENCY_CONFLICT`。
+- 首个请求领取 180 秒回复生成租约。租约有效时，并发请求返回 `409 SESSION_RESPONSE_PENDING`，不会发起第二次模型调用。
+- 模型失败或租约过期后，只有相同 ID 和内容可以重新领取。
+- `GET /sessions/{id}` 的 `pendingMessage` 包含 `clientMessageId`、`content`、`round`、`replyStatus`；前端应轮询会话，并在超时后保留原 ID 和输入。
+
+最后一轮的患者回复、输入状态 `ready`、会话 `completed`、评分 `generating` 和任务入队在同一数据库事务内提交。
+
+### 结束与重试
+
+- 零轮会话返回 `422 MIN_ROUNDS_NOT_REACHED`。
+- `abandoned` 永远不能恢复为 `completed`，返回 `409 SESSION_ABANDONED`。
+- 重复结束已完成会话只返回当前状态，不新建任务，也不隐式重试失败任务。
+- 失败评分只能调用 `/evaluation/retry` 重新入队。
+
+## 5. 患者模拟（角色互换）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/roleplay/scenarios` | 场景、建议问题和本人进行中会话 |
+| `POST` / `GET` | `/roleplay/sessions` | 创建或查询本人会话 |
+| `GET` | `/roleplay/sessions/{id}` | 会话、消息及待恢复问题 |
+| `POST` | `/roleplay/sessions/{id}/restart` | 放弃并重新创建 |
+| `POST` | `/roleplay/sessions/{id}/messages` | 提交患者问题，获取标准客服答复 |
+| `POST` | `/roleplay/sessions/{id}/finish` | 结束并可靠入队复盘任务 |
+| `GET` | `/roleplay/sessions/{id}/summary` | 获取复盘状态或内容 |
+| `POST` | `/roleplay/sessions/{id}/summary/retry` | 仅对失败复盘人工重试 |
+
+角色互换使用相同的幂等规则，生成中错误码为 `ROLEPLAY_RESPONSE_PENDING`，放弃错误码为 `ROLEPLAY_SESSION_ABANDONED`。标准客服消息额外包含：
 
 ```json
 {
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "items": [
-      {
-        "id": "sess_01JZ...",
-        "scenarioId": "implant-basic",
-        "scenarioName": "种植牙基础咨询",
-        "status": "completed",
-        "currentRound": 6,
-        "maxRounds": 10,
-        "totalScore": 82,
-        "evaluationStatus": "ready",
-        "startedAt": "2026-07-15T14:30:00+08:00",
-        "updatedAt": "2026-07-15T14:36:00+08:00"
-      }
-    ],
-    "total": 1
-  }
+  "learningPoints":["学习要点"],
+  "complianceBoundary":"具体诊疗判断需由医生结合检查评估。"
 }
 ```
 
-列表只返回摘要；点击记录后调用 `GET /sessions/{sessionId}` 获取完整对话，再调用评分接口获取报告。
+复盘不含数值评分，结构为 `summary`、`coveredTopics`、`keyPrinciples` 和 `nextPracticeSuggestions`。
 
-## 9. 演示数据接口
+## 6. 评分规则
 
-### 9.1 获取汇总数据
+总分只使用一次固定五维加权，不再按违规二次扣减：
 
-```http
-GET /api/dashboard/summary
-```
+| 字段 | 权重 |
+|---|---:|
+| `knowledgeAccuracy` | 25% |
+| `medicalCompliance` | 25% |
+| `empathy` | 20% |
+| `needsDiscovery` | 20% |
+| `serviceEtiquette` | 10% |
 
-响应：
+单项违规 `deduction` 归一到 0—50，仅用于解释。如果存在 `deduction >= 30` 的严重违规且 `medicalCompliance > 60`，该次结果判定为 `MODEL_SCORE_INCONSISTENT`，由可靠任务机制按策略重试。
+
+## 7. 学员洞察：报告、话术、错题与成长
+
+以下接口仅限 `learner`，且始终按服务端登录用户过滤。管理员不能读取个人话术、错题、成长趋势或会话明细。
+
+评分任务完成时，服务端在同一事务中把两个派生字段写入 `evaluations.report`：
 
 ```json
 {
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "totalSessions": 12,
-    "completedSessions": 10,
-    "averageScore": 82.5,
-    "scenarioStats": [
-      {
-        "scenarioId": "implant-basic",
-        "scenarioName": "种植牙基础咨询",
-        "trainingCount": 4
-      }
-    ],
-    "dimensionAverages": {
-      "knowledgeAccuracy": 80,
-      "medicalCompliance": 88,
-      "empathy": 84,
-      "needsDiscovery": 76,
-      "serviceEtiquette": 86
-    },
-    "recentSessions": []
-  }
+  "recommendedPhrases":[{
+    "phraseKey":"phrase-1-1",
+    "round":1,
+    "patientSays":"患者在该轮前提出的关切",
+    "csReply":"基于已验证点评的推荐表达",
+    "reason":"该表达的练习原因"
+  }],
+  "learningMistakes":[{
+    "mistakeKey":"improvement-1-1",
+    "kind":"improvement",
+    "priority":"practice",
+    "round":1,
+    "originalQuote":"学员当时表达",
+    "reason":"需要调整的原因",
+    "recommendedRewrite":"建议改写"
+  }]
 }
 ```
 
-统计规则：
+`recommendedPhrases` 从逐轮点评和违规项的已验证改写派生；`learningMistakes` 从违规项和未被违规项覆盖的改进项派生。它们不接受客户端写入，也不触发额外模型调用。已有历史报告在读取时兼容地从原有点评/违规字段提取可用项。
 
-- `totalSessions` 不统计 `abandoned` 会话。
-- `completedSessions` 只统计状态为 `completed` 且评分状态为 `ready` 的会话。
-- `averageScore` 只计算已有评分的完成会话。
-- `scenarioStats` 只返回四个固定场景，可返回 0 次。
-- `recentSessions` 返回最近 5 条训练摘要。
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/learning/phrases` | 本人话术锦囊；支持 `search`、`scenarioId`、`favoritesOnly`、`limit`（1—50） |
+| `PUT` | `/learning/phrases/{sessionId}/{phraseKey}/favorite` | 收藏或取消收藏本人报告中的真实话术 |
+| `GET` | `/learning/mistakes` | 本人错题；支持 `scenarioId`、`includeMastered=true|false`、`limit`（1—50） |
+| `PUT` | `/learning/mistakes/{sessionId}/{mistakeKey}` | 标记或取消标记掌握状态 |
+| `GET` | `/learning/profile` | 本人完成次数、平均分、首末分差、五维均值、最近 12 条趋势、练习重点和错题掌握数 |
+| `GET` | `/learning/mine` | 本人签到积分、当月签到日历、连续天数、训练摘要和话术收藏数 |
+| `POST` | `/learning/checkins` | 每个中国时区自然日签到一次，固定奖励 +10 积分 |
+
+掌握状态请求：
+
+```json
+{"mastered":true}
+```
+
+服务端先验证该 `sessionId/mistakeKey` 是当前用户已完成报告的真实派生项，再写入 `learner_mistake_progress`。取消掌握不会删除报告或错题来源，只会将 `mastered_at` 置空并保留更新时间。
+
+训练提示不调用模型；服务端将每条提示写入 `session_hints`，并在读取会话时返回。提示只给出沟通步骤与医疗合规边界，不给出诊断、用药、疗效、固定价格或疗程结论。话术收藏同样先验证 `sessionId/phraseKey` 来自当前用户的已完成报告，再写入偏好记录。
+
+积分仅来自每日签到，固定为 +10；不提供训练奖励、兑换、排行榜或其他积分来源。
+
+## 8. 可靠 AI Worker
+
+API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可配置到 4；使用 `FOR UPDATE SKIP LOCKED` 领取任务，租约 180 秒。去重键为：
+
+- `evaluation:{sessionId}`
+- `roleplay-summary:{sessionId}`
+
+瞬时错误最多尝试 3 次，第一次失败后等待 5 秒，第二次失败后等待 30 秒。未配置模型、鉴权失败、内容过滤或不安全输出等非瞬时错误直接进入 `dead` 并把业务状态置为 `failed`。Worker 会回收过期租约；数据库中断时在进程内退避，异常不会逃出线程。
+
+## 9. 看板与主管成员摘要
+
+### `GET /dashboard/summary`
+
+`scope` 为 `personal` 或 `institution`。学员收到个人统计和最近 5 条本人会话；管理员收到单机构聚合，`recentSessions` 为空，避免泄露个人会话。
+
+仅 `admin` 可以调用：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/supervisor/dashboard?range=week|month|quarter|all` | 机构学员数、训练量、达标率、场景聚合、五维均值和趋势 |
+| `GET` | `/supervisor/members?limit=1..100` | 成员学习摘要，按姓名展示，不按成绩排序 |
+| `GET` | `/supervisor/members/{memberId}` | 单个成员的五维均值、弱项建议和最多 12 条训练分数趋势 |
+
+主管接口不会返回消息、原始患者内容、报告全文、错题或话术；不包含排行榜、培训计划、任务分配或团队运营操作。
 
 ## 10. 错误码
 
-| HTTP | code | 场景 |
+| HTTP | code | 含义 |
 |---:|---|---|
-| 400 | `INVALID_ARGUMENT` | 参数缺失、格式错误或消息超长 |
+| 400 | `INVALID_ARGUMENT` | 参数、JSON、UTF-8 或字符长度无效 |
+| 400 | `HTTPS_REQUIRED` | 生产入口未通过 HTTPS 代理 |
+| 401 | `AUTH_REQUIRED` / `AUTH_INVALID` / `AUTH_EXPIRED` | 缺少、无效或过期令牌 |
+| 401 | `WECHAT_LOGIN_FAILED` | 微信 code 无效或过期 |
+| 403 | `ROLE_FORBIDDEN` | 角色无权访问该类接口 |
+| 403 | `ORIGIN_FORBIDDEN` | Origin 不在精确允许列表 |
 | 404 | `SCENARIO_NOT_FOUND` | 场景不存在 |
-| 404 | `SESSION_NOT_FOUND` | 会话不存在 |
-| 409 | `SESSION_IN_PROGRESS` | 同一场景已有进行中会话 |
-| 409 | `SESSION_FINISHED` | 已结束会话不能继续发送消息 |
-| 409 | `SESSION_ABANDONED` | 已放弃会话不能继续操作 |
-| 422 | `MIN_ROUNDS_NOT_REACHED` | 未完成至少 1 轮，不能评分 |
-| 422 | `SCENARIO_NOT_ALLOWED` | 场景不在 MVP 固定范围内 |
-| 429 | `RATE_LIMITED` | 请求过于频繁 |
-| 503 | `MODEL_TIMEOUT` | 患者模型调用超时 |
-| 503 | `MODEL_OUTPUT_INVALID` | 患者模型返回无法解析的结果 |
-| 500 | `EVALUATION_FAILED` | 评分生成失败，可调用评分重试接口 |
+| 404 | `SESSION_NOT_FOUND` / `ROLEPLAY_SESSION_NOT_FOUND` | 会话不存在或不属于本人 |
+| 404 | `LEARNING_MISTAKE_NOT_FOUND` | 错题不存在、不属于本人或不再是当前报告的派生项 |
+| 404 | `LEARNING_PHRASE_NOT_FOUND` / `MEMBER_NOT_FOUND` | 话术或成员不存在、无权访问 |
+| 409 | `IDEMPOTENCY_CONFLICT` | 同一幂等 ID 对应不同内容 |
+| 409 | `SESSION_RESPONSE_PENDING` | 模拟患者回复租约有效 |
+| 409 | `ROLEPLAY_RESPONSE_PENDING` | 标准客服回复租约有效 |
+| 409 | `SESSION_ABANDONED` | 客服训练会话已放弃 |
+| 409 | `ROLEPLAY_SESSION_ABANDONED` | 患者模拟会话已放弃 |
+| 409 | `SESSION_IN_PROGRESS` / `ROLEPLAY_SESSION_IN_PROGRESS` | 同场景已有进行中会话 |
+| 409 | `EVALUATION_NOT_RETRYABLE` / `ROLEPLAY_SUMMARY_NOT_RETRYABLE` | 当前任务不可人工重试 |
+| 409 | `HINT_LIMIT_REACHED` | 本次训练的三条提示已经用完 |
+| 422 | `MIN_ROUNDS_NOT_REACHED` | 尚未完成一轮 |
+| 429 | `RATE_LIMITED` | 用户/IP 速率超限 |
+| 503 | `MODEL_NOT_CONFIGURED` / `MODEL_AUTH_FAILED` | 模型配置不可用 |
+| 503 | `MODEL_TIMEOUT` / `MODEL_RATE_LIMITED` / `MODEL_ERROR` | 模型瞬时错误 |
+| 503 | `MODEL_INVALID_RESPONSE` / `MODEL_SCORE_INCONSISTENT` | 模型结果无效或评分矛盾 |
+| 503 | `REPORT_INVALID` | 已存储评分报告格式无效，无法生成学习洞察 |
 
-## 11. 前端调用顺序
+## 11. 兼容与安全边界
 
-### 11.1 正常训练
-
-```text
-GET /scenarios
-    ↓ 点击“开始训练”
-POST /sessions
-    ↓
-POST /sessions/{id}/messages  × N
-    ↓ 用户主动结束或第 10 轮
-POST /sessions/{id}/finish
-    ↓
-GET /sessions/{id}/evaluation 轮询
-    ↓ status = ready
-展示结果报告
-```
-
-### 11.2 续练
-
-```text
-GET /scenarios
-    ↓ 发现 activeSession
-GET /sessions/{id}
-    ↓
-恢复完整消息后继续 POST /messages
-```
-
-### 11.3 重新开始
-
-```text
-POST /sessions/{oldId}/restart
-    ↓ oldId = abandoned
-    ↓ 返回 newId
-使用 newId 进入新的训练会话
-```
-
-### 11.4 结果页评分失败
-
-```text
-POST /sessions/{id}/finish
-    ↓
-GET /sessions/{id}/evaluation
-    ├─ ready：展示报告
-    ├─ generating：间隔 2 秒重试，最多 30 秒
-    └─ failed：展示“重新生成评分”按钮
-        ↓
-POST /sessions/{id}/evaluation/retry
-```
-
-## 12. 与当前小程序代码的迁移映射
-
-| 当前代码 | 新接口 | 调整要求 |
-|---|---|---|
-| `index.js loadMockData` | `GET /scenarios` | 删除旧的四分类和 15 个关卡 mock |
-| `training.js startTraining` | `POST /sessions` 或 `GET /sessions/{id}` | 不再用 `getLevelConfig`，保存 `sessionId` |
-| `training.js getAIResponse` | `POST /sessions/{id}/messages` | 删除固定回复和随机延迟 |
-| `training.js endTraining` | `POST /sessions/{id}/finish` | 删除随机分数，不把分数放进 URL |
-| `result.js loadResult` | `GET /sessions/{id}/evaluation` | 按 `status` 处理生成中、完成、失败 |
-| `report.js` 历史列表 | `GET /sessions` | 只保留历史记录和完整详情入口 |
-| 报告/数据页 | `GET /dashboard/summary` | 只展示 MVP 统计，不展示排行榜和错题本 |
-| `static/api/request.js` | 保留 | 将 Base URL 改为部署地址，错误结构按本契约处理 |
-
-## 13. 服务端最小落库对象
-
-MVP 至少需要四张表或等价的数据对象：
-
-| 对象 | 必要字段 |
-|---|---|
-| `scenarios` | 场景公开信息、隐藏配置、训练重点、最大轮数 |
-| `sessions` | 用户、场景、状态、轮数、开始/更新时间、评分状态、总分 |
-| `messages` | 会话、角色、内容、轮次、时间、幂等 ID |
-| `evaluations` | 五维得分、总分、总结、优势、改进、违规、逐轮点评、模型版本 |
-
-服务端必须保存患者内部状态：`emotion`、`emotionLevel`、`trustLevel`、`revealedInformation`、`riskTriggered`、`currentRound`。这些字段仅供患者 Prompt 和续练使用，不返回给用户。
-
-## 14. 患者模拟（角色互换）接口
-
-患者模拟与客服训练完全隔离：学员扮演患者，模型扮演标准客服。它复用四个场景，但不写入 `sessions`、`evaluations` 或数据看板，也不生成五维分数。
-
-| 方法 | 路径 | 用途 |
-|---|---|---|
-| `GET` | `/roleplay/scenarios` | 获取场景、建议患者提问和角色互换进行中会话 |
-| `POST` / `GET` | `/roleplay/sessions` | 创建或查询患者模拟历史 |
-| `GET` | `/roleplay/sessions/{id}` | 获取会话、完整问答和待重试消息 |
-| `POST` | `/roleplay/sessions/{id}/restart` | 放弃未完成会话并重新开始 |
-| `POST` | `/roleplay/sessions/{id}/messages` | 提交患者问题并获取标准客服答复 |
-| `POST` | `/roleplay/sessions/{id}/finish` | 结束练习并异步生成复盘 |
-| `GET` | `/roleplay/sessions/{id}/summary` | 获取复盘状态或内容 |
-| `POST` | `/roleplay/sessions/{id}/summary/retry` | 复盘失败后重试 |
-
-角色互换的消息 `role` 只能为 `learner_patient` 或 `standard_customer`。标准客服消息在 `content` 外还返回：
-
-```json
-{
-  "learningPoints": ["先回应患者的核心担忧，再说明可提供的服务协助。"],
-  "complianceBoundary": "客服仅提供流程与预约协助，具体诊疗判断需由医生结合检查评估。"
-}
-```
-
-每次会话最多 10 轮，至少完成 1 轮才能结束。提交消息继续使用 `clientMessageId` 保证幂等；模型失败时，已保存的患者问题通过 `pendingMessage` 返回，前端必须使用相同 ID 和内容重试。
-
-复盘状态为 `generating`、`ready` 或 `failed`。`ready` 时返回以下无分数结构：
-
-```json
-{
-  "summary": "整体接待总结",
-  "coveredTopics": ["已覆盖问题"],
-  "keyPrinciples": ["关键服务原则"],
-  "nextPracticeSuggestions": ["后续练习建议"]
-}
-```
-
-对应 PostgreSQL 表为 `roleplay_sessions`、`roleplay_messages` 和 `roleplay_summaries`；`scenarios.roleplay_config` 中的 `serviceGuidance` 仅供后端 Prompt 使用，接口只公开 `suggestedQuestions`。
-
-— API 契约结束 —
+现有成功响应数据结构和全部业务路径保持兼容。学员洞察字段在服务端对已规范化报告进行派生，DeepSeek 请求地址、请求参数、Prompt、响应解析与模型调用内部重试逻辑未改变。生产环境必须设置 `PRODUCTION=true`、`AUTH_MODE=wechat`、精确 `ALLOWED_ORIGIN`、`REQUIRE_HTTPS=true`，并在 HTTPS 反向代理后运行；运行时密钥上传会自动关闭。

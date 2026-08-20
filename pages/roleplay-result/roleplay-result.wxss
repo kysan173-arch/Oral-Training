@@ -1,27 +1,59 @@
-.roleplay-result-page { padding-bottom: 48rpx; }
-.result-hero { padding: 38rpx 24rpx 42rpx; color: #fff; background: linear-gradient(135deg, #32a79b, #4389c7); text-align: center; }
-.result-kicker { display: block; color: rgba(255,255,255,.78); font-size: 23rpx; }
-.hero-icon { width: 126rpx; height: 126rpx; line-height: 126rpx; margin: 24rpx auto 16rpx; border: 10rpx solid rgba(255,255,255,.25); border-radius: 50%; font-size: 64rpx; }
-.hero-title { display: block; font-size: 31rpx; font-weight: 700; }
-.result-time { display: block; margin-top: 12rpx; color: rgba(255,255,255,.62); font-size: 20rpx; }
-.notice-box { display: flex; align-items: flex-start; margin: 22rpx 24rpx 30rpx; padding: 20rpx; border-radius: 18rpx; color: #547473; background: #eaf7f5; font-size: 22rpx; line-height: 1.55; }
+.roleplay-result-page { padding-bottom: 48rpx; background: linear-gradient(180deg, #eef0ff 0%, #f5f5f8 35%, #fafafa 100%); min-height: 100vh; box-sizing: border-box; }
+
+/* ── Hero 区（紫色渐变 + 装饰） ── */
+.result-hero { position: relative; overflow: hidden; padding: 40rpx 24rpx 46rpx; color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); text-align: center; box-shadow: 0 10rpx 30rpx rgba(102,126,234,.25); }
+.hero-deco { position: absolute; border-radius: 50%; background: rgba(255,255,255,.10); }
+.hero-deco-1 { width: 220rpx; height: 220rpx; right: -80rpx; top: -90rpx; }
+.hero-deco-2 { width: 130rpx; height: 130rpx; left: -50rpx; bottom: -60rpx; }
+.result-kicker { position: relative; display: block; color: rgba(255,255,255,.85); font-size: 23rpx; font-weight: 500; letter-spacing: 2rpx; }
+.hero-icon { position: relative; display: flex; align-items: center; justify-content: center; width: 116rpx; height: 116rpx; margin: 28rpx auto 20rpx; border: 10rpx solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.14); font-size: 56rpx; font-weight: 800; line-height: 1; box-shadow: 0 0 0 6rpx rgba(255,255,255,.06); }
+.hero-title { position: relative; display: block; font-size: 40rpx; font-weight: 800; letter-spacing: 2rpx; text-shadow: 0 2rpx 8rpx rgba(0,0,0,.15); }
+.result-time { position: relative; display: block; margin-top: 16rpx; color: rgba(255,255,255,.7); font-size: 21rpx; letter-spacing: .5rpx; }
+
+/* ── 提示条 ── */
+.notice-box { display: flex; align-items: flex-start; margin: 22rpx 24rpx 30rpx; padding: 20rpx 24rpx; border-radius: 18rpx; color: #5a7d7a; background: #eaf7f5; font-size: 22rpx; line-height: 1.55; border-left: 6rpx solid #36a297; }
 .notice-icon { width: 30rpx; height: 30rpx; line-height: 30rpx; flex-shrink: 0; margin-right: 12rpx; border-radius: 50%; text-align: center; color: #fff; background: #36a297; font-size: 20rpx; }
+
+/* ── 通用标题区 ── */
 .section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 28rpx 14rpx; }
-.section-title { font-size: 31rpx; font-weight: 700; }
+.section-title { font-size: 34rpx; font-weight: 800; color: #1a1f33; letter-spacing: 1rpx; }
 .section-caption { color: #aaa; font-size: 21rpx; }
-.summary-card, .list-card, .principle-card { padding: 26rpx; margin: 0 24rpx 26rpx; color: #555; font-size: 25rpx; line-height: 1.7; }
-.list-item { display: block; margin-top: 10rpx; }
-.list-item:first-child { margin-top: 0; }
-.principle-card { display: flex; align-items: flex-start; }
-.principle-index { width: 42rpx; height: 42rpx; line-height: 42rpx; flex-shrink: 0; margin-right: 16rpx; border-radius: 50%; color: #fff; background: #36a297; font-size: 22rpx; text-align: center; }
-.principle-text { flex: 1; }
-.practice-card { color: #61748e; background: #f2f6ff; }
-.result-actions { padding: 0 24rpx; }
-.result-actions button { width: 100%; height: 76rpx; line-height: 76rpx; margin-bottom: 16rpx; padding: 0; }
+
+/* ── 卡片通用 ── */
+.summary-card, .list-card, .principle-card { padding: 28rpx; margin: 0 24rpx 26rpx; border-radius: 22rpx; background: #fff; box-shadow: 0 4rpx 18rpx rgba(48,62,112,.06); }
+
+/* ── 整体接待总结（引用式） ── */
+.summary-card { position: relative; }
+.summary-card::before { content: ''; position: absolute; left: 0; top: 24rpx; bottom: 24rpx; width: 6rpx; border-radius: 0 4rpx 4rpx 0; background: linear-gradient(180deg, #667eea, #9d75c7); }
+.summary-quote { display: block; padding-left: 20rpx; color: #4a5065; font-size: 27rpx; font-weight: 550; line-height: 1.9; }
+
+/* ── 已覆盖问题 / 后续建议 ── */
+.list-card { color: #555; font-size: 25rpx; line-height: 1.7; }
+.topic-item { display: flex; align-items: flex-start; padding: 8rpx 0; }
+.topic-item + .topic-item { border-top: 1rpx dashed #f0f0f3; margin-top: 6rpx; padding-top: 16rpx; }
+.topic-dot { width: 14rpx; height: 14rpx; flex-shrink: 0; margin: 18rpx 18rpx 0 2rpx; border-radius: 50%; background: #667eea; }
+.topic-dot-arrow { display: flex; align-items: center; justify-content: center; width: 34rpx; height: 34rpx; margin-top: 8rpx; border-radius: 12rpx; background: #f0f2ff; color: #667eea; font-size: 24rpx; font-weight: 800; }
+.topic-text { flex: 1; color: #4b5166; font-size: 26rpx; font-weight: 550; line-height: 1.8; }
+
+/* ── 关键服务原则 ── */
+.principle-card { display: flex; align-items: flex-start; padding: 26rpx 28rpx; }
+.principle-index { display: flex; align-items: center; justify-content: center; width: 46rpx; height: 46rpx; flex-shrink: 0; margin-right: 18rpx; border-radius: 16rpx; color: #fff; background: linear-gradient(135deg, #667eea, #764ba2); font-size: 24rpx; font-weight: 700; box-shadow: 0 4rpx 12rpx rgba(102,126,234,.3); }
+.principle-text { flex: 1; color: #4a5065; font-size: 26rpx; font-weight: 550; line-height: 1.8; }
+
+/* ── 后续练习建议（浅蓝底） ── */
+.practice-card { background: linear-gradient(135deg, #f6f8ff, #f0f3ff); }
+.practice-card .topic-dot-arrow { background: #e2e8ff; color: #5b6dc5; }
+
+/* ── 操作按钮 ── */
+.result-actions { padding: 6rpx 24rpx 0; }
+.result-actions button { width: 100%; height: 78rpx; line-height: 78rpx; margin-bottom: 16rpx; padding: 0; font-size: 28rpx; }
 .action-button { border: 0; }
-.disclaimer { display: block; color: #aaa; font-size: 21rpx; text-align: center; }
-.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; }
+.disclaimer { display: block; margin-top: 8rpx; color: #aaa; font-size: 21rpx; text-align: center; }
+
+/* ── 加载态 ── */
+.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; background: linear-gradient(180deg, #eef0ff 0%, #fafafa 100%); }
 .loading-card { width: 100%; padding: 48rpx 32rpx; text-align: center; }
+.loading-icon { width: 88rpx; height: 88rpx; line-height: 88rpx; margin: 0 auto 20rpx; border-radius: 50%; color: #667eea; background: #eef0ff; font-size: 44rpx; }
 .loading-title, .loading-text { display: block; }
 .loading-title { color: #333; font-size: 31rpx; font-weight: 700; }
 .loading-text { margin-top: 16rpx; color: #999; font-size: 24rpx; line-height: 1.6; }
