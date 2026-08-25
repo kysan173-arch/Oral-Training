@@ -19,7 +19,7 @@
   <block wx:if="{{!isAdmin}}">
   <!-- 搜索框 -->
   <view class="search-bar {{searchFocused ? 'search-bar-focused' : ''}}">
-    <text class="search-icon">Q</text>
+    <image class="search-icon" src="/static/image/tools/search.png" mode="aspectFit"></image>
     <input class="search-input" placeholder="搜索话术（如「种植牙」「价格」）" value="{{searchQuery}}" bindinput="onSearchInput" confirm-type="search" bindconfirm="onSearch" bindfocus="onSearchFocus" bindblur="onSearchBlur" />
     <text class="search-btn" wx:if="{{searchQuery}}" bindtap="onSearchTap">搜索</text>
   </view>

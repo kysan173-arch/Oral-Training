@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "错题复练"
+  "navigationBarTitleText": "错题复练",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
 }

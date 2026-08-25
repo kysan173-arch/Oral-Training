@@ -11,6 +11,7 @@ const dimensionsFrom = score => [
 Page({
   data: {
     sessions: [],
+    loading: true,
     expandedId: '',
     expandedEvaluationId: '',
     historyMode: 'customer_service',
@@ -43,6 +44,7 @@ Page({
       status: this.data.selectedStatus,
       limit: 50
     };
+    this.setData({ loading: true });
     const request = isRoleplay ? api.getRoleplaySessions(params) : api.getSessions(params);
     request.then(data => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
@@ -60,9 +62,10 @@ Page({
         evaluationDetail: null,
         evaluationLoading: false
       }));
-      this.setData({ sessions, expandedId: '', expandedEvaluationId: '' });
+      this.setData({ sessions, loading: false, expandedId: '', expandedEvaluationId: '' });
     }).catch(error => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
+      this.setData({ loading: false });
       wx.showToast({ title: error.message || '历史记录加载失败', icon: 'none' });
     });
   },

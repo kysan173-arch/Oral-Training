@@ -72,12 +72,54 @@ class IdentityService {
     if (target_role != "learner" && target_role != "admin") {
       throw ApiError(400, "INVALID_ARGUMENT", "角色必须为 learner 或 admin");
     }
+    // Demo 模式：角色切换不篡改任何用户的 role，而是切换到真实的演示账号，
+    // 避免把某个学员账号改成 admin（或把主管号改成 learner）。
     const auto user = authorize(request);
+    // 主管演示号（与 login 默认号一致，见 main.cpp kDemoUserId）。
+    const std::string kDemoAdminId = "demo-user-001";
+    std::string target_user_id;
+    if (target_role == "admin") {
+      target_user_id = kDemoAdminId;
+    } else {
+      // 切回学员视角：若当前已是 admin，则落到第一个演示学员；否则保持当前学员。
+      target_user_id = (user.role == "admin") ? "learner-test-001" : user.id;
+    }
+    return createSession(target_user_id);
+  }
+
+  // Demo 模式：列出所有可用演示账号（学员 + 主管），供前端切换
+  json listDemoUsers() const {
+    if (config_.auth_mode != "demo" || config_.production) {
+      throw ApiError(403, "FORBIDDEN", "仅 Demo 模式支持多账号");
+    }
     pqxx::connection connection(config_.database_url);
-    pqxx::work tx(connection);
-    tx.exec_params("UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2", target_role, user.id);
-    tx.commit();
-    return createSession(user.id);
+    pqxx::read_transaction tx(connection);
+    const auto rows = tx.exec(R"(
+      SELECT id, COALESCE(NULLIF(display_name, ''), '未命名') AS display_name, role
+      FROM users WHERE status = 'active' ORDER BY role, display_name
+    )");
+    json items = json::array();
+    for (const auto& row : rows) {
+      items.push_back({{"id", row["id"].c_str()}, {"displayName", row["display_name"].c_str()},
+                       {"role", row["role"].c_str()}});
+    }
+    return {{"items", items}};
+  }
+
+  // Demo 模式：切换到指定演示账号（学员或主管），返回新会话
+  json switchDemoUser(const std::string& user_id) {
+    if (config_.auth_mode != "demo" || config_.production) {
+      throw ApiError(403, "FORBIDDEN", "仅 Demo 模式支持多账号切换");
+    }
+    if (user_id.empty() || user_id.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "账号标识无效");
+    }
+    pqxx::connection connection(config_.database_url);
+    pqxx::read_transaction tx(connection);
+    const auto rows = tx.exec_params(
+        "SELECT id FROM users WHERE id = $1 AND status = 'active'", user_id);
+    if (rows.empty()) throw ApiError(404, "USER_NOT_FOUND", "该演示账号不存在");
+    return createSession(user_id);
   }
 
   UserContext authorize(const crow::request& request, bool learner_only = false) {

@@ -12,7 +12,16 @@
     <view class="status-filter-row"><text wx:for="{{statusFilters}}" wx:key="id" class="status-filter {{selectedStatus === item.id ? 'selected' : ''}}" bindtap="selectStatus" data-id="{{item.id}}">{{item.name}}</text></view>
   </view>
   <view class="history-tip"><text>状态说明：</text><text>{{historyMode === 'patient_simulation' ? '进行中可续练，已完成可查看学习复盘，已放弃记录仅用于回看。' : '进行中可续练，已完成可查看报告，已放弃记录仅用于回看。'}}</text></view>
-  <view class="empty-history card" wx:if="{{sessions.length === 0}}"><text class="empty-icon">暂无</text><text class="empty-title">还没有{{historyMode === 'patient_simulation' ? '患者模拟' : '客服训练'}}记录</text><text class="empty-text">完成一次{{historyMode === 'patient_simulation' ? '患者模拟' : '训练'}}后，完整对话会自动出现在这里。</text></view>
+
+  <!-- 加载骨架 -->
+  <view class="history-skeleton" wx:if="{{loading}}">
+    <view class="sk-row"></view>
+    <view class="sk-row"></view>
+    <view class="sk-row"></view>
+    <view class="sk-row"></view>
+  </view>
+
+  <view class="empty-history" wx:elif="{{sessions.length === 0}}"><empty-state icon="📋" title="还没有{{historyMode === 'patient_simulation' ? '患者模拟' : '客服训练'}}记录" text="完成一次{{historyMode === 'patient_simulation' ? '患者模拟' : '训练'}}后，完整对话会自动出现在这里。"></empty-state></view>
   <view class="history-list" wx:else>
     <view class="history-card card" wx:for="{{sessions}}" wx:key="id">
       <view class="history-card-top"><view><text class="history-scene">{{item.scenarioName}}</text><text class="history-mode-label">{{item.isRoleplay ? '患者模拟' : '客服训练'}}</text></view><text class="status {{item.statusClass}}">{{item.statusText}}</text></view>

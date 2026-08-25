@@ -7,11 +7,13 @@
 
   <view class="toolbar card"><text>显示已掌握项目</text><switch checked="{{includeMastered}}" color="#5B6EF5" bindchange="toggleMastered" /></view>
 
-  <view class="loading-card card" wx:if="{{loading}}"><text>正在整理需要复练的内容…</text></view>
+  <view class="mistake-skeleton" wx:if="{{loading}}">
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+  </view>
   <view class="empty-card card" wx:elif="{{mistakes.length === 0}}">
-    <text class="empty-title">{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}</text>
-    <text class="empty-text">完成训练并生成报告后，系统会把需要改进的表达收录在这里。</text>
-    <button class="primary-button" bindtap="goPhrases">去话术锦囊看看</button>
+    <empty-state icon="📝" title="{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}" text="完成训练并生成报告后，系统会把需要改进的表达收录在这里。" actionText="去话术锦囊看看" bind:action="goPhrases"></empty-state>
   </view>
 
   <view class="mistake-list" wx:else>

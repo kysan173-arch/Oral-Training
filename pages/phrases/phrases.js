@@ -5,26 +5,13 @@ Page({
     loading: true,
     keyword: '',
     phrases: [],
-    scenarioFilters: [{ id: '', name: '全部场景' }],
-    selectedScenarioId: '',
     favoritesOnly: false,
     favoriteBusyId: ''
   },
 
   onLoad(options) {
     this.setData({ keyword: options.search || '', favoritesOnly: options.favorites === '1' });
-    this.loadScenarioFilters();
     this.loadPhrases();
-  },
-
-  loadScenarioFilters() {
-    api.getScenarios().then(data => {
-      const scenarioFilters = [{ id: '', name: '全部场景' }].concat((data.items || []).map(item => ({
-        id: item.id,
-        name: item.name
-      })));
-      this.setData({ scenarioFilters });
-    }).catch(() => {});
   },
 
   onSearchInput(e) { this.setData({ keyword: e.detail.value }); },
@@ -33,16 +20,10 @@ Page({
 
   clearSearch() { this.setData({ keyword: '' }, () => this.loadPhrases()); },
 
-  selectScenario(e) {
-    const selectedScenarioId = e.currentTarget.dataset.id || '';
-    this.setData({ selectedScenarioId }, () => this.loadPhrases());
-  },
-
   loadPhrases() {
     this.setData({ loading: true });
     api.getLearningPhrases({
       search: this.data.keyword.trim(),
-      scenarioId: this.data.selectedScenarioId,
       favoritesOnly: this.data.favoritesOnly,
       limit: 50
     }).then(data => {
@@ -98,9 +79,5 @@ Page({
         wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
       }
     }).catch(error => wx.showToast({ title: error.message || '创建训练失败', icon: 'none' }));
-  },
-
-  goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
-
-  goMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); }
+  }
 });

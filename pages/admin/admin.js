@@ -87,7 +87,10 @@ Page({
       const maxSceneTotal = Math.max(1, ...(supervisor.scenarioStats || []).map(item => item.total));
       const scenarioStats = (supervisor.scenarioStats || []).map(item => Object.assign({}, item, {
         barWidth: Math.max(0, Math.min(100, item.passRate)),
-        totalWidth: Math.max(4, item.total / maxSceneTotal * 100)
+        totalWidth: Math.max(4, item.total / maxSceneTotal * 100),
+        averageScore: typeof item.averageScore === 'number'
+          ? (Math.round(item.averageScore * 10) / 10).toFixed(1)
+          : item.averageScore
       }));
       const normalized = Object.assign({}, supervisor, { dimensionAverages, scenarioStats });
       this.setData({
@@ -137,7 +140,9 @@ Page({
           id: item.scenarioId,
           name: item.scenarioName,
           count: item.trainingCount,
-          sceneAvg: typeof item.averageScore === 'number' ? Math.round(item.averageScore) : null,
+          sceneAvg: typeof item.averageScore === 'number'
+            ? (Math.round(item.averageScore * 10) / 10).toFixed(1)
+            : null,
           barWidth: item.trainingCount / totalSceneCount * 100
         })),
         dimensionAverages,

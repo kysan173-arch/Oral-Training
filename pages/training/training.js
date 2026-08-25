@@ -1,17 +1,12 @@
 const api = require('../../utils/api.js');
 
 const normalizeScenario = (item, customProfile) => {
+  // 患者画像由用户必填，优先展示自定义画像
   const base = Object.assign({}, item, {
-    patientAge: `${item.patientProfile.age}岁`,
-    patientConcern: item.patientProfile.description,
-    patientEmotion: '需通过对话了解'
+    patientAge: (customProfile && customProfile.age) ? `${customProfile.age}岁` : '年龄待填写',
+    patientConcern: (customProfile && customProfile.description) ? customProfile.description : '描述待填写',
+    patientEmotion: (customProfile && customProfile.emotion) ? customProfile.emotion : ''
   });
-  if (customProfile) {
-    if (customProfile.age) base.patientAge = `${customProfile.age}岁`;
-    if (customProfile.description) base.patientConcern = customProfile.description;
-    if (customProfile.emotion) base.patientEmotion = customProfile.emotion;
-    base.isCustomProfile = true;
-  }
   return base;
 };
 
@@ -232,8 +227,30 @@ Page({
     });
   },
 
-  leaveTraining() {
-    if (!this.data.sending && !this.data.finishing) wx.navigateBack();
+  abandonTraining() {
+    if (this.data.sending || this.data.finishing) {
+      wx.showToast({ title: '正在生成回复，请稍候', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '强制结束训练？',
+      content: '强制结束不会生成报告，该次训练也不会计入你的训练结果。',
+      confirmText: '强制结束',
+      cancelText: '取消',
+      success: result => {
+        if (!result.confirm) return;
+        wx.showLoading({ title: '正在结束…', mask: true });
+        api.abandonSession(this.sessionId).then(() => {
+          wx.hideLoading();
+          wx.removeStorageSync(`customProfile_${this.sessionId}`);
+          wx.showToast({ title: '已强制结束', icon: 'success' });
+          setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 800);
+        }).catch(error => {
+          wx.hideLoading();
+          wx.showToast({ title: error.message || '强制结束失败', icon: 'none' });
+        });
+      }
+    });
   },
 
   scrollToBottom() { this.setData({ scrollToView: 'message-bottom' }); }

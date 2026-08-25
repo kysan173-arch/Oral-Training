@@ -1,45 +1,45 @@
-.roleplay-page { display: flex; flex-direction: column; height: 100vh; padding-bottom: 0; box-sizing: border-box; background: var(--bg-grad, #F7F8FA); }
+.roleplay-page { display: flex; flex-direction: column; height: 100vh; padding-bottom: 0; box-sizing: border-box; background: var(--bg-grad, #FBFAF8); }
 .roleplay-header { display: flex; align-items: center; justify-content: space-between; padding: 26rpx 28rpx 22rpx; color: #fff; background: #5B6EF5; }
 .customer-title { display: flex; align-items: center; }
 .customer-dot { width: 64rpx; height: 64rpx; margin-right: 16rpx; border-radius: 20rpx; background: rgba(255,255,255,.22); }
 .customer-name, .customer-subtitle { display: block; }
-.customer-name { font-size: 31rpx; font-weight: 700; }
-.customer-subtitle { max-width: 430rpx; margin-top: 6rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.75); font-size: 21rpx; }
+.customer-name { font-size: 32rpx; font-weight: 600; }
+.customer-subtitle { max-width: 430rpx; margin-top: 6rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.75); font-size: 22rpx; }
 .round-counter { display: flex; align-items: baseline; padding: 10rpx 14rpx; border-radius: 16rpx; background: rgba(255,255,255,.16); }
-.round-value { font-size: 38rpx; font-weight: 700; }
-.round-total { margin-left: 4rpx; color: rgba(255,255,255,.78); font-size: 20rpx; }
+.round-value { font-size: 32rpx; font-weight: 600; }
+.round-total { margin-left: 4rpx; color: rgba(255,255,255,.78); font-size: 22rpx; }
 .profile-strip { display: flex; align-items: center; padding: 16rpx 28rpx; background: #fff; border-bottom: 1rpx solid #eee; }
-.strip-label { padding: 5rpx 12rpx; border-radius: 14rpx; color: #5B6EF5; background: #F2F2F7; font-size: 20rpx; }
+.strip-label { padding: 5rpx 12rpx; border-radius: 14rpx; color: #5B6EF5; background: #EEF0FF; font-size: 22rpx; }
 .strip-text { flex: 1; margin-left: 14rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; font-size: 22rpx; }
 .chat-area { flex: 1; min-height: 0; padding: 22rpx 24rpx; box-sizing: border-box; }
-.chat-intro { padding: 16rpx 20rpx; margin-bottom: 16rpx; border-radius: 16rpx; color: #777; background: #fff; font-size: 21rpx; line-height: 1.5; text-align: center; }
-.suggestion-panel { padding: 18rpx; margin-bottom: 22rpx; border-radius: 16rpx; background: #F2F2F7; }
-.suggestion-title { display: block; color: #5B6EF5; font-size: 22rpx; font-weight: 700; }
+.chat-intro { padding: 16rpx 20rpx; margin-bottom: 16rpx; border-radius: 16rpx; color: #777; background: #fff; font-size: 22rpx; line-height: 1.5; text-align: center; }
+.suggestion-panel { padding: 18rpx; margin-bottom: 22rpx; border-radius: 16rpx; background: #EEF0FF; }
+.suggestion-title { display: block; color: #5B6EF5; font-size: 22rpx; font-weight: 600; }
 .suggestion-list { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 12rpx; }
-.suggestion-chip { padding: 9rpx 13rpx; border-radius: 15rpx; color: #5B6EF5; background: #fff; font-size: 21rpx; line-height: 1.45; }
+.suggestion-chip { padding: 9rpx 13rpx; border-radius: 15rpx; color: #5B6EF5; background: #fff; font-size: 22rpx; line-height: 1.45; }
 .message-item { display: flex; align-items: flex-start; margin-bottom: 26rpx; }
 .learner-message { flex-direction: row-reverse; }
-.message-avatar { width: 58rpx; height: 58rpx; line-height: 58rpx; flex-shrink: 0; border-radius: 18rpx; color: #5B6EF5; background: #F2F2F7; font-size: 22rpx; text-align: center; }
+.message-avatar { width: 58rpx; height: 58rpx; line-height: 58rpx; flex-shrink: 0; border-radius: 18rpx; color: #5B6EF5; background: #EEF0FF; font-size: 22rpx; text-align: center; }
 .learner-message .message-avatar { color: #fff; background: #5B6EF5; }
 .message-body { max-width: 78%; margin-left: 14rpx; }
 .learner-message .message-body { margin-right: 14rpx; margin-left: 0; }
-.message-role { display: block; margin-bottom: 7rpx; color: #aaa; font-size: 20rpx; }
+.message-role { display: block; margin-bottom: 7rpx; color: #8A93AD; font-size: 22rpx; }
 .learner-message .message-role { text-align: right; }
-.message-bubble { padding: 18rpx 22rpx; border-radius: 6rpx 22rpx 22rpx 22rpx; color: #444; background: #fff; box-shadow: 0 3rpx 12rpx rgba(0,0,0,.03); font-size: 27rpx; line-height: 1.6; }
+.message-bubble { padding: 18rpx 22rpx; border-radius: 6rpx 22rpx 22rpx 22rpx; color: #3C3A44; background: #fff; box-shadow: 0 3rpx 12rpx rgba(0,0,0,.03); font-size: 26rpx; line-height: 1.6; }
 .learner-message .message-bubble { border-radius: 22rpx 6rpx 22rpx 22rpx; color: #fff; background: #5B6EF5; }
-.learning-card { padding: 16rpx; margin-top: 10rpx; border-radius: 14rpx; background: #F2F2F7; }
-.learning-title { display: block; color: #5B6EF5; font-size: 21rpx; font-weight: 700; }
-.learning-point { display: block; margin-top: 7rpx; color: #6B6B7B; font-size: 21rpx; line-height: 1.5; }
-.boundary-box { padding-top: 12rpx; margin-top: 12rpx; border-top: 1rpx solid #cfe9e4; color: #8A6E4B; font-size: 20rpx; line-height: 1.5; }
-.boundary-label { margin-right: 10rpx; color: #FF9500; font-weight: 700; }
+.learning-card { padding: 16rpx; margin-top: 10rpx; border-radius: 14rpx; background: #EEF0FF; }
+.learning-title { display: block; color: #5B6EF5; font-size: 22rpx; font-weight: 600; }
+.learning-point { display: block; margin-top: 7rpx; color: #3C3A44; font-size: 22rpx; line-height: 1.5; }
+.boundary-box { padding-top: 12rpx; margin-top: 12rpx; border-top: 1rpx solid #cfe9e4; color: #8A6E4B; font-size: 22rpx; line-height: 1.5; }
+.boundary-label { margin-right: 10rpx; color: #FF9500; font-weight: 600; }
 .typing { display: flex; align-items: center; width: max-content; padding: 15rpx 20rpx; margin: 4rpx 0 20rpx 72rpx; border-radius: 18rpx; color: #999; background: #fff; font-size: 22rpx; }
 .typing-dot { width: 12rpx; height: 12rpx; margin-right: 10rpx; border-radius: 50%; background: #5B6EF5; }
-.training-note { padding: 10rpx 24rpx; color: #aaa; background: var(--bg-grad, #F7F8FA); font-size: 20rpx; text-align: center; }
+.training-note { padding: 10rpx 24rpx; color: #8A93AD; background: var(--bg-grad, #FBFAF8); font-size: 22rpx; text-align: center; }
 .input-area { display: flex; align-items: center; gap: 14rpx; padding: 16rpx 22rpx; background: #fff; border-top: 1rpx solid #eee; }
-.input-field { flex: 1; height: 72rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 36rpx; background: #F7F8FA; font-size: 26rpx; }
-.send-button { width: 128rpx; height: 72rpx; line-height: 72rpx; padding: 0; border-radius: 36rpx; color: #fff; background: #5B6EF5; font-size: 25rpx; }
+.input-field { flex: 1; height: 72rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 36rpx; background: #FBFAF8; font-size: 26rpx; }
+.send-button { width: 128rpx; height: 72rpx; line-height: 72rpx; padding: 0; border-radius: 36rpx; color: #fff; background: #5B6EF5; font-size: 26rpx; }
 .send-button[disabled] { background: #c9c9c9; }
 .roleplay-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 22rpx 22rpx; background: #fff; }
-.leave-link { padding: 20rpx 8rpx; color: #999; font-size: 23rpx; }
-.finish-button { width: 220rpx; height: 66rpx; line-height: 66rpx; padding: 0; border: 1rpx solid #D1D1D6; border-radius: 34rpx; color: #5B6EF5; background: #fff; font-size: 24rpx; text-align: center; }
+.leave-link { padding: 20rpx 8rpx; color: #999; font-size: 22rpx; }
+.finish-button { width: 220rpx; height: 66rpx; line-height: 66rpx; padding: 0; border: 1rpx solid #D1D1D6; border-radius: 34rpx; color: #5B6EF5; background: #fff; font-size: 26rpx; text-align: center; }
 .finish-button.is-disabled { color: #bbb; border-color: #eee; }

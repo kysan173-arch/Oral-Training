@@ -2,31 +2,35 @@
    app.wxss - 全局设计系统（Design Tokens + 通用工具类）
    ============================================================ */
 
-/* ── 1. 设计 Token ─────────────────────────────── */
+/* ── 1. 设计 Token ───────────────────────────────
+   收敛原则：主色不超过 3 个（品牌蓝 / 警示橙 / 中性灰），
+   字重仅 400 / 600，字号仅 32 / 26 / 22。 */
 page {
-  /* 品牌色板 */
+  /* 主色（品牌蓝） */
   --color-primary: #5B6EF5;          /* 主色 */
   --color-primary-dark: #4A5CD8;     /* 主色·按压/深 */
   --color-primary-light: #EEF0FF;    /* 主色·浅底 */
   --color-primary-pale: #F5F6FF;     /* 主色·极浅底 */
 
-  /* 语义色 */
-  --color-success: #34C759;          /* 成功 */
-  --color-success-light: #EAF9EF;    /* 成功·浅底 */
-  --color-warning: #FF9500;          /* 警告 */
-  --color-warning-light: #FFF5E6;    /* 警告·浅底 */
-  --color-danger: #FF3B30;           /* 危险 */
-  --color-danger-light: #FFF0F0;     /* 危险·浅底 */
+  /* 警示（唯一状态色） */
+  --color-warning: #FF9500;          /* 唯一警示/状态色 */
+  --color-warning-light: #FFF5E6;    /* 警示·浅底 */
 
-  /* 中性色 */
-  --text-strong: #1F1D28;            /* 标题文字 */
+  /* 中性（文字/底） */
+  --text-strong: #1A1A2E;            /* 标题文字（主文字） */
   --text-body: #3C3A44;              /* 正文 */
-  --text-secondary: #6E6C76;         /* 次级文字 */
+  --text-secondary: #8A93AD;         /* 次级文字（统一中性灰） */
   --text-muted: #A6A3AC;             /* 弱文字/占位 */
   --text-disabled: #CCC9CE;          /* 禁用 */
   --color-border: #ECE9E4;           /* 分隔线/边框 */
   --color-bg: #FBFAF8;               /* 页面背景（暖白） */
   --bg-grad: linear-gradient(180deg, #FCFBF9 0%, #F7F5F1 100%);  /* 暖白渐变 */
+
+  /* 兼容旧语义变量：状态统一收敛到主色/警示 */
+  --color-success: #5B6EF5;          /* 收敛为主色 */
+  --color-success-light: #EEF0FF;    /* 收敛为浅蓝 */
+  --color-danger: #FF9500;           /* 收敛为警示橙 */
+  --color-danger-light: #FFF5E6;     /* 收敛为浅橙 */
 
   /* 圆角 */
   --radius-lg: 24rpx;                /* 大卡 */
@@ -83,8 +87,8 @@ page {
   margin: 8rpx 0 16rpx;
 }
 .section-title {
-  font-size: 34rpx;
-  font-weight: 700;
+  font-size: 32rpx;
+  font-weight: 600;
   color: var(--text-strong);
   letter-spacing: .5rpx;
 }
@@ -119,7 +123,7 @@ button::after { border: none; }
 
 .btn {
   border-radius: 60rpx;
-  font-size: 30rpx;
+  font-size: 26rpx;
   padding: 20rpx 0;
   text-align: center;
   transition: opacity .15s;
@@ -146,7 +150,7 @@ button::after { border: none; }
   background: var(--color-primary);
   color: #fff;
   border-radius: 46rpx;
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 600;
   transition: opacity .15s, transform .1s;
 }
@@ -160,7 +164,7 @@ button::after { border: none; }
   color: var(--color-primary);
   border-radius: 40rpx;
   font-size: 26rpx;
-  font-weight: 500;
+  font-weight: 400;
   transition: opacity .15s;
 }
 .secondary-button:active { opacity: .85; }
@@ -171,8 +175,8 @@ button::after { border: none; }
   align-items: center;
   padding: 6rpx 16rpx;
   border-radius: 20rpx;
-  font-size: 20rpx;
-  font-weight: 500;
+  font-size: 22rpx;
+  font-weight: 400;
   line-height: 1.4;
 }
 .tag-primary { color: var(--color-primary); background: var(--color-primary-light); }

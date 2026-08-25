@@ -5,10 +5,9 @@
   </view>
   <view class="profile-strip">
     <view class="strip-label-group">
-      <text class="strip-label">公开画像</text>
-      <text class="strip-custom-badge" wx:if="{{scenario.isCustomProfile}}">自定义</text>
+      <text class="strip-label">患者画像</text>
     </view>
-    <text class="strip-text">{{scenario.patientAge}} · {{scenario.patientConcern}} · {{scenario.patientEmotion}}</text>
+    <text class="strip-text">{{scenario.patientAge}}{{scenario.patientEmotion ? ' · ' + scenario.patientEmotion : ''}} · {{scenario.patientConcern}}</text>
   </view>
 
   <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
@@ -35,7 +34,7 @@
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>
   </view>
   <view class="training-footer">
-    <text class="leave-link" bindtap="leaveTraining">暂存并退出</text>
+    <text class="abandon-link" bindtap="abandonTraining">强制结束</text>
     <view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishTraining" aria-role="button">{{finishing ? '生成报告中…' : '结束训练'}}</view>
   </view>
 </view>

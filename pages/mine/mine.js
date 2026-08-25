@@ -54,7 +54,10 @@ Page({
     avatar: '',
     levelInfo: { level: 1, levelName: '见习客服', currentPoints: 0, nextLevelPoints: 50, progress: 0, isMax: false },
     rulesExpanded: false,
-    checkinBurst: false
+    checkinBurst: false,
+    showDemoPicker: false,
+    demoUsers: [],
+    currentUserId: ''
   },
 
   onShow() {
@@ -62,8 +65,8 @@ Page({
       this.getTabBar().setData({ selected: 3 });
     }
     const user = api.getCurrentUser();
-    if (user && user.role) {
-      this.setData({ currentRole: user.role });
+    if (user) {
+      this.setData({ currentRole: user.role, currentUserId: user.id });
     }
     if (user && user.role === 'admin') {
       this.setData({ isAdmin: true });
@@ -106,6 +109,43 @@ Page({
     });
   },
 
+  // ── 切换演示账号（仅 Demo 模式测试） ──
+  openDemoPicker() {
+    this.setData({ showDemoPicker: true });
+    api.getDemoLearners().then(data => {
+      const user = api.getCurrentUser();
+      this.setData({ demoUsers: data.items || [], currentUserId: user ? user.id : '' });
+    }).catch(error => {
+      this.setData({ showDemoPicker: false });
+      wx.showToast({ title: error.message || '加载演示账号失败', icon: 'none' });
+    });
+  },
+
+  closeDemoPicker() {
+    this.setData({ showDemoPicker: false });
+  },
+
+  selectDemoUser(e) {
+    const userId = e.currentTarget.dataset.id;
+    if (!userId || userId === this.data.currentUserId) {
+      this.setData({ showDemoPicker: false });
+      return;
+    }
+    wx.showLoading({ title: '切换中…', mask: true });
+    api.switchLearner(userId).then(() => {
+      wx.hideLoading();
+      this.setData({ showDemoPicker: false });
+      wx.showToast({ title: '已切换账号', icon: 'success', duration: 1500 });
+      setTimeout(() => {
+        const role = api.getCurrentUser() ? api.getCurrentUser().role : 'learner';
+        wx.switchTab({ url: role === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
+      }, 1600);
+    }).catch(error => {
+      wx.hideLoading();
+      wx.showToast({ title: error.message || '切换失败', icon: 'none' });
+    });
+  },
+
   loadMine() {
     this.setData({ loading: true, loadError: false, loadErrorMsg: '' });
     api.getLearningMine().then(data => {
@@ -129,6 +169,17 @@ Page({
         loadError: false
       });
     }).catch(error => {
+      // 403 ROLE_FORBIDDEN：本地缓存的 role 跟后端实际身份不一致，按后端为准自动降级到主管视图
+      if (error && (error.code === 'ROLE_FORBIDDEN' || /管理员账号不能使用学员/.test(error.message || ''))) {
+        const cached = api.getCurrentUser();
+        if (cached) {
+          const fixed = Object.assign({}, cached, { role: 'admin' });
+          try { wx.setStorageSync('oralTrainingUser', fixed); } catch (e) {}
+        }
+        this.setData({ isAdmin: true, loading: true, loadError: false, loadErrorMsg: '' });
+        this.loadAdminMine();
+        return;
+      }
       this.setData({ loading: false, loadError: true, loadErrorMsg: error.message || '成长数据加载失败' });
       wx.showToast({ title: error.message || '成长数据加载失败', icon: 'none' });
     });

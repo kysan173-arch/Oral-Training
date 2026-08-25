@@ -235,15 +235,35 @@ Page({
     if (source.description && String(source.description).trim()) profileData.description = String(source.description).trim();
     if (source.emotion && String(source.emotion).trim()) profileData.emotion = String(source.emotion).trim();
 
-    const hasProfile = profileData.age || profileData.description || profileData.emotion;
-    api.createSession(id, hasProfile ? profileData : null).then(data => {
+    // 必填校验：至少需要患者描述
+    if (!profileData.description) {
+      this.setData({ showCustomProfileId: id });
+      wx.showToast({ title: '请先填写患者画像（描述为必填）', icon: 'none' });
+      return;
+    }
+
+    api.createSession(id, profileData).then(data => {
       const sessionId = data.session.id;
-      if (hasProfile) {
-        // 将自定义画像存入本地，供 training 页面读取
-        wx.setStorageSync(`customProfile_${sessionId}`, JSON.stringify(profileData));
-      }
+      // 将自定义画像存入本地，供 training 页面读取
+      wx.setStorageSync(`customProfile_${sessionId}`, JSON.stringify(profileData));
       this.goTraining(sessionId);
     }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+  },
+
+  // 是否已填写必填画像（描述）
+  hasCustomProfile(id) {
+    const source = this.data.customProfiles[id] || {};
+    return !!(source.description && String(source.description).trim());
+  },
+
+  // 生成画像摘要
+  profileSummary(id) {
+    const source = this.data.customProfiles[id] || {};
+    const parts = [];
+    if (source.age && String(source.age).trim()) parts.push(`${source.age}岁`);
+    if (source.description && String(source.description).trim()) parts.push(source.description);
+    if (source.emotion && String(source.emotion).trim()) parts.push(source.emotion);
+    return parts.join('，');
   },
 
   openSuggestion(e) {

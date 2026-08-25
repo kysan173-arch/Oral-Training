@@ -13,17 +13,13 @@
     <text class="clear-action" wx:if="{{keyword}}" bindtap="clearSearch">清除</text>
   </view>
 
-  <scroll-view class="filter-scroll" scroll-x="true" enable-flex="true">
-    <view class="filter-row">
-      <text wx:for="{{scenarioFilters}}" wx:key="id" class="filter-chip {{selectedScenarioId === item.id ? 'selected' : ''}}" bindtap="selectScenario" data-id="{{item.id}}">{{item.name}}</text>
-    </view>
-  </scroll-view>
-
-  <view class="loading-card card" wx:if="{{loading}}"><text>正在整理训练话术…</text></view>
+  <view class="phrase-skeleton" wx:if="{{loading}}">
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+  </view>
   <view class="empty-card card" wx:elif="{{phrases.length === 0}}">
-    <text class="empty-title">{{favoritesOnly ? '还没有收藏话术' : '还没有可收录的话术'}}</text>
-    <text class="empty-text">{{favoritesOnly ? '在话术锦囊中点击收藏后，可在这里集中回顾。' : '完成客服训练并生成报告后，关键轮次的优化表达会自动出现在这里。'}}</text>
-    <button class="primary-button" bindtap="goProfile">查看成长记录</button>
+    <empty-state icon="✨" title="{{favoritesOnly ? '还没有收藏话术' : '还没有可收录的话术'}}" text="{{favoritesOnly ? '在话术锦囊中点击收藏后，可在这里集中回顾。' : '完成客服训练并生成报告后，关键轮次的优化表达会自动出现在这里。'}}"></empty-state>
   </view>
 
   <view class="phrase-list" wx:else>
@@ -35,6 +31,4 @@
       <view class="phrase-actions"><text class="copy-action" bindtap="copyPhrase" data-phrase="{{item.csReply}}">复制话术</text><text class="favorite-action {{item.favorited ? 'active' : ''}}" bindtap="toggleFavorite" data-session-id="{{item.sessionId}}" data-phrase-key="{{item.phraseKey}}">{{favoriteBusyId === item.id ? '处理中…' : item.favorited ? '★ 已收藏' : '☆ 收藏'}}</text><text class="train-action" bindtap="startScenario" data-id="{{item.scenarioId}}">用此场景复练 ›</text></view>
     </view>
   </view>
-
-  <view class="bottom-links"><text bindtap="goMistakes">去错题复练</text><text bindtap="goProfile">查看个人成长</text></view>
 </view>

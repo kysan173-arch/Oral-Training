@@ -131,8 +131,13 @@
             <text class="hero-role-label">{{currentRole === 'admin' ? '主管' : '学员'}} · 点击切换</text>
           </view>
         </view>
+        <view class="demo-switch-entry" bindtap="openDemoPicker">
+          <text class="demo-switch-icon">🔄</text>
+          <text class="demo-switch-text">切换演示账号</text>
+        </view>
       </view>
     </view>
+
 
     <!-- 统计卡 横滑 -->
     <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
@@ -260,5 +265,31 @@
   <view class="disclaimer-wrap">
     <text class="disclaimer" wx:if="{{isAdmin}}">主管数据仅供管理辅导使用，不涉及学员对话内容。</text>
     <text class="disclaimer" wx:else>学习积分和训练数据不用于排名、兑换或正式考核。</text>
+  </view>
+
+  <!-- 切换演示账号面板 -->
+  <view class="demo-mask" wx:if="{{showDemoPicker}}" bindtap="closeDemoPicker"></view>
+  <view class="demo-picker {{showDemoPicker ? 'demo-picker-show' : ''}}">
+    <view class="demo-picker-head">
+      <text class="demo-picker-title">切换演示账号</text>
+      <text class="demo-picker-close" bindtap="closeDemoPicker">关闭</text>
+    </view>
+    <scroll-view class="demo-picker-list" scroll-y>
+      <view
+        class="demo-account {{item.id === currentUserId ? 'selected' : ''}}"
+        wx:for="{{demoUsers}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="selectDemoUser"
+      >
+        <view class="demo-account-icon">{{item.role === 'admin' ? '管' : '学'}}</view>
+        <view class="demo-account-copy">
+          <text class="demo-account-name">{{item.displayName}}</text>
+          <text class="demo-account-role">{{item.role === 'admin' ? '主管账号' : '学员账号'}}</text>
+        </view>
+        <text class="demo-account-check" wx:if="{{item.id === currentUserId}}">✓</text>
+      </view>
+    </scroll-view>
+    <view class="demo-picker-tip">切换后以该账号身份训练，主管端可查看各学员的真实数据。</view>
   </view>
 </view>

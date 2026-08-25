@@ -66,13 +66,33 @@ Write-Host "[3/3] Starting backend server ..." -ForegroundColor Cyan
 $env:PATH = "$root;$env:PATH"
 Write-Host "  http://$($env:BIND_ADDRESS):$($env:PORT)/api" -ForegroundColor White
 
-# Kill stale processes
-$oldProcs = Get-Process -Name "oral_training_backend" -ErrorAction SilentlyContinue
-if ($oldProcs) {
-  Write-Host "  Stopping stale process..." -ForegroundColor Yellow
-  $oldProcs | Stop-Process -Force
-  Start-Sleep -Seconds 1
+# Kill stale processes (by port to be safe; never let a failure abort startup)
+$port = $env:PORT
+if (-not $port) { $port = "8080" }
+$stalePids = @()
+try {
+  $conns = Get-NetTCPConnection -LocalPort ([int]$port) -State Listen -ErrorAction SilentlyContinue
+  if ($conns) {
+    $stalePids += $conns | Select-Object -ExpandProperty OwningProcess -Unique
+  }
+} catch {
+  Write-Host "  (warn) could not inspect port $port : $($_.Exception.Message)" -ForegroundColor Yellow
 }
+$byName = Get-Process -Name "oral_training_backend" -ErrorAction SilentlyContinue
+if ($byName) {
+  $stalePids += $byName | Select-Object -ExpandProperty Id
+}
+$stalePids = $stalePids | Select-Object -Unique
+foreach ($id in $stalePids) {
+  $proc = Get-Process -Id $id -ErrorAction SilentlyContinue
+  if ($proc) {
+    Write-Host "  Stopping stale process PID $id ..." -ForegroundColor Yellow
+    try { Stop-Process -Id $id -Force -ErrorAction Stop } catch {
+      Write-Host "  (warn) failed to stop PID $id : $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+  }
+}
+if ($stalePids) { Start-Sleep -Seconds 1 }
 
 & $exePath
 exit $LASTEXITCODE

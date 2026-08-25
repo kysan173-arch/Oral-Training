@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "话术锦囊"
+  "navigationBarTitleText": "话术锦囊",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
 }

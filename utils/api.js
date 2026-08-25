@@ -109,6 +109,7 @@ module.exports = {
   finishSession: (sessionId, reason = 'manual') => request(`/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
   }),
+  abandonSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/abandon`, { method: 'POST', data: {} }),
   getEvaluation: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/evaluation`),
   retryEvaluation: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/evaluation/retry`, { method: 'POST', data: {} }),
   getSessions: params => request(`/sessions?${query(params || {})}`),
@@ -145,5 +146,14 @@ module.exports = {
   getSupervisorDashboard: params => request(`/supervisor/dashboard?${query(params || {})}`),
   getSupervisorMembers: params => request(`/supervisor/members?${query(params || {})}`),
   getSupervisorMember: memberId => request(`/supervisor/members/${encodeURIComponent(memberId)}`),
-  switchRole: role => request('/auth/switch-role', { method: 'POST', data: { role } })
+  switchRole: role => request('/auth/switch-role', { method: 'POST', data: { role } }),
+  getDemoLearners: () => request('/demo/learners'),
+  switchLearner: userId => request('/auth/switch-learner', { method: 'POST', data: { userId } })
+    .then(data => {
+      if (data && data.accessToken && data.user) {
+        wx.setStorageSync(TOKEN_KEY, data.accessToken);
+        wx.setStorageSync(USER_KEY, data.user);
+      }
+      return data;
+    })
 };

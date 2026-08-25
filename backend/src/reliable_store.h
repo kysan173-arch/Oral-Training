@@ -126,19 +126,20 @@ class ReliableDatabase {
     const bool has_description = profileField(custom_profile, "description", description);
     const bool has_emotion = profileField(custom_profile, "emotion", emotion);
     if (!has_age && !has_description && !has_emotion) return fallback;
+    // 组装一个更像真人求助的自然开场，避免把年龄/情绪/描述机械罗列成一串。
+    // 优先把"描述"作为核心诉求；年龄、情绪作为背景自然带出。
     std::string opening;
-    if (has_description) {
-      opening += description;
+    std::string concern = has_description ? description : "我有些口腔方面的疑问";
+    if (has_emotion && (emotion == "焦虑" || emotion == "担心" || emotion == "害怕" ||
+                        emotion == "紧张" || emotion == "犹豫" || emotion == "不安")) {
+      opening = "您好，我最近" + concern + "，心里挺" + emotion + "的";
+      if (has_age) opening += "。我今年" + age + "岁";
+      opening += "，能麻烦您帮我看看是怎么回事吗？";
     } else {
-      opening += "我有些口腔方面的疑问";
-    }
-    if (has_age) {
-      opening += "，我" + age + "岁";
-    }
-    if (has_emotion) {
-      opening += "，现在" + emotion + "，想请你帮我了解一下。";
-    } else {
-      opening += "，想请你帮我了解一下。";
+      opening = "您好，我最近" + concern;
+      if (has_age) opening += "，我今年" + age + "岁";
+      if (has_emotion) opening += "，现在有点" + emotion;
+      opening += "，想请您帮我了解一下。";
     }
     return opening;
   }
@@ -244,6 +245,27 @@ class ReliableDatabase {
     tx.commit();
     return {{"session", saved},
             {"messages", json::array({messageJson(opening_id, "patient", opening, 0)})}};
+  }
+
+  // 强制结束训练：标记为 abandoned，不生成报告，也不计入训练统计
+  json abandonTrainingSession(const std::string& user_id, const std::string& session_id) const {
+    pqxx::connection connection(database_url_);
+    pqxx::work tx(connection);
+    const auto rows = tx.exec_params(R"(
+      SELECT status FROM sessions WHERE id = $1 AND user_id = $2 FOR UPDATE
+    )", session_id, user_id);
+    if (rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
+    const auto status = std::string(rows[0]["status"].c_str());
+    if (status == "abandoned") {
+      tx.commit();
+      return {{"sessionId", session_id}, {"status", "abandoned"}};
+    }
+    if (status != "in_progress") {
+      throw ApiError(409, "SESSION_FINISHED", "只有进行中的训练可以强制结束");
+    }
+    tx.exec_params("UPDATE sessions SET status = 'abandoned', updated_at = NOW() WHERE id = $1", session_id);
+    tx.commit();
+    return {{"sessionId", session_id}, {"status", "abandoned"}};
   }
 
   json getSession(const std::string& user_id, const std::string& session_id) const {
