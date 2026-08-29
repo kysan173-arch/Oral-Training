@@ -9,7 +9,7 @@
   </view>
 
   <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
-    <view class="chat-intro">本次训练最多10轮。请以普通客服身份沟通，不提供快捷话术或实时提示。</view>
+    <view class="chat-intro">本次训练最多10轮。辅助内容只提供沟通框架与合规边界，不替代医生进行诊断或方案判断。</view>
     <view class="message-item {{item.role === 'user' ? 'user-message' : 'patient-message'}}" wx:for="{{messages}}" wx:key="id">
       <view class="message-avatar">{{item.role === 'user' ? '我' : '患'}}</view>
       <view class="message-body">
@@ -22,6 +22,11 @@
   </scroll-view>
 
   <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
+  <view class="assist-panel">
+    <view class="assist-head"><text class="assist-title">训练辅助</text><text wx:if="{{requestingHint}}" class="hint-action">提示生成中…</text><text wx:elif="{{hintRemaining > 0}}" class="hint-action" bindtap="requestHint">获取提示（剩余 {{hintRemaining}} 次）</text><text wx:else class="hint-action disabled">本次提示已用完</text></view>
+    <scroll-view class="quick-scroll" scroll-x="true" enable-flex="true"><view class="quick-row"><text wx:for="{{quickPhrases}}" wx:key="*this" class="quick-chip" bindtap="useQuickPhrase" data-phrase="{{item}}">{{item}}</text></view></scroll-view>
+    <view class="hint-list" wx:if="{{hints.length}}"><view class="hint-card" wx:for="{{hints}}" wx:key="number"><text class="hint-label">提示 {{item.number}}</text><text class="hint-content">{{item.content}}</text></view></view>
+  </view>
   <view class="input-area">
     <input class="input-field" maxlength="1000" placeholder="输入你的回复…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing || pendingClientMessageId}}" />
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>

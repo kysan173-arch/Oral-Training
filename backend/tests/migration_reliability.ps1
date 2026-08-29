@@ -41,10 +41,15 @@ try {
 
   Invoke-Psql $emptySchema (Join-Path $migrations '003_reliability.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '004_identity.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '005_learner_insights.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '006_training_experience.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '007_supervisor_growth.sql') ''
   Invoke-Psql $emptySchema '' @'
 DO $$ BEGIN
   IF to_regclass('message_repair_archive') IS NULL OR to_regclass('ai_jobs') IS NULL OR
-     to_regclass('users') IS NULL OR to_regclass('auth_sessions') IS NULL THEN
+     to_regclass('users') IS NULL OR to_regclass('auth_sessions') IS NULL OR
+     to_regclass('learner_mistake_progress') IS NULL OR to_regclass('session_hints') IS NULL OR
+     to_regclass('learner_checkins') IS NULL OR to_regclass('learner_phrase_favorites') IS NULL THEN
     RAISE EXCEPTION 'empty database migration did not create required tables';
   END IF;
 END $$;
@@ -53,6 +58,19 @@ END $$;
   Invoke-Psql $historySchema $fixture ''
   Invoke-Psql $historySchema (Join-Path $migrations '003_reliability.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '004_identity.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '005_learner_insights.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '006_training_experience.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '007_supervisor_growth.sql') ''
+  Invoke-Psql $historySchema '' @'
+INSERT INTO learner_mistake_progress(user_id, session_id, mistake_key, mastered_at)
+VALUES ('demo-user-001', 'test-max-rounds', 'fixture-mistake', NOW());
+INSERT INTO session_hints(id, session_id, hint_number, content)
+VALUES ('fixture-hint', 'test-max-rounds', 1, 'Confirm the concern before explaining the clinical assessment boundary.');
+INSERT INTO learner_checkins(user_id, checkin_date, points)
+VALUES ('demo-user-001', DATE '2026-01-02', 10);
+INSERT INTO learner_phrase_favorites(user_id, session_id, phrase_key)
+VALUES ('demo-user-001', 'test-max-rounds', 'fixture-phrase');
+'@
   Invoke-Psql $historySchema '' @'
 DO $$ BEGIN
   IF (SELECT COUNT(*) FROM message_repair_archive) <> 4 THEN
@@ -83,6 +101,38 @@ END $$;
 
   Invoke-Psql $historySchema (Join-Path $migrations '003_reliability.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '004_identity.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '005_learner_insights.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '006_training_experience.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '007_supervisor_growth.sql') ''
+  Invoke-Psql $historySchema '' @'
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM learner_mistake_progress
+    WHERE user_id = 'demo-user-001' AND session_id = 'test-max-rounds'
+      AND mistake_key = 'fixture-mistake' AND mastered_at IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'learner insight progress was not preserved on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM session_hints
+    WHERE id = 'fixture-hint' AND session_id = 'test-max-rounds' AND hint_number = 1
+  ) THEN
+    RAISE EXCEPTION 'training hint was not preserved on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM learner_checkins
+    WHERE user_id = 'demo-user-001' AND checkin_date = DATE '2026-01-02' AND points = 10
+  ) THEN
+    RAISE EXCEPTION 'daily check-in was not preserved on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM learner_phrase_favorites
+    WHERE user_id = 'demo-user-001' AND session_id = 'test-max-rounds' AND phrase_key = 'fixture-phrase'
+  ) THEN
+    RAISE EXCEPTION 'phrase favorite was not preserved on migration rerun';
+  END IF;
+END $$;
+'@
   [pscustomobject]@{ Result = 'passed'; EmptySchema = $emptySchema; HistorySchema = $historySchema } |
     ConvertTo-Json -Compress
 } finally {

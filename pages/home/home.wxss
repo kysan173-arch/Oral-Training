@@ -10,9 +10,8 @@
 .hero-description { width: 92%; margin-top: 20rpx; font-size: 24rpx; line-height: 1.65; opacity: .78; }
 .hero-button { position: relative; width: 100%; height: 84rpx; margin-top: 34rpx; line-height: 1.2; color: #5e68c9; background: #fff; box-shadow: 0 8rpx 20rpx rgba(39,44,100,.15); }
 .model-key-card { margin: 22rpx 0 34rpx; padding: 24rpx; }
-.model-key-title, .model-key-text, .key-status { display: block; }
+.model-key-title, .key-status { display: block; }
 .model-key-title { color: #333; font-size: 28rpx; font-weight: 600; }
-.model-key-text { margin-top: 8rpx; color: #999; font-size: 22rpx; line-height: 1.5; }
 .key-input-row { display: flex; gap: 14rpx; align-items: center; margin-top: 18rpx; }
 .key-input { flex: 1; height: 66rpx; padding: 0 16rpx; border: 1rpx solid #e2e3ef; border-radius: 12rpx; color: #333; font-size: 24rpx; }
 .key-save-button { flex: 0 0 120rpx; height: 66rpx; margin: 0; padding: 0; border-radius: 12rpx; line-height: 66rpx; color: #fff; background: #667eea; font-size: 24rpx; }
@@ -21,11 +20,6 @@
 .section-title, .section-caption { display: block; }
 .section-title { font-size: 32rpx; font-weight: 700; }
 .section-caption { margin-top: 6rpx; color: #aaa; font-size: 22rpx; }
-.mvp-badge { padding: 7rpx 16rpx; border-radius: 20rpx; color: #667eea; background: #eef0ff; font-size: 20rpx; font-weight: 700; }
-.flow-card { display: flex; align-items: center; justify-content: space-around; padding: 26rpx 18rpx; }
-.flow-item { display: flex; flex-direction: column; align-items: center; color: #555; font-size: 23rpx; }
-.flow-number { margin-bottom: 10rpx; color: #667eea; font-size: 22rpx; font-weight: 700; }
-.flow-arrow { color: #c9c9d9; font-size: 42rpx; font-weight: 200; }
 .stats-heading { margin-top: 36rpx; }
 .section-link { color: #667eea; font-size: 23rpx; }
 .stats-grid { display: flex; gap: 16rpx; }
@@ -41,4 +35,3 @@
 .quick-title { font-size: 27rpx; font-weight: 600; }
 .quick-text { margin-top: 7rpx; color: #aaa; font-size: 22rpx; }
 .quick-arrow { color: #bbb; font-size: 38rpx; }
-.disclaimer { display: block; padding: 18rpx 12rpx 0; color: #aaa; font-size: 21rpx; line-height: 1.5; text-align: center; }

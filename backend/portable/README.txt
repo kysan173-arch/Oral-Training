@@ -3,7 +3,8 @@
 1. 安装并启动 PostgreSQL。
 2. 备份现有数据库。
 3. 使用 psql 按顺序执行 migrations\001_initial.sql、002_roleplay.sql、
-   003_reliability.sql、004_identity.sql。
+   003_reliability.sql、004_identity.sql、005_learner_insights.sql、
+   006_training_experience.sql、007_supervisor_growth.sql。
 4. 复制 backend.env.example 为 backend.env，并填写数据库、DeepSeek 和身份配置。
 5. 双击 start-backend.cmd。
 

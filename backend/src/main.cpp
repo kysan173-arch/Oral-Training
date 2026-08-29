@@ -17,6 +17,7 @@
 #include <deque>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -981,9 +982,12 @@ json reportArray(const json& source, const char* key, size_t max_items) {
 json normalizeReport(const json& source, const json& messages) {
   if (!source.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "评分报告不是 JSON 对象");
   std::map<int, std::string> user_messages;
+  std::map<int, std::string> patient_messages;
   for (const auto& message : messages) {
     if (jsonString(message, "role") == "user") {
       user_messages[jsonInt(message, "round", -1)] = jsonString(message, "content");
+    } else if (jsonString(message, "role") == "patient") {
+      patient_messages[jsonInt(message, "round", -1)] = jsonString(message, "content");
     }
   }
   if (user_messages.empty()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "评分报告缺少客服对话依据");
@@ -1047,6 +1051,7 @@ json normalizeReport(const json& source, const json& messages) {
   }
 
   json round_comments = json::array();
+  std::map<int, json> comments_by_round;
   std::set<int> commented_rounds;
   for (const auto& item : reportArray(source, "roundComments", 10)) {
     if (!item.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "逐轮点评格式无效");
@@ -1058,15 +1063,80 @@ json normalizeReport(const json& source, const json& messages) {
     const auto rewrite = safeAdviceOrFallback(
         reportText(item, "recommendedRewrite", "", true, 600),
         "我理解您的担忧，具体情况需要医生结合检查结果评估，我们可以先安排面诊沟通。");
-    round_comments.push_back({{"round", round}, {"userMessage", user_message->second},
-                              {"comment", reportText(item, "comment", "", true, 600)},
-                              {"recommendedRewrite", rewrite}});
+    const auto comment = reportText(item, "comment", "", true, 600);
+    const json normalized_comment = {{"round", round}, {"userMessage", user_message->second},
+                                     {"comment", comment}, {"recommendedRewrite", rewrite}};
+    comments_by_round[round] = normalized_comment;
+    round_comments.push_back(normalized_comment);
+  }
+
+  const auto patient_prompt_for_round = [&](int round) {
+    const auto after_prompt = patient_messages.lower_bound(round);
+    if (after_prompt == patient_messages.begin()) return std::string();
+    return std::prev(after_prompt)->second;
+  };
+
+  // These insights are derived from already validated report fields.  Keeping
+  // them in the report makes the phrase library reproducible without adding a
+  // second model response contract or storing client-authored training data.
+  json recommended_phrases = json::array();
+  std::set<std::string> phrase_texts;
+  const auto append_phrase = [&](int round, const std::string& phrase, const std::string& reason) {
+    if (round <= 0 || phrase.empty() || recommended_phrases.size() >= 8 || !phrase_texts.insert(phrase).second) {
+      return;
+    }
+    recommended_phrases.push_back({
+        {"phraseKey", "phrase-" + std::to_string(round) + "-" + std::to_string(recommended_phrases.size() + 1)},
+        {"round", round}, {"patientSays", patient_prompt_for_round(round)}, {"csReply", phrase},
+        {"reason", reason.empty() ? "可作为下一次接待时的合规表达参考。" : reason},
+    });
+  };
+  for (const auto& item : round_comments) {
+    append_phrase(item["round"].get<int>(), item["recommendedRewrite"].get<std::string>(),
+                  item["comment"].get<std::string>());
+  }
+  for (const auto& item : violations) {
+    append_phrase(item["round"].get<int>(), item["recommendedRewrite"].get<std::string>(),
+                  item["reason"].get<std::string>());
+  }
+
+  json learning_mistakes = json::array();
+  std::set<int> violation_rounds;
+  for (size_t index = 0; index < violations.size() && learning_mistakes.size() < 12; ++index) {
+    const auto& item = violations[index];
+    const auto round = item["round"].get<int>();
+    violation_rounds.insert(round);
+    learning_mistakes.push_back({
+        {"mistakeKey", "violation-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+        {"kind", "violation"}, {"priority", item["deduction"].get<int>() >= 30 ? "high" : "medium"},
+        {"round", round}, {"originalQuote", item["originalQuote"]}, {"reason", item["reason"]},
+        {"recommendedRewrite", item["recommendedRewrite"]},
+    });
+  }
+  for (size_t index = 0; index < improvements.size() && learning_mistakes.size() < 12; ++index) {
+    const auto& item = improvements[index];
+    const auto round = item["round"].get<int>();
+    const auto user_message = user_messages.find(round);
+    if (round <= 0 || user_message == user_messages.end() || violation_rounds.find(round) != violation_rounds.end()) {
+      continue;
+    }
+    const auto comment = comments_by_round.find(round);
+    const auto rewrite = comment == comments_by_round.end()
+        ? std::string("我理解您的担忧，具体情况需要医生结合检查结果评估，我们可以协助安排进一步沟通。")
+        : comment->second["recommendedRewrite"].get<std::string>();
+    learning_mistakes.push_back({
+        {"mistakeKey", "improvement-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+        {"kind", "improvement"}, {"priority", "practice"}, {"round", round},
+        {"originalQuote", user_message->second}, {"reason", item["content"]},
+        {"recommendedRewrite", rewrite},
+    });
   }
 
   return {{"dimensionScores", dimensions},
           {"summary", reportText(source, "summary", "已完成本次训练评分。", false, 1000)},
           {"strengths", strengths}, {"improvements", improvements},
-          {"violations", violations}, {"roundComments", round_comments}};
+          {"violations", violations}, {"roundComments", round_comments},
+          {"recommendedPhrases", recommended_phrases}, {"learningMistakes", learning_mistakes}};
 }
 
 class Service {
@@ -1479,6 +1549,15 @@ int main() {
     });
   });
 
+  CROW_ROUTE(app, "/api/sessions/<string>/hint").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.database().requestTrainingHint(user.id, session_id));
+    });
+  });
+
   CROW_ROUTE(app, "/api/sessions/<string>/finish").methods(crow::HTTPMethod::POST)(
       [&](const crow::request& request, const std::string& session_id) {
     return handle(request, [&] {
@@ -1506,10 +1585,127 @@ int main() {
     });
   });
 
+  CROW_ROUTE(app, "/api/learning/phrases").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto* search = request.url_params.get("search");
+      const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* favorites_only = request.url_params.get("favoritesOnly");
+      const auto* limit = request.url_params.get("limit");
+      bool requested_favorites_only = false;
+      if (favorites_only != nullptr) {
+        const auto value = std::string(favorites_only);
+        if (value == "true" || value == "1") requested_favorites_only = true;
+        else if (value != "false" && value != "0") throw ApiError(400, "INVALID_ARGUMENT", "favoritesOnly 参数无效");
+      }
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listLearningPhrases(
+          user.id, search == nullptr ? "" : search, scenario_id == nullptr ? "" : scenario_id,
+          requested_favorites_only, requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/phrases/<string>/<string>/favorite").methods(crow::HTTPMethod::PUT)(
+      [&](const crow::request& request, const std::string& session_id, const std::string& phrase_key) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      if (!body.is_object() || !body.contains("favorite") || !body["favorite"].is_boolean()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "favorite 必须为布尔值");
+      }
+      return ok(service.database().setLearningPhraseFavorite(
+          user.id, session_id, phrase_key, body["favorite"].get<bool>()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mistakes").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* include_mastered = request.url_params.get("includeMastered");
+      const auto* limit = request.url_params.get("limit");
+      bool requested_include_mastered = false;
+      if (include_mastered != nullptr) {
+        const auto value = std::string(include_mastered);
+        if (value == "true" || value == "1") requested_include_mastered = true;
+        else if (value != "false" && value != "0") throw ApiError(400, "INVALID_ARGUMENT", "includeMastered 参数无效");
+      }
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listLearningMistakes(user.id, scenario_id == nullptr ? "" : scenario_id,
+                                                         requested_include_mastered, requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mistakes/<string>/<string>").methods(crow::HTTPMethod::PUT)(
+      [&](const crow::request& request, const std::string& session_id, const std::string& mistake_key) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      if (!body.is_object() || !body.contains("mastered") || !body["mastered"].is_boolean()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "mastered 必须为布尔值");
+      }
+      return ok(service.database().setLearningMistakeMastery(
+          user.id, session_id, mistake_key, body["mastered"].get<bool>()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/profile").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().learningProfile(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mine").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().learningMine(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/checkins").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.database().checkIn(user.id));
+    });
+  });
+
   CROW_ROUTE(app, "/api/dashboard/summary").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
     return handle(request, [&] {
       const auto user = identity.authorize(request);
       return ok(service.database().dashboard(user.id, user.isAdmin()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/dashboard").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看团队聚合数据");
+      const auto* range = request.url_params.get("range");
+      return ok(service.database().supervisorDashboard(range == nullptr ? "month" : range));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/members").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看成员详情");
+      const auto* limit = request.url_params.get("limit");
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listSupervisorMembers(requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/members/<string>").methods(crow::HTTPMethod::GET)(
+      [&](const crow::request& request, const std::string& member_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看成员详情");
+      return ok(service.database().supervisorMemberDetail(member_id));
     });
   });
 
@@ -1524,7 +1720,7 @@ int main() {
       }
       crow::response response(204);
       response.set_header("Access-Control-Allow-Origin", config.allowed_origin);
-      response.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
       response.set_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id");
       response.set_header("Access-Control-Max-Age", "600");
       response.set_header("Vary", "Origin");

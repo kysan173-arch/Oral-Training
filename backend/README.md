@@ -13,6 +13,9 @@
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\002_roleplay.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\003_reliability.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\004_identity.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\005_learner_insights.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\006_training_experience.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\007_supervisor_growth.sql
    ```
 
    `003` 会完整归档历史重复轮次后建立唯一索引，回填回复状态，并为已有 `generating` 记录补任务；迁移本身不会调用模型。`004` 保留所有旧记录并归属到 `demo-user-001`。
@@ -72,6 +75,9 @@ ctest --test-dir build-msvc -C Release --output-on-failure
 ```powershell
 .\tests\migration_reliability.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 ```
+
+在同一测试库中，设置 `ORAL_TRAINING_TEST_DATABASE_URL` 后运行
+`build-msvc\Release\database_feature_test.exe`，可验证提示、签到、收藏、主管聚合和成员摘要。
 
 并发测试会进行一次受控患者模型调用并在测试后删除精确会话：
 

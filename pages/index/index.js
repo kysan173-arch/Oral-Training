@@ -1,8 +1,29 @@
 const api = require('../../utils/api.js');
 
+const CATEGORY_CONFIG = [
+  { id: 'consultation', name: '咨询解答', icon: '💬', description: '先了解患者关切，再清楚说明服务边界。' },
+  { id: 'price_negotiation', name: '价格异议', icon: '🧾', description: '客观说明费用流程，不承诺固定价格。' },
+  { id: 'complaint_handling', name: '投诉与不适', icon: '🤝', description: '先回应情绪，及时引导联系医生或复诊。' },
+  { id: 'recommendation', name: '项目推荐', icon: '🧭', description: '从真实需求出发，不替代医生判断。' }
+];
+
+const inferCategory = item => {
+  if (CATEGORY_CONFIG.some(category => category.id === item.category)) return item.category;
+  if (/比价|报价|价格/.test(item.name)) return 'price_negotiation';
+  if (/术后|不适|投诉/.test(item.name)) return 'complaint_handling';
+  return 'consultation';
+};
+
+const buildCategories = scenarios => CATEGORY_CONFIG.map(category => Object.assign({}, category, {
+  items: scenarios.filter(item => item.category === category.id)
+})).filter(category => category.items.length > 0);
+
 Page({
   data: {
     scenarios: [],
+    categories: [],
+    visibleCategories: [],
+    activeCategoryId: '',
     expandedId: '',
     trainingMode: 'customer_service'
   },
@@ -18,6 +39,7 @@ Page({
     request.then(data => {
       if (requestVersion !== this.scenarioRequestVersion || requestedMode !== this.data.trainingMode) return;
       const scenarios = data.items.map(item => Object.assign({}, item, {
+        category: inferCategory(item),
         difficulty: item.difficulty === 'advanced' ? '进阶' : '基础',
         patientAge: `${item.patientProfile.age}岁`,
         patientConcern: item.patientProfile.description,
@@ -27,7 +49,12 @@ Page({
           : (isRoleplay ? '开始模拟' : '开始训练'),
         suggestedQuestions: item.suggestedQuestions || []
       }));
-      this.setData({ scenarios, expandedId: '' });
+      const categories = buildCategories(scenarios);
+      const activeCategoryId = categories.some(item => item.id === this.data.activeCategoryId)
+        ? this.data.activeCategoryId : '';
+      const visibleCategories = activeCategoryId
+        ? categories.filter(item => item.id === activeCategoryId) : categories;
+      this.setData({ scenarios, categories, visibleCategories, activeCategoryId, expandedId: '' });
     }).catch(error => {
       if (requestVersion !== this.scenarioRequestVersion || requestedMode !== this.data.trainingMode) return;
       wx.showToast({ title: error.message || '场景加载失败', icon: 'none' });
@@ -37,7 +64,14 @@ Page({
   switchMode(e) {
     const mode = e.currentTarget.dataset.mode;
     if (!mode || mode === this.data.trainingMode) return;
-    this.setData({ trainingMode: mode, scenarios: [], expandedId: '' }, () => this.loadScenarios());
+    this.setData({ trainingMode: mode, scenarios: [], categories: [], visibleCategories: [], expandedId: '' }, () => this.loadScenarios());
+  },
+
+  selectCategory(e) {
+    const activeCategoryId = e.currentTarget.dataset.id || '';
+    const visibleCategories = activeCategoryId
+      ? this.data.categories.filter(item => item.id === activeCategoryId) : this.data.categories;
+    this.setData({ activeCategoryId, visibleCategories, expandedId: '' });
   },
 
   toggleProfile(e) {

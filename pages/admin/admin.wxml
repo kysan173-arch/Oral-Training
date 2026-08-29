@@ -1,16 +1,43 @@
 <view class="page-shell data-page">
-  <view class="data-header"><text class="eyebrow">STEP 06 / DATA</text><text class="page-title">训练数据</text><text class="page-intro">{{scopeText}}；个人会话互相隔离，管理员页面仅返回机构汇总。</text></view>
-  <view class="summary-cards">
-    <view class="summary-card card"><text class="summary-value">{{dashboard.totalCount}}</text><text class="summary-label">总训练次数</text><text class="summary-note">不含已放弃</text></view>
-    <view class="summary-card card"><text class="summary-value">{{dashboard.completedCount}}</text><text class="summary-label">已完成次数</text><text class="summary-note">已生成报告</text></view>
-    <view class="summary-card card"><text class="summary-value">{{dashboard.averageScore}}</text><text class="summary-label">平均得分</text><text class="summary-note">完成训练平均</text></view>
+  <view class="data-header">
+    <text class="eyebrow">{{isAdmin ? 'SUPERVISOR · INSIGHTS' : 'STEP 06 / DATA'}}</text>
+    <text class="page-title">{{isAdmin ? '主管看板' : '训练数据'}}</text>
+    <text class="page-intro">{{isAdmin ? '只展示当前机构的聚合指标和成员学习摘要；不提供排行榜、任务或对话内容。' : '你的训练数据仅供本人复盘，不用于排名或正式考核。'}}</text>
   </view>
-  <view class="section-title-row"><text class="section-title">各场景训练次数</text><text class="section-caption">四个固定场景</text></view>
-  <view class="chart-card card"><view class="scene-stat" wx:for="{{dashboard.sceneStats}}" wx:key="id"><view class="scene-stat-head"><text>{{item.name}}</text><text class="scene-count">{{item.count}} 次</text></view><view class="scene-bar"><view class="scene-fill" style="width: {{item.barWidth}}%;"></view></view></view></view>
-  <view class="section-title-row"><text class="section-title">五维平均得分</text><text class="section-caption">仅统计已完成训练</text></view>
-  <view class="dimension-card card"><view class="dimension-row" wx:for="{{dashboard.dimensionAverages}}" wx:key="key"><view class="dimension-head"><text>{{item.name}}</text><text>{{item.value}}</text></view><view class="dimension-bar"><view class="dimension-fill" style="width: {{item.value}}%;"></view></view></view></view>
-  <view class="section-title-row"><text class="section-title">最近训练</text><text class="section-caption">最多显示5条</text></view>
-  <view class="recent-card card"><view class="recent-row" wx:for="{{dashboard.recentSessions}}" wx:key="id"><view class="recent-copy"><text class="recent-name">{{item.scenarioName}}</text><text class="recent-time">{{item.updatedAt}} · {{item.currentRound}}轮</text></view><text class="recent-score" wx:if="{{item.evaluation}}">{{item.evaluation.totalScore}}分</text><text class="recent-status" wx:else>{{item.statusText}}</text></view><view class="no-recent" wx:if="{{dashboard.recentSessions.length === 0}}">{{scopeText === '当前机构汇总' ? '机构汇总不返回个人会话明细。' : '完成一次训练后，这里会展示最近记录。'}}</view></view>
-  <view class="not-included"><text class="not-included-title">本轮数据边界</text><text>不包含排行榜、团队运营、多机构租户和多门店数据。</text></view>
-  <text class="disclaimer">数据来自当前登录用户或当前单一机构。</text>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在汇总训练数据…</text></view>
+
+  <block wx:elif="{{isAdmin && supervisor}}">
+    <view class="time-filter-row"><text wx:for="{{timeFilters}}" wx:key="id" class="time-filter {{timeRange === item.id ? 'selected' : ''}}" bindtap="selectTimeRange" data-id="{{item.id}}">{{item.name}}</text></view>
+    <view class="summary-cards supervisor-summary">
+      <view class="summary-card card"><text class="summary-value">{{supervisor.studentCount}}</text><text class="summary-label">学员数</text></view>
+      <view class="summary-card card"><text class="summary-value">{{supervisor.totalSessions}}</text><text class="summary-label">训练次数</text></view>
+      <view class="summary-card card"><text class="summary-value">{{supervisor.averageScore}}</text><text class="summary-label">平均得分</text></view>
+      <view class="summary-card card"><text class="summary-value">{{supervisor.passRate}}%</text><text class="summary-label">练习达标率</text></view>
+    </view>
+
+    <view class="section-title-row"><text class="section-title">五维聚合表现</text><text class="section-caption">已完成报告均值</text></view>
+    <view class="dimension-card card"><view class="dimension-row" wx:for="{{supervisor.dimensionAverages}}" wx:key="key"><view class="dimension-head"><text>{{item.name}}</text><text>{{item.value}}</text></view><view class="dimension-bar"><view class="dimension-fill" style="width: {{item.value}}%;"></view></view></view></view>
+
+    <view class="section-title-row"><text class="section-title">场景练习分布</text><text class="section-caption">达标线 60 分</text></view>
+    <view class="chart-card card"><view class="scene-stat" wx:for="{{supervisor.scenarioStats}}" wx:key="scenarioId"><view class="scene-stat-head"><text>{{item.scenarioName}}</text><text class="scene-count">{{item.total}} 次 · {{item.passRate}}%</text></view><view class="scene-bar"><view class="scene-fill" style="width: {{item.totalWidth}}%;"></view></view><text class="pass-note">平均 {{item.averageScore}} 分 · 通过率 {{item.passRate}}%</text></view></view>
+
+    <view class="section-title-row"><text class="section-title">辅导建议</text><text class="section-caption">基于聚合数据</text></view>
+    <view class="suggestion-card card {{item.severity}}" wx:for="{{suggestions}}" wx:key="title"><text class="suggestion-title">{{item.title}}</text><text class="suggestion-text">{{item.text}}</text></view>
+
+    <view class="section-title-row"><text class="section-title">成员学习摘要</text><text class="section-caption">按姓名展示，非排名</text></view>
+    <view class="member-card card" wx:for="{{members}}" wx:key="id" bindtap="openMember" data-id="{{item.id}}"><view class="member-avatar">{{item.initial}}</view><view class="member-copy"><text class="member-name">{{item.displayName}}</text><text class="member-meta">完成 {{item.completedSessions}} 次 · 平均 {{item.averageScore}} 分</text><text class="member-meta">{{item.latestText}}</text></view><view class="member-side"><text>{{item.passRate}}%</text><text>达标率 ›</text></view></view>
+    <view class="empty-member card" wx:if="{{members.length === 0}}"><text>当前还没有可展示的学员账户。</text></view>
+  </block>
+
+  <block wx:elif="{{!isAdmin}}">
+    <view class="summary-cards"><view class="summary-card card"><text class="summary-value">{{personal.totalCount}}</text><text class="summary-label">总训练次数</text></view><view class="summary-card card"><text class="summary-value">{{personal.completedCount}}</text><text class="summary-label">已完成次数</text></view><view class="summary-card card"><text class="summary-value">{{personal.averageScore}}</text><text class="summary-label">平均得分</text></view></view>
+    <view class="section-title-row"><text class="section-title">各场景训练次数</text></view>
+    <view class="chart-card card"><view class="scene-stat" wx:for="{{personal.sceneStats}}" wx:key="id"><view class="scene-stat-head"><text>{{item.name}}</text><text class="scene-count">{{item.count}} 次</text></view><view class="scene-bar"><view class="scene-fill" style="width: {{item.barWidth}}%;"></view></view></view></view>
+    <view class="section-title-row"><text class="section-title">五维平均得分</text><text class="section-caption">仅统计已完成训练</text></view>
+    <view class="dimension-card card"><view class="dimension-row" wx:for="{{personal.dimensionAverages}}" wx:key="key"><view class="dimension-head"><text>{{item.name}}</text><text>{{item.value}}</text></view><view class="dimension-bar"><view class="dimension-fill" style="width: {{item.value}}%;"></view></view></view></view>
+    <view class="section-title-row"><text class="section-title">最近训练</text></view>
+    <view class="recent-card card"><view class="recent-row" wx:for="{{personal.recentSessions}}" wx:key="id"><view class="recent-copy"><text class="recent-name">{{item.scenarioName}}</text><text class="recent-time">{{item.updatedAt}} · {{item.currentRound}}轮</text></view><text class="recent-score" wx:if="{{item.totalScore !== null}}">{{item.totalScore}}分</text><text class="recent-status" wx:else>{{item.statusText}}</text></view><view class="no-recent" wx:if="{{personal.recentSessions.length === 0}}">完成一次训练后，这里会展示最近记录。</view></view>
+  </block>
+
 </view>

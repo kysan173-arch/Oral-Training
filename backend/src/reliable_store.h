@@ -46,10 +46,16 @@ class ReliableDatabase {
       const auto row = tx.exec(R"(
         SELECT to_regclass('ai_jobs') IS NOT NULL AS jobs_ready,
           to_regclass('users') IS NOT NULL AS users_ready,
-          to_regclass('messages') IS NOT NULL AS messages_ready
+          to_regclass('messages') IS NOT NULL AS messages_ready,
+          to_regclass('learner_mistake_progress') IS NOT NULL AS learner_insights_ready,
+          to_regclass('session_hints') IS NOT NULL AS training_experience_ready,
+          to_regclass('learner_checkins') IS NOT NULL AS learner_growth_ready,
+          to_regclass('learner_phrase_favorites') IS NOT NULL AS phrase_favorites_ready
       )")[0];
       return row["jobs_ready"].as<bool>() && row["users_ready"].as<bool>() &&
-             row["messages_ready"].as<bool>();
+             row["messages_ready"].as<bool>() && row["learner_insights_ready"].as<bool>() &&
+             row["training_experience_ready"].as<bool>() && row["learner_growth_ready"].as<bool>() &&
+             row["phrase_favorites_ready"].as<bool>();
     } catch (...) {
       return false;
     }
@@ -59,7 +65,7 @@ class ReliableDatabase {
     pqxx::connection connection(database_url_);
     pqxx::read_transaction tx(connection);
     const auto rows = tx.exec_params(R"(
-      SELECT s.id, s.name, s.summary, s.difficulty, s.focus, s.patient_profile, s.max_rounds,
+      SELECT s.id, s.name, s.category, s.summary, s.difficulty, s.focus, s.patient_profile, s.max_rounds,
         COALESCE(best.best_score, 0) AS best_score,
         active.id AS active_id, active.current_round AS active_current_round,
         active.max_rounds AS active_max_rounds, active.updated_at AS active_updated_at
@@ -79,6 +85,7 @@ class ReliableDatabase {
     for (const auto& row : rows) {
       json item = {
           {"id", row["id"].c_str()}, {"name", row["name"].c_str()},
+          {"category", row["category"].c_str()},
           {"summary", row["summary"].c_str()}, {"difficulty", row["difficulty"].c_str()},
           {"focus", json::parse(row["focus"].c_str())},
           {"patientProfile", json::parse(row["patient_profile"].c_str())},
@@ -193,7 +200,51 @@ class ReliableDatabase {
                          {"round", pending_rows[0]["round"].as<int>()},
                          {"replyStatus", pending_rows[0]["reply_status"].c_str()}};
     }
-    return {{"session", session}, {"messages", messages}, {"pendingMessage", pending_message}};
+    const auto hint_rows = tx.exec_params(R"(
+      SELECT id, hint_number, content,
+        to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS created_at
+      FROM session_hints WHERE session_id = $1 ORDER BY hint_number
+    )", session_id);
+    json hints = json::array();
+    for (const auto& row : hint_rows) {
+      hints.push_back({{"id", row["id"].c_str()}, {"number", row["hint_number"].as<int>()},
+                       {"content", row["content"].c_str()}, {"createdAt", row["created_at"].c_str()}});
+    }
+    return {{"session", session}, {"messages", messages}, {"pendingMessage", pending_message},
+            {"hints", hints}, {"hintLimit", 3},
+            {"hintRemaining", std::max(0, 3 - static_cast<int>(hints.size()))}};
+  }
+
+  json requestTrainingHint(const std::string& user_id, const std::string& session_id) const {
+    if (session_id.empty() || session_id.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "训练会话标识无效");
+    }
+    pqxx::connection connection(database_url_);
+    pqxx::work tx(connection);
+    const auto session_rows = tx.exec_params(R"(
+      SELECT s.status, s.current_round, s.scenario_id
+      FROM sessions s WHERE s.id = $1 AND s.user_id = $2 FOR UPDATE
+    )", session_id, user_id);
+    if (session_rows.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
+    if (std::string(session_rows[0]["status"].c_str()) != "in_progress") {
+      throw ApiError(409, "SESSION_FINISHED", "已结束的训练不能继续获取提示");
+    }
+    const auto used_rows = tx.exec_params(
+        "SELECT COUNT(*) AS used FROM session_hints WHERE session_id = $1", session_id);
+    const auto used = used_rows[0]["used"].as<int>();
+    if (used >= 3) throw ApiError(409, "HINT_LIMIT_REACHED", "本次训练的提示已用完");
+    const auto hint_number = used + 1;
+    const auto content = trainingHintFor(
+        session_rows[0]["scenario_id"].c_str(), session_rows[0]["current_round"].as<int>(), hint_number);
+    const auto inserted = tx.exec_params(R"(
+      INSERT INTO session_hints(id, session_id, hint_number, content)
+      VALUES ($1, $2, $3, $4)
+      RETURNING to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS created_at
+    )", makeId("hint"), session_id, hint_number, content);
+    tx.commit();
+    return {{"hint", {{"number", hint_number}, {"content", content},
+                      {"createdAt", inserted[0]["created_at"].c_str()}}},
+            {"hintLimit", 3}, {"hintRemaining", 3 - hint_number}};
   }
 
   json getSessionInternal(const std::string& session_id) const {
@@ -227,11 +278,12 @@ class ReliableDatabase {
     pqxx::connection connection(database_url_);
     pqxx::read_transaction tx(connection);
     const auto rows = tx.exec_params(
-        "SELECT id, name, summary, difficulty, focus, patient_profile, hidden_config, max_rounds "
+        "SELECT id, name, category, summary, difficulty, focus, patient_profile, hidden_config, max_rounds "
         "FROM scenarios WHERE id = $1", scenario_id);
     if (rows.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
     const auto& row = rows[0];
     return {{"public", {{"id", row["id"].c_str()}, {"name", row["name"].c_str()},
+                         {"category", row["category"].c_str()},
                          {"summary", row["summary"].c_str()}, {"difficulty", row["difficulty"].c_str()},
                          {"focus", json::parse(row["focus"].c_str())},
                          {"patientProfile", json::parse(row["patient_profile"].c_str())},
@@ -530,8 +582,16 @@ class ReliableDatabase {
       return {{"sessionId", session_id}, {"status", "generating"}, {"retryable", false},
               {"evaluation", nullptr}};
     }
+    auto report = json::parse(evaluation[0]["report"].c_str(), nullptr, false);
+    if (!report.is_object()) throw ApiError(503, "REPORT_INVALID", "评分报告存储格式无效");
+    if (!report.contains("recommendedPhrases")) {
+      report["recommendedPhrases"] = learningPhrasesFromReport(report);
+    }
+    if (!report.contains("learningMistakes")) {
+      report["learningMistakes"] = learningMistakesFromReport(report);
+    }
     return {{"sessionId", session_id}, {"status", "ready"}, {"retryable", false},
-            {"evaluation", json::parse(evaluation[0]["report"].c_str())}};
+            {"evaluation", report}};
   }
 
   void saveEvaluation(const AiJob& job, json report, const std::string& model_version) const {
@@ -619,7 +679,648 @@ class ReliableDatabase {
             {"recentSessions", recent}};
   }
 
+  json listLearningPhrases(const std::string& user_id, const std::string& search,
+                           const std::string& scenario_id, bool favorites_only, int limit) const {
+    if (utf8Length(search) > 120 || scenario_id.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "学习筛选参数过长");
+    }
+    limit = clampInt(limit, 1, 50);
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto favorite_rows = tx.exec_params(
+        "SELECT session_id, phrase_key FROM learner_phrase_favorites WHERE user_id = $1", user_id);
+    std::set<std::string> favorites;
+    for (const auto& row : favorite_rows) {
+      favorites.insert(favoriteKey(row["session_id"].c_str(), row["phrase_key"].c_str()));
+    }
+    std::string query = R"(
+      SELECT s.id, s.scenario_id, s.scenario_name,
+        to_char(s.finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS finished_date,
+        e.report
+      FROM sessions s JOIN evaluations e ON e.session_id = s.id
+      WHERE s.user_id = $1 AND s.status = 'completed' AND e.status = 'ready'
+    )";
+    if (!scenario_id.empty()) query += " AND s.scenario_id = $2";
+    query += " ORDER BY s.finished_at DESC NULLS LAST LIMIT 200";
+    const auto rows = scenario_id.empty() ? tx.exec_params(query, user_id)
+                                          : tx.exec_params(query, user_id, scenario_id);
+    json items = json::array();
+    for (const auto& row : rows) {
+      const auto report = storedReport(row);
+      for (const auto& phrase : learningPhrasesFromReport(report)) {
+        if (items.size() >= static_cast<size_t>(limit)) break;
+        if (!phrase.is_object()) continue;
+        const auto phrase_key = jsonString(phrase, "phraseKey");
+        if (phrase_key.empty()) continue;
+        const auto patient_says = jsonString(phrase, "patientSays");
+        const auto cs_reply = jsonString(phrase, "csReply");
+        const auto reason = jsonString(phrase, "reason");
+        const auto scenario_name = std::string(row["scenario_name"].c_str());
+        const auto session_id = std::string(row["id"].c_str());
+        const bool favorited = favorites.find(favoriteKey(session_id, phrase_key)) != favorites.end();
+        if (favorites_only && !favorited) continue;
+        if (!search.empty() && patient_says.find(search) == std::string::npos &&
+            cs_reply.find(search) == std::string::npos && reason.find(search) == std::string::npos &&
+            scenario_name.find(search) == std::string::npos) {
+          continue;
+        }
+        items.push_back({
+            {"id", session_id + ':' + phrase_key}, {"sessionId", session_id}, {"phraseKey", phrase_key},
+            {"scenarioId", row["scenario_id"].c_str()},
+            {"scenarioName", scenario_name}, {"finishedDate", row["finished_date"].c_str()},
+            {"round", jsonInt(phrase, "round", 0)}, {"patientSays", patient_says},
+            {"csReply", cs_reply}, {"reason", reason}, {"favorited", favorited},
+        });
+      }
+      if (items.size() >= static_cast<size_t>(limit)) break;
+    }
+    return {{"items", items}, {"total", static_cast<int>(items.size())},
+            {"favoritesOnly", favorites_only}};
+  }
+
+  json setLearningPhraseFavorite(const std::string& user_id, const std::string& session_id,
+                                 const std::string& phrase_key, bool favorite) const {
+    if (session_id.empty() || session_id.size() > 120 || phrase_key.empty() || phrase_key.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "话术标识参数无效");
+    }
+    pqxx::connection connection(database_url_);
+    pqxx::work tx(connection);
+    const auto rows = tx.exec_params(R"(
+      SELECT e.report FROM sessions s JOIN evaluations e ON e.session_id = s.id
+      WHERE s.id = $1 AND s.user_id = $2 AND s.status = 'completed' AND e.status = 'ready'
+      FOR UPDATE OF s
+    )", session_id, user_id);
+    if (rows.empty()) throw ApiError(404, "LEARNING_PHRASE_NOT_FOUND", "话术不存在或无权访问");
+    bool known_phrase = false;
+    for (const auto& item : learningPhrasesFromReport(storedReport(rows[0]))) {
+      if (item.is_object() && jsonString(item, "phraseKey") == phrase_key) {
+        known_phrase = true;
+        break;
+      }
+    }
+    if (!known_phrase) throw ApiError(404, "LEARNING_PHRASE_NOT_FOUND", "话术不存在或无权访问");
+    if (favorite) {
+      tx.exec_params(R"(
+        INSERT INTO learner_phrase_favorites(user_id, session_id, phrase_key, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (user_id, session_id, phrase_key) DO UPDATE SET updated_at = NOW()
+      )", user_id, session_id, phrase_key);
+    } else {
+      tx.exec_params(R"(
+        DELETE FROM learner_phrase_favorites
+        WHERE user_id = $1 AND session_id = $2 AND phrase_key = $3
+      )", user_id, session_id, phrase_key);
+    }
+    tx.commit();
+    return {{"sessionId", session_id}, {"phraseKey", phrase_key}, {"favorited", favorite}};
+  }
+
+  json listLearningMistakes(const std::string& user_id, const std::string& scenario_id,
+                            bool include_mastered, int limit) const {
+    if (scenario_id.size() > 120) throw ApiError(400, "INVALID_ARGUMENT", "scenarioId 参数过长");
+    limit = clampInt(limit, 1, 50);
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto mastered_rows = tx.exec_params(R"(
+      SELECT session_id, mistake_key FROM learner_mistake_progress
+      WHERE user_id = $1 AND mastered_at IS NOT NULL
+    )", user_id);
+    std::set<std::string> mastered_keys;
+    for (const auto& row : mastered_rows) {
+      mastered_keys.insert(masteryKey(row["session_id"].c_str(), row["mistake_key"].c_str()));
+    }
+    std::string query = R"(
+      SELECT s.id, s.scenario_id, s.scenario_name,
+        to_char(s.finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS finished_date,
+        e.report
+      FROM sessions s JOIN evaluations e ON e.session_id = s.id
+      WHERE s.user_id = $1 AND s.status = 'completed' AND e.status = 'ready'
+    )";
+    if (!scenario_id.empty()) query += " AND s.scenario_id = $2";
+    query += " ORDER BY s.finished_at DESC NULLS LAST LIMIT 200";
+    const auto rows = scenario_id.empty() ? tx.exec_params(query, user_id)
+                                          : tx.exec_params(query, user_id, scenario_id);
+    json items = json::array();
+    for (const auto& row : rows) {
+      const auto session_id = std::string(row["id"].c_str());
+      const auto report = storedReport(row);
+      for (const auto& mistake : learningMistakesFromReport(report)) {
+        if (items.size() >= static_cast<size_t>(limit)) break;
+        if (!mistake.is_object()) continue;
+        const auto mistake_key = jsonString(mistake, "mistakeKey");
+        if (mistake_key.empty()) continue;
+        const bool mastered = mastered_keys.find(masteryKey(session_id, mistake_key)) != mastered_keys.end();
+        if (mastered && !include_mastered) continue;
+        items.push_back({
+            {"id", session_id + ':' + mistake_key}, {"sessionId", session_id},
+            {"mistakeKey", mistake_key}, {"scenarioId", row["scenario_id"].c_str()},
+            {"scenarioName", row["scenario_name"].c_str()}, {"finishedDate", row["finished_date"].c_str()},
+            {"kind", jsonString(mistake, "kind")}, {"priority", jsonString(mistake, "priority")},
+            {"round", jsonInt(mistake, "round", 0)}, {"originalQuote", jsonString(mistake, "originalQuote")},
+            {"reason", jsonString(mistake, "reason")},
+            {"recommendedRewrite", jsonString(mistake, "recommendedRewrite")}, {"mastered", mastered},
+        });
+      }
+      if (items.size() >= static_cast<size_t>(limit)) break;
+    }
+    return {{"items", items}, {"total", static_cast<int>(items.size())},
+            {"includeMastered", include_mastered}};
+  }
+
+  json setLearningMistakeMastery(const std::string& user_id, const std::string& session_id,
+                                 const std::string& mistake_key, bool mastered) const {
+    if (session_id.empty() || session_id.size() > 120 || mistake_key.empty() || mistake_key.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "错题标识参数无效");
+    }
+    pqxx::connection connection(database_url_);
+    pqxx::work tx(connection);
+    const auto rows = tx.exec_params(R"(
+      SELECT e.report FROM sessions s JOIN evaluations e ON e.session_id = s.id
+      WHERE s.id = $1 AND s.user_id = $2 AND s.status = 'completed' AND e.status = 'ready'
+      FOR UPDATE OF s
+    )", session_id, user_id);
+    if (rows.empty()) throw ApiError(404, "LEARNING_MISTAKE_NOT_FOUND", "错题不存在或无权访问");
+    bool known_mistake = false;
+    for (const auto& item : learningMistakesFromReport(storedReport(rows[0]))) {
+      if (item.is_object() && jsonString(item, "mistakeKey") == mistake_key) {
+        known_mistake = true;
+        break;
+      }
+    }
+    if (!known_mistake) throw ApiError(404, "LEARNING_MISTAKE_NOT_FOUND", "错题不存在或无权访问");
+    tx.exec_params(R"(
+      INSERT INTO learner_mistake_progress(user_id, session_id, mistake_key, mastered_at, updated_at)
+      VALUES ($1, $2, $3, CASE WHEN $4 THEN NOW() ELSE NULL END, NOW())
+      ON CONFLICT (user_id, session_id, mistake_key) DO UPDATE SET
+        mastered_at = CASE WHEN $4 THEN NOW() ELSE NULL END, updated_at = NOW()
+    )", user_id, session_id, mistake_key, mastered);
+    tx.commit();
+    return {{"sessionId", session_id}, {"mistakeKey", mistake_key}, {"mastered", mastered}};
+  }
+
+  json learningProfile(const std::string& user_id) const {
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto rows = tx.exec_params(R"(
+      SELECT s.id, s.scenario_id, s.scenario_name, s.total_score,
+        to_char(s.finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS finished_date,
+        e.report
+      FROM sessions s JOIN evaluations e ON e.session_id = s.id
+      WHERE s.user_id = $1 AND s.status = 'completed' AND e.status = 'ready'
+      ORDER BY s.finished_at ASC NULLS LAST LIMIT 200
+    )", user_id);
+    const std::vector<std::string> keys = {
+        "knowledgeAccuracy", "medicalCompliance", "empathy", "needsDiscovery", "serviceEtiquette"};
+    json totals = json::object();
+    for (const auto& key : keys) totals[key] = 0.0;
+    int total_score = 0;
+    std::vector<json> all_trend;
+    std::set<std::string> mistake_keys;
+    for (const auto& row : rows) {
+      const auto report = storedReport(row);
+      if (!report.is_object()) continue;
+      accumulateDimensionScores(totals, report, keys);
+      total_score += row["total_score"].as<int>();
+      all_trend.push_back({
+          {"sessionId", row["id"].c_str()}, {"scenarioId", row["scenario_id"].c_str()},
+          {"scenarioName", row["scenario_name"].c_str()}, {"date", row["finished_date"].c_str()},
+          {"totalScore", row["total_score"].as<int>()},
+          {"scores", report.value("dimensionScores", json::object())},
+      });
+      for (const auto& mistake : learningMistakesFromReport(report)) {
+        if (mistake.is_object() && !jsonString(mistake, "mistakeKey").empty()) {
+          mistake_keys.insert(masteryKey(row["id"].c_str(), jsonString(mistake, "mistakeKey")));
+        }
+      }
+    }
+    const auto count = static_cast<int>(all_trend.size());
+    json averages = json::object();
+    for (const auto& key : keys) {
+      averages[key] = count == 0 ? 0.0 : std::round(totals[key].get<double>() / count * 10.0) / 10.0;
+    }
+    const auto mastered_rows = tx.exec_params(R"(
+      SELECT session_id, mistake_key FROM learner_mistake_progress
+      WHERE user_id = $1 AND mastered_at IS NOT NULL
+    )", user_id);
+    int mastered_count = 0;
+    for (const auto& row : mastered_rows) {
+      if (mistake_keys.find(masteryKey(row["session_id"].c_str(), row["mistake_key"].c_str())) != mistake_keys.end()) {
+        ++mastered_count;
+      }
+    }
+    const std::map<std::string, std::pair<std::string, std::string>> dimension_copy = {
+        {"knowledgeAccuracy", {"知识准确性", "先确认患者关切，再说明需要由医生结合检查评估的边界。"}},
+        {"medicalCompliance", {"医疗合规", "避免确定性承诺或越权判断，明确由医生结合检查评估。"}},
+        {"empathy", {"同理心", "先回应患者的担忧和情绪，再说明可协助的下一步。"}},
+        {"needsDiscovery", {"需求挖掘", "用开放问题确认患者最在意的重点，再提供服务协助。"}},
+        {"serviceEtiquette", {"服务礼仪", "使用清晰、尊重的表达，并给出可执行的服务安排。"}},
+    };
+    std::vector<std::string> ordered_keys = keys;
+    std::sort(ordered_keys.begin(), ordered_keys.end(), [&](const auto& left, const auto& right) {
+      return averages[left].get<double>() < averages[right].get<double>();
+    });
+    json weaknesses = json::array();
+    for (size_t index = 0; index < ordered_keys.size() && index < 2; ++index) {
+      const auto& key = ordered_keys[index];
+      const auto& copy = dimension_copy.at(key);
+      weaknesses.push_back({{"key", key}, {"name", copy.first}, {"score", averages[key]}, {"suggestion", copy.second}});
+    }
+    json trend = json::array();
+    const size_t first = all_trend.size() > 12 ? all_trend.size() - 12 : 0;
+    for (size_t index = first; index < all_trend.size(); ++index) trend.push_back(all_trend[index]);
+    const int score_delta = all_trend.size() < 2 ? 0
+        : all_trend.back()["totalScore"].get<int>() - all_trend.front()["totalScore"].get<int>();
+    return {{"overall", {{"totalCompleted", count},
+                            {"averageScore", count == 0 ? 0.0 : std::round(static_cast<double>(total_score) / count * 10.0) / 10.0},
+                            {"scoreDelta", score_delta}}},
+            {"dimensionAverages", averages}, {"trend", trend}, {"weaknesses", weaknesses},
+            {"mistakes", {{"total", static_cast<int>(mistake_keys.size())}, {"mastered", mastered_count}}}};
+  }
+
+  json learningMine(const std::string& user_id) const {
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto user_rows = tx.exec_params(R"(
+      SELECT COALESCE(NULLIF(display_name, ''), '学员') AS display_name
+      FROM users WHERE id = $1 AND status = 'active'
+    )", user_id);
+    if (user_rows.empty()) throw ApiError(404, "USER_NOT_FOUND", "用户不存在");
+    const auto stats = tx.exec_params(R"(
+      SELECT COUNT(*) FILTER (WHERE status <> 'abandoned') AS total_sessions,
+        COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS completed_sessions,
+        COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready' AND total_score >= 60) AS passed_sessions,
+        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS average_score
+      FROM sessions WHERE user_id = $1
+    )", user_id)[0];
+    const auto today = tx.exec(R"(
+      SELECT (NOW() AT TIME ZONE 'Asia/Shanghai')::date AS checkin_date,
+        to_char(NOW() AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS today,
+        EXTRACT(YEAR FROM NOW() AT TIME ZONE 'Asia/Shanghai')::int AS year,
+        EXTRACT(MONTH FROM NOW() AT TIME ZONE 'Asia/Shanghai')::int AS month
+    )")[0];
+    const auto checkin_summary = tx.exec_params(R"(
+      SELECT COALESCE(SUM(points), 0) AS points, COUNT(*) AS checkin_days,
+        COALESCE(BOOL_OR(checkin_date = $2::date), false) AS checked_today
+      FROM learner_checkins WHERE user_id = $1
+    )", user_id, today["checkin_date"].c_str())[0];
+    const auto checked_rows = tx.exec_params(R"(
+      SELECT to_char(checkin_date, 'YYYY-MM-DD') AS checkin_date
+      FROM learner_checkins
+      WHERE user_id = $1
+        AND checkin_date >= date_trunc('month', $2::date)::date
+        AND checkin_date < (date_trunc('month', $2::date) + INTERVAL '1 month')::date
+      ORDER BY checkin_date
+    )", user_id, today["checkin_date"].c_str());
+    json checked_dates = json::array();
+    for (const auto& row : checked_rows) checked_dates.push_back(row["checkin_date"].c_str());
+    const auto streak = tx.exec_params(R"(
+      WITH numbered AS (
+        SELECT checkin_date + ((ROW_NUMBER() OVER (ORDER BY checkin_date DESC) - 1)::int) AS anchor
+        FROM learner_checkins WHERE user_id = $1 AND checkin_date <= $2::date
+      )
+      SELECT COUNT(*) AS streak FROM numbered WHERE anchor = $2::date
+    )", user_id, today["checkin_date"].c_str())[0]["streak"].as<int>();
+    const auto favorites = tx.exec_params(
+        "SELECT COUNT(*) AS count FROM learner_phrase_favorites WHERE user_id = $1", user_id)[0]["count"].as<int>();
+    const auto completed = stats["completed_sessions"].as<int>();
+    const auto passed = stats["passed_sessions"].as<int>();
+    const auto average = stats["average_score"].is_null() ? 0.0 : stats["average_score"].as<double>();
+    return {{"user", {{"displayName", user_rows[0]["display_name"].c_str()}}},
+            {"points", checkin_summary["points"].as<int>()},
+            {"checkin", {{"today", today["today"].c_str()}, {"year", today["year"].as<int>()},
+                         {"month", today["month"].as<int>()},
+                         {"checkedToday", checkin_summary["checked_today"].as<bool>()},
+                         {"checkinDays", checkin_summary["checkin_days"].as<int>()},
+                         {"streakDays", streak}, {"checkedDates", checked_dates}}},
+            {"stats", {{"totalCompleted", completed}, {"passRate", completed == 0 ? 0.0
+                : std::round(static_cast<double>(passed) / completed * 1000.0) / 10.0},
+                       {"averageScore", std::round(average * 10.0) / 10.0}}},
+            {"favoritesCount", favorites},
+            {"rules", json::array({{{"action", "每日签到"}, {"points", "+10"},
+                                     {"description", "每个自然日限一次，按中国时区计算。"}}})}};
+  }
+
+  json checkIn(const std::string& user_id) const {
+    pqxx::connection connection(database_url_);
+    pqxx::work tx(connection);
+    const auto today = tx.exec(R"(
+      SELECT (NOW() AT TIME ZONE 'Asia/Shanghai')::date AS checkin_date,
+        to_char(NOW() AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS today
+    )")[0];
+    const auto inserted = tx.exec_params(R"(
+      INSERT INTO learner_checkins(user_id, checkin_date, points)
+      VALUES ($1, $2::date, 10)
+      ON CONFLICT (user_id, checkin_date) DO NOTHING
+      RETURNING points
+    )", user_id, today["checkin_date"].c_str());
+    const auto total = tx.exec_params(
+        "SELECT COALESCE(SUM(points), 0) AS points FROM learner_checkins WHERE user_id = $1", user_id)[0];
+    tx.commit();
+    return {{"checkedIn", !inserted.empty()}, {"alreadyCheckedIn", inserted.empty()},
+            {"pointsAwarded", inserted.empty() ? 0 : inserted[0]["points"].as<int>()},
+            {"pointsTotal", total["points"].as<int>()}, {"today", today["today"].c_str()}};
+  }
+
+  json supervisorDashboard(const std::string& time_range) const {
+    const auto time_filter = supervisorTimeFilter(time_range, "s.updated_at");
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto student_count = tx.exec(R"(
+      SELECT COUNT(*) AS count FROM users WHERE role = 'learner' AND status = 'active'
+    )")[0]["count"].as<int>();
+    const auto totals = tx.exec(R"(
+      SELECT COUNT(*) FILTER (WHERE s.status <> 'abandoned') AS total_sessions,
+        COUNT(*) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready') AS completed_sessions,
+        COUNT(*) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready' AND s.total_score >= 60) AS passed_sessions,
+        AVG(s.total_score) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready') AS average_score
+      FROM sessions s WHERE TRUE
+    )" + time_filter)[0];
+    const auto scenario_rows = tx.exec(R"(
+      SELECT sc.id, sc.name, COUNT(s.id) AS completed_count,
+        AVG(s.total_score) AS average_score,
+        COALESCE(ROUND(100.0 * COUNT(s.id) FILTER (WHERE s.total_score >= 60) /
+          NULLIF(COUNT(s.id), 0), 1), 0) AS pass_rate
+      FROM scenarios sc
+      LEFT JOIN sessions s ON s.scenario_id = sc.id
+        AND s.status = 'completed' AND s.evaluation_status = 'ready'
+    )" + supervisorTimeFilter(time_range, "s.updated_at") + R"(
+      GROUP BY sc.id, sc.name, sc.sort_order ORDER BY sc.sort_order
+    )");
+    const auto report_rows = tx.exec(R"(
+      SELECT e.report FROM evaluations e JOIN sessions s ON s.id = e.session_id
+      WHERE s.status = 'completed' AND s.evaluation_status = 'ready' AND e.status = 'ready'
+    )" + time_filter);
+    const std::vector<std::string> keys = {
+        "knowledgeAccuracy", "medicalCompliance", "empathy", "needsDiscovery", "serviceEtiquette"};
+    json dimensions = json::object();
+    for (const auto& key : keys) dimensions[key] = 0.0;
+    for (const auto& row : report_rows) {
+      const auto report = storedReport(row);
+      if (report.is_object()) accumulateDimensionScores(dimensions, report, keys);
+    }
+    if (!report_rows.empty()) {
+      for (const auto& key : keys) {
+        dimensions[key] = std::round(dimensions[key].get<double>() / report_rows.size() * 10.0) / 10.0;
+      }
+    }
+    json scenario_stats = json::array();
+    for (const auto& row : scenario_rows) {
+      scenario_stats.push_back({{"scenarioId", row["id"].c_str()}, {"scenarioName", row["name"].c_str()},
+                                {"total", row["completed_count"].as<int>()},
+                                {"averageScore", row["average_score"].is_null() ? 0.0 : row["average_score"].as<double>()},
+                                {"passRate", row["pass_rate"].as<double>()}});
+    }
+    const auto trend_rows = tx.exec(R"(
+      SELECT to_char(s.finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS date,
+        COUNT(*) AS count, ROUND(AVG(s.total_score)::numeric, 1) AS average_score
+      FROM sessions s
+      WHERE s.status = 'completed' AND s.evaluation_status = 'ready'
+    )" + time_filter + R"(
+      GROUP BY 1 ORDER BY date DESC LIMIT 12
+    )");
+    json trend = json::array();
+    for (auto iterator = trend_rows.rbegin(); iterator != trend_rows.rend(); ++iterator) {
+      trend.push_back({{"date", (*iterator)["date"].c_str()}, {"count", (*iterator)["count"].as<int>()},
+                       {"averageScore", (*iterator)["average_score"].as<double>()}});
+    }
+    const auto completed = totals["completed_sessions"].as<int>();
+    const auto passed = totals["passed_sessions"].as<int>();
+    return {{"range", time_range}, {"studentCount", student_count},
+            {"totalSessions", totals["total_sessions"].as<int>()}, {"completedSessions", completed},
+            {"averageScore", totals["average_score"].is_null() ? 0.0 : totals["average_score"].as<double>()},
+            {"passRate", completed == 0 ? 0.0 : std::round(static_cast<double>(passed) / completed * 1000.0) / 10.0},
+            {"dimensionAverages", dimensions}, {"scenarioStats", scenario_stats}, {"trend", trend}};
+  }
+
+  json listSupervisorMembers(int limit) const {
+    limit = clampInt(limit, 1, 100);
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto rows = tx.exec(R"(
+      SELECT u.id, COALESCE(NULLIF(u.display_name, ''), '未命名学员') AS display_name,
+        to_char(u.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS joined_at,
+        COUNT(s.id) FILTER (WHERE s.status <> 'abandoned') AS total_sessions,
+        COUNT(s.id) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready') AS completed_sessions,
+        COUNT(s.id) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready' AND s.total_score >= 60) AS passed_sessions,
+        AVG(s.total_score) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready') AS average_score,
+        to_char(MAX(s.updated_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS last_training_date
+      FROM users u LEFT JOIN sessions s ON s.user_id = u.id
+      WHERE u.role = 'learner' AND u.status = 'active'
+      GROUP BY u.id, u.display_name, u.created_at
+      ORDER BY lower(COALESCE(NULLIF(u.display_name, ''), u.id)), u.created_at
+      LIMIT )" + std::to_string(limit));
+    json members = json::array();
+    for (const auto& row : rows) {
+      const auto completed = row["completed_sessions"].as<int>();
+      const auto passed = row["passed_sessions"].as<int>();
+      members.push_back({{"id", row["id"].c_str()}, {"displayName", row["display_name"].c_str()},
+                         {"joinedAt", row["joined_at"].c_str()}, {"totalSessions", row["total_sessions"].as<int>()},
+                         {"completedSessions", completed},
+                         {"averageScore", row["average_score"].is_null() ? 0.0 : row["average_score"].as<double>()},
+                         {"passRate", completed == 0 ? 0.0
+                            : std::round(static_cast<double>(passed) / completed * 1000.0) / 10.0},
+                         {"lastTrainingDate", row["last_training_date"].is_null()
+                            ? json(nullptr) : json(row["last_training_date"].c_str())}});
+    }
+    return {{"members", members}, {"total", static_cast<int>(members.size())}};
+  }
+
+  json supervisorMemberDetail(const std::string& member_id) const {
+    if (member_id.empty() || member_id.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "成员标识无效");
+    }
+    pqxx::connection connection(database_url_);
+    pqxx::read_transaction tx(connection);
+    const auto user_rows = tx.exec_params(R"(
+      SELECT id, COALESCE(NULLIF(display_name, ''), '未命名学员') AS display_name,
+        to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS joined_at
+      FROM users WHERE id = $1 AND role = 'learner' AND status = 'active'
+    )", member_id);
+    if (user_rows.empty()) throw ApiError(404, "MEMBER_NOT_FOUND", "成员不存在");
+    const auto stats = tx.exec_params(R"(
+      SELECT COUNT(*) FILTER (WHERE status <> 'abandoned') AS total_sessions,
+        COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS completed_sessions,
+        COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready' AND total_score >= 60) AS passed_sessions,
+        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS average_score
+      FROM sessions WHERE user_id = $1
+    )", member_id)[0];
+    const auto report_rows = tx.exec_params(R"(
+      SELECT s.id, s.scenario_id, s.scenario_name, s.total_score,
+        to_char(s.finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS finished_date, e.report
+      FROM sessions s JOIN evaluations e ON e.session_id = s.id
+      WHERE s.user_id = $1 AND s.status = 'completed' AND s.evaluation_status = 'ready' AND e.status = 'ready'
+      ORDER BY s.finished_at ASC NULLS LAST LIMIT 200
+    )", member_id);
+    const std::vector<std::string> keys = {
+        "knowledgeAccuracy", "medicalCompliance", "empathy", "needsDiscovery", "serviceEtiquette"};
+    json totals = json::object();
+    for (const auto& key : keys) totals[key] = 0.0;
+    json all_trend = json::array();
+    for (const auto& row : report_rows) {
+      const auto report = storedReport(row);
+      if (!report.is_object()) continue;
+      accumulateDimensionScores(totals, report, keys);
+      all_trend.push_back({{"sessionId", row["id"].c_str()}, {"scenarioId", row["scenario_id"].c_str()},
+                           {"scenarioName", row["scenario_name"].c_str()}, {"date", row["finished_date"].c_str()},
+                           {"totalScore", row["total_score"].as<int>()},
+                           {"scores", report.value("dimensionScores", json::object())}});
+    }
+    const auto completed = static_cast<int>(all_trend.size());
+    json averages = json::object();
+    for (const auto& key : keys) {
+      averages[key] = completed == 0 ? 0.0
+          : std::round(totals[key].get<double>() / completed * 10.0) / 10.0;
+    }
+    json trend = json::array();
+    const size_t first = all_trend.size() > 12 ? all_trend.size() - 12 : 0;
+    for (size_t index = first; index < all_trend.size(); ++index) trend.push_back(all_trend[index]);
+    const auto recent_rows = tx.exec_params(R"(
+      SELECT scenario_name, total_score,
+        to_char(finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS finished_date
+      FROM sessions WHERE user_id = $1 AND status = 'completed' AND evaluation_status = 'ready'
+      ORDER BY finished_at DESC NULLS LAST LIMIT 10
+    )", member_id);
+    json recent = json::array();
+    for (const auto& row : recent_rows) {
+      recent.push_back({{"scenarioName", row["scenario_name"].c_str()}, {"totalScore", row["total_score"].as<int>()},
+                        {"date", row["finished_date"].c_str()}});
+    }
+    const auto passed = stats["passed_sessions"].as<int>();
+    const auto reported_completed = stats["completed_sessions"].as<int>();
+    return {{"member", {{"id", user_rows[0]["id"].c_str()},
+                           {"displayName", user_rows[0]["display_name"].c_str()},
+                           {"joinedAt", user_rows[0]["joined_at"].c_str()}}},
+            {"totalSessions", stats["total_sessions"].as<int>()}, {"completedSessions", reported_completed},
+            {"averageScore", stats["average_score"].is_null() ? 0.0 : stats["average_score"].as<double>()},
+            {"passRate", reported_completed == 0 ? 0.0
+                : std::round(static_cast<double>(passed) / reported_completed * 1000.0) / 10.0},
+            {"dimensionAverages", averages}, {"weaknesses", dimensionWeaknesses(averages)},
+            {"trend", trend}, {"recentSessions", recent}};
+  }
+
  private:
+  static std::string trainingHintFor(const std::string& scenario_id, int current_round, int hint_number) {
+    (void)current_round;
+    const std::vector<std::string> generic = {
+        "先复述患者最在意的点，再提出一个开放式问题，避免急于给出结论。",
+        "涉及是否适合治疗、具体疗程或疼痛等判断时，明确需要由医生结合检查评估。",
+        "最后给出可执行的服务下一步，例如协助预约咨询、复诊或联系医生。",
+    };
+    const std::vector<std::string> price = {
+        "先确认患者比较报价时最在意的是材料、医生经验、服务安排还是费用透明度。",
+        "客观说明费用需要结合检查后的方案确认，不贬低其他机构，也不承诺固定价格。",
+        "可邀请患者了解咨询和报价流程，并说明可以协助安排合适的沟通时间。",
+    };
+    const std::vector<std::string> discomfort = {
+        "先回应患者的不安，再了解不适出现的时间、程度和变化，不要直接判断是否正常。",
+        "不要给出诊断、用药或结果保证；具体情况应由医生结合检查评估。",
+        "建议协助及时联系医生或安排复诊，并提醒患者按医疗机构的正式指引处理。",
+    };
+    const auto index = static_cast<size_t>(clampInt(hint_number, 1, 3) - 1);
+    if (scenario_id == "price-comparison") return price[index];
+    if (scenario_id == "post-treatment-discomfort") return discomfort[index];
+    return generic[index];
+  }
+
+  static std::string supervisorTimeFilter(const std::string& requested_range, const std::string& column) {
+    const auto range = requested_range.empty() ? "month" : requested_range;
+    if (range == "all") return "";
+    std::string unit;
+    if (range == "week") unit = "week";
+    else if (range == "month") unit = "month";
+    else if (range == "quarter") unit = "quarter";
+    else throw ApiError(400, "INVALID_ARGUMENT", "range 参数无效");
+    return " AND " + column + " >= (date_trunc('" + unit +
+        "', NOW() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai')";
+  }
+
+  static json dimensionWeaknesses(const json& averages) {
+    const std::vector<std::string> keys = {
+        "knowledgeAccuracy", "medicalCompliance", "empathy", "needsDiscovery", "serviceEtiquette"};
+    const std::map<std::string, std::pair<std::string, std::string>> copy = {
+        {"knowledgeAccuracy", {"知识准确性", "先确认患者关切，再说明需由医生结合检查评估的边界。"}},
+        {"medicalCompliance", {"医疗合规", "避免确定性承诺或越权判断，清楚说明医生评估边界。"}},
+        {"empathy", {"同理心", "先回应患者的担忧和情绪，再说明可协助的下一步。"}},
+        {"needsDiscovery", {"需求挖掘", "多用开放式问题确认患者最在意的重点。"}},
+        {"serviceEtiquette", {"服务礼仪", "使用清晰、尊重的表达，并给出可执行的服务安排。"}},
+    };
+    auto ordered = keys;
+    std::sort(ordered.begin(), ordered.end(), [&](const auto& left, const auto& right) {
+      return averages.value(left, 0.0) < averages.value(right, 0.0);
+    });
+    json weaknesses = json::array();
+    for (size_t index = 0; index < ordered.size() && index < 2; ++index) {
+      const auto& key = ordered[index];
+      const auto score = averages.value(key, 0.0);
+      const auto& item = copy.at(key);
+      weaknesses.push_back({{"key", key}, {"name", item.first}, {"score", score},
+                            {"severity", score < 60 ? "high" : "medium"},
+                            {"suggestion", item.second}});
+    }
+    return weaknesses;
+  }
+
+  static std::string masteryKey(const std::string& session_id, const std::string& mistake_key) {
+    return session_id + '\x1f' + mistake_key;
+  }
+
+  static std::string favoriteKey(const std::string& session_id, const std::string& phrase_key) {
+    return session_id + '\x1f' + phrase_key;
+  }
+
+  static json storedReport(const pqxx::row& row) {
+    if (row["report"].is_null()) return json();
+    return json::parse(row["report"].c_str(), nullptr, false);
+  }
+
+  static json learningPhrasesFromReport(const json& report) {
+    if (!report.is_object()) return json::array();
+    if (report.contains("recommendedPhrases") && report["recommendedPhrases"].is_array()) {
+      return report["recommendedPhrases"];
+    }
+    json phrases = json::array();
+    const auto append = [&](const json& item, const std::string& reason) {
+      if (!item.is_object() || phrases.size() >= 8) return;
+      const auto reply = jsonString(item, "recommendedRewrite");
+      if (reply.empty()) return;
+      phrases.push_back({{"phraseKey", "legacy-phrase-" + std::to_string(phrases.size() + 1)},
+                         {"round", jsonInt(item, "round", 0)}, {"patientSays", ""},
+                         {"csReply", reply}, {"reason", reason}});
+    };
+    if (report.contains("roundComments") && report["roundComments"].is_array()) {
+      for (const auto& item : report["roundComments"]) {
+        if (item.is_object()) append(item, jsonString(item, "comment"));
+      }
+    }
+    if (report.contains("violations") && report["violations"].is_array()) {
+      for (const auto& item : report["violations"]) {
+        if (item.is_object()) append(item, jsonString(item, "reason"));
+      }
+    }
+    return phrases;
+  }
+
+  static json learningMistakesFromReport(const json& report) {
+    if (!report.is_object()) return json::array();
+    if (report.contains("learningMistakes") && report["learningMistakes"].is_array()) {
+      return report["learningMistakes"];
+    }
+    json mistakes = json::array();
+    if (!report.contains("violations") || !report["violations"].is_array()) return mistakes;
+    for (size_t index = 0; index < report["violations"].size() && mistakes.size() < 12; ++index) {
+      const auto& item = report["violations"][index];
+      if (!item.is_object()) continue;
+      const auto round = jsonInt(item, "round", 0);
+      mistakes.push_back({
+          {"mistakeKey", "legacy-violation-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+          {"kind", "violation"}, {"priority", jsonInt(item, "deduction", 0) >= 30 ? "high" : "medium"},
+          {"round", round}, {"originalQuote", jsonString(item, "originalQuote")},
+          {"reason", jsonString(item, "reason")}, {"recommendedRewrite", jsonString(item, "recommendedRewrite")},
+      });
+    }
+    return mistakes;
+  }
+
   static json messageJson(const std::string& id, const std::string& role,
                           const std::string& content, int round) {
     return {{"id", id}, {"role", role}, {"content", content}, {"round", round}};
@@ -665,7 +1366,7 @@ class ReliableRoleplayDatabase {
     pqxx::connection connection(database_url_);
     pqxx::read_transaction tx(connection);
     const auto rows = tx.exec_params(R"(
-      SELECT s.id, s.name, s.summary, s.difficulty, s.focus, s.patient_profile,
+      SELECT s.id, s.name, s.category, s.summary, s.difficulty, s.focus, s.patient_profile,
         s.max_rounds, s.roleplay_config,
         active.id AS active_id, active.current_round AS active_current_round,
         active.max_rounds AS active_max_rounds, active.updated_at AS active_updated_at
@@ -689,6 +1390,7 @@ class ReliableRoleplayDatabase {
         }
       }
       json item = {{"id", row["id"].c_str()}, {"name", row["name"].c_str()},
+                   {"category", row["category"].c_str()},
                    {"summary", row["summary"].c_str()}, {"difficulty", row["difficulty"].c_str()},
                    {"focus", json::parse(row["focus"].c_str())},
                    {"patientProfile", json::parse(row["patient_profile"].c_str())},
@@ -823,7 +1525,7 @@ class ReliableRoleplayDatabase {
     pqxx::connection connection(database_url_);
     pqxx::read_transaction tx(connection);
     const auto rows = tx.exec_params(R"(
-      SELECT id, name, summary, difficulty, focus, patient_profile, max_rounds, roleplay_config
+      SELECT id, name, category, summary, difficulty, focus, patient_profile, max_rounds, roleplay_config
       FROM scenarios WHERE id = $1
     )", scenario_id);
     if (rows.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "训练场景不存在");
@@ -832,6 +1534,7 @@ class ReliableRoleplayDatabase {
     const auto guidance = config.contains("serviceGuidance") && config["serviceGuidance"].is_array()
         ? config["serviceGuidance"] : json::array();
     return {{"public", {{"id", row["id"].c_str()}, {"name", row["name"].c_str()},
+                         {"category", row["category"].c_str()},
                          {"summary", row["summary"].c_str()}, {"difficulty", row["difficulty"].c_str()},
                          {"focus", json::parse(row["focus"].c_str())},
                          {"patientProfile", json::parse(row["patient_profile"].c_str())},

@@ -1,0 +1,17 @@
+<view class="page-shell member-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在读取成员学习摘要…</text></view>
+  <block wx:elif="{{detail}}">
+    <view class="member-hero card"><view class="hero-avatar">{{detail.member.initial}}</view><view class="hero-copy"><text class="hero-name">{{detail.member.displayName}}</text><text class="hero-meta">加入于 {{detail.member.joinedAt}}</text><text class="hero-note">仅展示训练聚合和复盘摘要，不包含原始对话。</text></view></view>
+    <view class="stat-grid"><view class="stat-card card"><text>{{detail.completedSessions}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{detail.averageScore}}</text><text>平均得分</text></view><view class="stat-card card"><text>{{detail.passRate}}%</text><text>练习达标率</text></view></view>
+
+    <view class="section-heading"><text>五维能力</text><text>完成报告均值</text></view>
+    <view class="radar-card card"><radar-chart dimensions="{{dimensions}}" canvas-width="300" canvas-height="260"></radar-chart><view class="dimension-list"><view wx:for="{{dimensions}}" wx:key="key" class="dimension-row"><text>{{item.name}}</text><view class="dimension-track"><view class="dimension-fill" style="width: {{item.score}}%; background: {{item.color}};"></view></view><text style="color: {{item.color}};">{{item.score}}</text></view></view></view>
+
+    <view class="section-heading"><text>建议关注</text><text>基于相对薄弱维度</text></view>
+    <view class="weakness-card card {{item.severity}}" wx:for="{{detail.weaknesses}}" wx:key="key"><view><text class="weakness-name">{{item.name}}</text><text class="weakness-score">{{item.score}} 分</text></view><text class="weakness-text">{{item.suggestion}}</text></view>
+
+    <view class="section-heading"><text>最近成长记录</text><text>最多 12 次</text></view>
+    <view class="timeline-card card" wx:if="{{detail.trend.length}}"><view wx:for="{{detail.trend}}" wx:key="sessionId" class="timeline-row"><view><text class="timeline-name">{{item.scenarioName}}</text><text class="timeline-date">{{item.date}}</text></view><text class="timeline-score">{{item.scoreText}}</text></view></view>
+    <view class="empty-card card" wx:else><text>该成员还没有已完成的训练报告。</text></view>
+  </block>
+</view>

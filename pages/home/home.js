@@ -32,7 +32,7 @@ Page({
       this.setData({ dashboard: {
         totalCount: data.totalSessions,
         completedCount: data.completedSessions,
-        averageScore: data.averageScore
+        averageScore: api.formatScore(data.averageScore)
       }, dataCaption: data.scope === 'institution'
         ? '当前机构汇总，不含个人会话明细'
         : '完成训练后自动更新' });
@@ -63,5 +63,9 @@ Page({
     wx.switchTab({ url: '/pages/index/index' });
   },
   viewHistory() { wx.switchTab({ url: '/pages/report/report' }); },
-  viewDashboard() { wx.switchTab({ url: '/pages/admin/admin' }); }
+  viewDashboard() { wx.switchTab({ url: '/pages/admin/admin' }); },
+  viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
+  viewMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
+  viewProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+  viewMine() { wx.switchTab({ url: '/pages/mine/mine' }); }
 });

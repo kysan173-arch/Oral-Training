@@ -87,7 +87,7 @@ class IdentityService {
     const UserContext user{rows[0]["id"].c_str(), rows[0]["role"].c_str(),
                            rows[0]["display_name"].c_str()};
     if (learner_only && user.role != "learner") {
-      throw ApiError(403, "ROLE_FORBIDDEN", "管理员账号只能查看机构汇总");
+      throw ApiError(403, "ROLE_FORBIDDEN", "管理员账号不能使用学员训练与个人成长功能");
     }
     if (!limiter_.allow("user|" + user.id)) {
       throw ApiError(429, "RATE_LIMITED", "请求过于频繁，请稍后重试");

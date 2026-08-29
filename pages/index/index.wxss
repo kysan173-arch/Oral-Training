@@ -8,6 +8,16 @@
 .page-intro { display: block; margin-top: 14rpx; color: #999; font-size: 25rpx; line-height: 1.6; }
 .boundary-tip { display: flex; align-items: center; padding: 20rpx 24rpx; margin-bottom: 22rpx; border-radius: 18rpx; color: #6872c9; background: #eef0ff; font-size: 23rpx; line-height: 1.5; }
 .boundary-icon { width: 32rpx; height: 32rpx; line-height: 32rpx; flex-shrink: 0; margin-right: 14rpx; border-radius: 50%; text-align: center; color: #fff; background: #7b85db; font-size: 22rpx; }
+.category-scroll { margin: 0 -24rpx 22rpx; white-space: nowrap; }
+.category-tabs { display: inline-flex; gap: 12rpx; padding: 0 24rpx; }
+.category-tab { padding: 13rpx 18rpx; border: 1rpx solid #e2e5f4; border-radius: 28rpx; color: #69749f; background: #fff; font-size: 22rpx; }
+.category-tab.selected { border-color: #667eea; color: #fff; background: #667eea; }
+.category-section { margin-bottom: 30rpx; }
+.category-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 8rpx 14rpx; }
+.category-title, .category-description { display: block; }
+.category-title { color: #34405d; font-size: 29rpx; font-weight: 700; }
+.category-description { margin-top: 7rpx; color: #9099b1; font-size: 21rpx; }
+.category-count { color: #8790b0; font-size: 21rpx; }
 .scenario-card { padding: 28rpx; margin-bottom: 20rpx; }
 .scenario-topline { display: flex; align-items: center; }
 .scenario-index { color: #c4c8e9; font-size: 24rpx; font-weight: 700; letter-spacing: 1rpx; }
@@ -34,4 +44,3 @@
 .scenario-actions { display: flex; flex-direction: column; align-items: stretch; margin-top: 22rpx; }
 .scenario-button { width: 100%; height: 76rpx; line-height: 1.2; font-size: 27rpx; }
 .restart-link { align-self: center; margin-top: 16rpx; color: #9a9a9a; font-size: 23rpx; line-height: 1.5; text-align: center; }
-.disclaimer { display: block; padding: 6rpx 12rpx; color: #aaa; font-size: 21rpx; line-height: 1.5; text-align: center; }

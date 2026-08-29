@@ -1,0 +1,36 @@
+<view class="page-shell profile-page">
+  <view class="profile-hero">
+    <text class="eyebrow">MY LEARNING</text>
+    <text class="page-title">个人成长</text>
+    <text class="page-intro">你的数据仅基于本人完成的客服训练报告，用于回顾练习重点，不用于排名或正式考核。</text>
+  </view>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在汇总个人训练数据…</text></view>
+  <block wx:elif="{{profile}}">
+    <view class="stats-grid">
+      <view class="stat-card card"><text class="stat-value">{{profile.overall.totalCompleted}}</text><text class="stat-label">完成训练</text></view>
+      <view class="stat-card card"><text class="stat-value">{{profile.overall.averageScore}}</text><text class="stat-label">平均得分</text></view>
+      <view class="stat-card card"><text class="stat-value {{profile.overall.scoreDelta > 0 ? 'positive' : ''}}">{{profile.overall.scoreDelta > 0 ? '+' : ''}}{{profile.overall.scoreDelta}}</text><text class="stat-label">首末变化</text></view>
+    </view>
+
+    <view class="section-heading"><view><text class="section-title">能力画像</text><text class="section-caption">五维得分取已完成报告的平均值</text></view></view>
+    <view class="dimension-card card">
+      <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
+        <view class="dimension-head"><text>{{item.name}}</text><text style="color: {{item.color}};">{{item.score}}</text></view>
+        <view class="score-bar"><view class="score-fill" style="width: {{item.score}}%; background: {{item.color}};"></view></view>
+      </view>
+    </view>
+
+    <view class="section-heading"><view><text class="section-title">下一步练习重点</text><text class="section-caption">优先从当前相对薄弱的维度开始</text></view></view>
+    <view class="weakness-card card" wx:for="{{weaknesses}}" wx:key="key"><view class="weakness-head"><text>{{item.name}}</text><text>{{item.score}} 分</text></view><text>{{item.suggestion}}</text></view>
+
+    <view class="learning-summary card"><view><text class="summary-title">错题掌握进度</text><text class="summary-text">{{profile.mistakes.mastered}} / {{profile.mistakes.total}} 项已标记掌握</text></view><text class="summary-link" bindtap="goMistakes">去复练 ›</text></view>
+
+    <view class="section-heading"><view><text class="section-title">最近训练走势</text><text class="section-caption">最近 {{trend.length}} 次已完成训练</text></view><text class="section-link" bindtap="goHistory">历史记录 ›</text></view>
+    <view class="empty-card card" wx:if="{{trend.length === 0}}"><text>完成一次客服训练后，这里会出现真实的成长记录。</text></view>
+    <view class="trend-card card" wx:for="{{trend}}" wx:key="sessionId"><view><text class="trend-scene">{{item.scenarioName}}</text><text class="trend-date">{{item.date}}</text></view><text class="trend-score">{{item.scoreLabel}}</text></view>
+
+    <view class="action-grid"><button class="secondary-button" bindtap="goPhrases">话术锦囊</button><button class="secondary-button" bindtap="goMistakes">错题复练</button></view>
+    <button class="primary-button train-button" bindtap="goTraining">开始下一次训练</button>
+  </block>
+</view>
