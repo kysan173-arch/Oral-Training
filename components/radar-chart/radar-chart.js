@@ -76,9 +76,9 @@ Component({
         else ctx.lineTo(value.x, value.y);
       });
       ctx.closePath();
-      ctx.fillStyle = 'rgba(102, 126, 234, 0.18)';
+      ctx.fillStyle = 'rgba(31, 56, 100, 0.15)';
       ctx.fill();
-      ctx.strokeStyle = '#667eea';
+      ctx.strokeStyle = '#1F3864';
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.font = '11px sans-serif';
@@ -89,7 +89,7 @@ Component({
         const dot = point(index, score / 100);
         ctx.beginPath();
         ctx.arc(dot.x, dot.y, 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = item.color || '#667eea';
+        ctx.fillStyle = '#1F3864';
         ctx.fill();
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1;
@@ -98,7 +98,7 @@ Component({
         ctx.fillStyle = '#54627a';
         ctx.fillText(item.name, label.x, label.y);
         const scoreLabel = point(index, Math.min(1.08, score / 100 + 0.12));
-        ctx.fillStyle = item.color || '#667eea';
+        ctx.fillStyle = '#1F3864';
         ctx.fillText(String(Math.round(score)), scoreLabel.x, scoreLabel.y);
       });
     }

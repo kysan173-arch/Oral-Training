@@ -1,14 +1,23 @@
 const api = require('../../utils/api.js');
 
 const DIMENSIONS = [
-  { key: 'knowledgeAccuracy', name: '知识准确性', color: '#52a67a' },
-  { key: 'medicalCompliance', name: '医疗合规',   color: '#8b75c9' },
-  { key: 'empathy', name: '同理心',                color: '#667eea' },
-  { key: 'needsDiscovery', name: '需求挖掘',       color: '#f0a34b' },
-  { key: 'serviceEtiquette', name: '服务礼仪',     color: '#6b9de8' }
+  { key: 'knowledgeAccuracy', name: '知识准确性' },
+  { key: 'medicalCompliance', name: '医疗合规' },
+  { key: 'empathy', name: '同理心' },
+  { key: 'needsDiscovery', name: '需求挖掘' },
+  { key: 'serviceEtiquette', name: '服务礼仪' }
 ];
 
-const suggestionIcons = { high: '🔴', medium: '🟡', normal: '🟢' };
+/* 分数分档：颜色只跟随分数（≥80 良好绿 / 60–79 中间蓝 / <60 待提升橙） */
+const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
+const SEVERITY_TEXT = { high: '优先处理', medium: '建议关注', normal: '保持节奏' };
+
+/* 数值格式化：整数原样显示，小数保留一位 */
+const fmt1 = value => {
+  const num = Number(value);
+  if (!isFinite(num)) return value === null || value === undefined ? '0' : String(value);
+  return num % 1 === 0 ? String(Math.round(num)) : num.toFixed(1);
+};
 
 const coachingSuggestions = dashboard => {
   const suggestions = [];
@@ -20,7 +29,7 @@ const coachingSuggestions = dashboard => {
   if (weakest && weakest.score < 70) {
     suggestions.push({
       title: `优先关注：${weakest.name}`,
-      text: `团队均值为 ${weakest.score} 分。建议安排围绕该能力的短场景复练，并在复盘中关注具体表达。`,
+      text: `团队均值为 ${fmt1(weakest.score)} 分。建议安排围绕该能力的短场景复练，并在复盘中关注具体表达。`,
       severity: weakest.score < 60 ? 'high' : 'medium'
     });
   }
@@ -29,7 +38,7 @@ const coachingSuggestions = dashboard => {
   if (weakScene && weakScene.passRate < 70) {
     suggestions.push({
       title: `重点场景：${weakScene.scenarioName}`,
-      text: `该场景完成 ${weakScene.total} 次，通过率 ${weakScene.passRate}%。可优先组织该场景的针对性练习。`,
+      text: `该场景完成 ${weakScene.total} 次，通过率 ${fmt1(weakScene.passRate)}%。可优先组织该场景的针对性练习。`,
       severity: weakScene.passRate < 50 ? 'high' : 'medium'
     });
   }
@@ -81,25 +90,35 @@ Page({
       api.getSupervisorDashboard({ range: this.data.timeRange }),
       api.getSupervisorMembers({ limit: 100 })
     ]).then(([supervisor, memberData]) => {
-      const dimensionAverages = DIMENSIONS.map(item => Object.assign({}, item, {
-        value: Number((supervisor.dimensionAverages || {})[item.key] || 0)
-      }));
+      const dimensionAverages = DIMENSIONS.map(item => {
+        const value = Number((supervisor.dimensionAverages || {})[item.key] || 0);
+        const tier = scoreTier(value);
+        return Object.assign({}, item, { value, valueText: fmt1(value), tier });
+      });
       const maxSceneTotal = Math.max(1, ...(supervisor.scenarioStats || []).map(item => item.total));
       const scenarioStats = (supervisor.scenarioStats || []).map(item => Object.assign({}, item, {
         barWidth: Math.max(0, Math.min(100, item.passRate)),
         totalWidth: Math.max(4, item.total / maxSceneTotal * 100),
-        averageScore: typeof item.averageScore === 'number'
-          ? (Math.round(item.averageScore * 10) / 10).toFixed(1)
-          : item.averageScore
+        averageScoreText: fmt1(item.averageScore),
+        passRateText: fmt1(item.passRate)
       }));
-      const normalized = Object.assign({}, supervisor, { dimensionAverages, scenarioStats });
+      const normalized = Object.assign({}, supervisor, {
+        dimensionAverages,
+        scenarioStats,
+        averageScoreText: fmt1(supervisor.averageScore),
+        passRateText: fmt1(supervisor.passRate)
+      });
       this.setData({
         supervisor: normalized,
         members: (memberData.members || []).map(item => Object.assign({}, item, {
           initial: (item.displayName || '学').slice(0, 1),
+          averageScoreText: fmt1(item.averageScore),
+          passRateText: fmt1(item.passRate),
           latestText: item.lastTrainingDate ? `最近训练：${item.lastTrainingDate}` : '暂未开始训练'
         })),
-        suggestions: coachingSuggestions(supervisor).map(s => Object.assign({}, s, { icon: suggestionIcons[s.severity] || '📌' })),
+        suggestions: coachingSuggestions(supervisor).map(s => Object.assign({}, s, {
+          severityText: SEVERITY_TEXT[s.severity] || ''
+        })),
         loading: false
       });
     }).catch(error => {
@@ -111,9 +130,10 @@ Page({
   loadPersonal() {
     api.getDashboard().then(data => {
       const totalSceneCount = (data.scenarioStats || []).reduce((sum, s) => sum + s.trainingCount, 0) || 1;
-      const dimensionAverages = DIMENSIONS.map(item => Object.assign({}, item, {
-        value: Math.round(Number((data.dimensionAverages || {})[item.key] || 0))
-      }));
+      const dimensionAverages = DIMENSIONS.map(item => {
+        const value = Math.round(Number((data.dimensionAverages || {})[item.key] || 0));
+        return Object.assign({}, item, { value, tier: scoreTier(value) });
+      });
       const weakest = dimensionAverages.length
         ? dimensionAverages.reduce((prev, curr) => prev.value <= curr.value ? prev : curr) : null;
       const strongest = dimensionAverages.length

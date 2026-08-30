@@ -2,10 +2,8 @@
   <view class="loading-card card" wx:if="{{loading}}"><text>正在汇总训练数据…</text></view>
 
   <block wx:elif="{{isAdmin && supervisor}}">
-    <!-- 1. 渐变头部 Banner + 时间筛选 -->
+    <!-- 1. 头部 Banner + 时间筛选 -->
     <view class="data-hero">
-      <view class="hero-decoration decoration-one"></view>
-      <view class="hero-decoration decoration-two"></view>
       <view class="hero-content">
         <text class="hero-eyebrow">主管数据看板</text>
         <text class="hero-title">团队训练概览</text>
@@ -25,36 +23,36 @@
       <view class="anchor-item" hover-class="anchor-item-hover" bindtap="scrollToSection" data-selector="#sec-member">成员</view>
     </view>
 
-    <!-- 2. 数据概览卡（图标 + 四色区分） -->
+    <!-- 2. 数据概览卡（图标 + 数值） -->
     <view class="summary-cards supervisor-summary" id="sec-overview">
-      <view class="summary-card card card-blue">
+      <view class="summary-card card">
         <view class="summary-icon"><image class="summary-icon-img" src="/static/image/data/students.png" mode="aspectFit"></image></view>
         <text class="summary-value">{{supervisor.studentCount}}</text>
         <text class="summary-label">学员数</text>
       </view>
-      <view class="summary-card card card-green">
+      <view class="summary-card card">
         <view class="summary-icon"><image class="summary-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
         <text class="summary-value">{{supervisor.totalSessions}}</text>
         <text class="summary-label">训练次数</text>
       </view>
-      <view class="summary-card card card-purple">
+      <view class="summary-card card">
         <view class="summary-icon"><image class="summary-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
-        <text class="summary-value">{{supervisor.averageScore}}</text>
+        <text class="summary-value">{{supervisor.averageScoreText}}</text>
         <text class="summary-label">平均得分</text>
       </view>
-      <view class="summary-card card card-gold">
+      <view class="summary-card card">
         <view class="summary-icon"><image class="summary-icon-img" src="/static/image/data/target.png" mode="aspectFit"></image></view>
-        <text class="summary-value">{{supervisor.passRate}}%</text>
+        <text class="summary-value">{{supervisor.passRateText}}%</text>
         <text class="summary-label">练习达标率</text>
       </view>
     </view>
 
-    <!-- 3. 五维聚合表现（每维独立颜色） -->
+    <!-- 3. 五维聚合表现（横条统一主色） -->
     <view class="section-title-row" id="sec-dimension"><text class="section-title">五维聚合表现</text><text class="section-caption">已完成报告均值</text></view>
     <view class="dimension-card card">
       <view class="dimension-row" wx:for="{{supervisor.dimensionAverages}}" wx:key="key">
-        <view class="dimension-head"><text>{{item.name}}</text><text style="color:{{item.color}}">{{item.value}}</text></view>
-        <view class="dimension-bar"><view class="dimension-fill" style="width:{{item.value}}%; background:{{item.color}};"></view></view>
+        <view class="dimension-head"><text>{{item.name}}</text><text class="dim-score">{{item.valueText}}</text></view>
+        <view class="dimension-bar"><view class="dimension-fill fill-main" style="width:{{item.value}}%;"></view></view>
       </view>
     </view>
 
@@ -65,23 +63,25 @@
         <view class="scene-stat-head">
           <text>{{item.scenarioName}}</text>
           <view class="scene-stat-meta">
-            <text>平均 {{item.averageScore}} 分</text>
+            <text>平均 {{item.averageScoreText}} 分</text>
             <text class="scene-sep">·</text>
             <text>{{item.total}} 次</text>
             <text class="scene-sep">·</text>
-            <text class="{{item.passRate >= 60 ? 'pass-ok' : 'pass-warn'}}">达标 {{item.passRate}}%</text>
+            <text class="{{item.passRate >= 60 ? 'pass-ok' : 'pass-warn'}}">达标 {{item.passRateText}}%</text>
           </view>
         </view>
         <view class="scene-bar scene-bar-pass"><view class="scene-fill" style="width:{{item.passRate}}%;"></view></view>
       </view>
     </view>
 
-    <!-- 5. 辅导建议（背景色按严重级别区分） -->
+    <!-- 5. 辅导建议（严重级别文字徽章） -->
     <view class="section-title-row" id="sec-suggestion"><text class="section-title">辅导建议</text><text class="section-caption">基于聚合数据</text></view>
     <view class="suggestion-card card {{item.severity}}" wx:for="{{suggestions}}" wx:key="title">
-      <text class="suggestion-icon">{{item.icon}}</text>
       <view class="suggestion-body">
-        <text class="suggestion-title">{{item.title}}</text>
+        <view class="suggestion-title-row">
+          <text class="suggestion-title">{{item.title}}</text>
+          <text class="suggestion-sev">{{item.severityText}}</text>
+        </view>
         <text class="suggestion-text">{{item.text}}</text>
       </view>
     </view>
@@ -89,15 +89,15 @@
     <!-- 6. 成员学习摘要（达标色环 + 信息合并） -->
     <view class="section-title-row" id="sec-member"><text class="section-title">成员学习摘要</text><text class="section-caption">按姓名展示，非排名</text></view>
     <view class="member-card card" wx:for="{{members}}" wx:key="id" bindtap="openMember" data-id="{{item.id}}" hover-class="member-card-hover">
-      <view class="member-avatar-ring" style="background: conic-gradient({{item.passRate >= 60 ? '#52a67a' : '#df7781'}} {{item.passRate}}%, #e6e9f2 0);">
+      <view class="member-avatar-ring" style="background: conic-gradient({{item.passRate >= 60 ? '#2E8B6C' : '#C2554A'}} {{item.passRate}}%, #e6e9f2 0);">
         <view class="member-avatar">{{item.initial}}</view>
       </view>
       <view class="member-copy">
         <text class="member-name">{{item.displayName}}</text>
-        <text class="member-meta-line1">完成 {{item.completedSessions}} 次 · 平均 {{item.averageScore}} 分</text>
+        <text class="member-meta-line1">完成 {{item.completedSessions}} 次 · 平均 {{item.averageScoreText}} 分</text>
         <text class="member-meta">{{item.latestText}}</text>
       </view>
-      <view class="member-side"><text>{{item.passRate}}%</text><text>达标 ›</text></view>
+      <view class="member-side"><text>{{item.passRateText}}%</text><text>达标 ›</text></view>
     </view>
     <view class="empty-member card" wx:if="{{members.length === 0}}"><text>当前还没有可展示的学员账户。</text></view>
   </block>
@@ -105,7 +105,6 @@
   <block wx:elif="{{!isAdmin}}">
     <!-- 学习者模式：头部 -->
     <view class="data-hero data-hero-learner">
-      <view class="hero-decoration decoration-one"></view>
       <view class="hero-content">
         <text class="hero-eyebrow">个人训练数据</text>
         <text class="hero-title">我的训练概况</text>
@@ -117,7 +116,7 @@
     <view class="learner-summary card">
       <view class="learner-focal-card">
         <view class="focal-ring-wrap">
-          <view class="focal-ring" style="background: conic-gradient(#5B6EF5 {{personal.focalScoreRing}}%, #e6e9f2 0);">
+          <view class="focal-ring" style="background: conic-gradient(#1F3864 {{personal.focalScoreRing}}%, #e6e9f2 0);">
             <view class="focal-ring-hole">
               <text class="focal-value">{{personal.averageScore}}</text>
               <text class="focal-label">平均得分</text>
@@ -126,17 +125,12 @@
         </view>
       </view>
       <view class="learner-support-row">
-        <view class="learner-support-card card-blue">
+        <view class="learner-support-card">
           <text class="support-value">{{personal.totalCount}}</text>
           <text class="support-label">总训练</text>
         </view>
-        <view class="learner-support-card card-green">
-          <view class="completion-ring">
-            <view class="completion-ring-outer" style="background: conic-gradient(#52a67a {{personal.completionRate}}%, #dceee5 0);"></view>
-            <view class="completion-ring-hole">
-              <text class="completion-ring-value">{{personal.completionRate}}%</text>
-            </view>
-          </view>
+        <view class="learner-support-card">
+          <text class="support-value">{{personal.completionRate}}%</text>
           <text class="support-label">完成率</text>
         </view>
       </view>
@@ -161,26 +155,20 @@
     </view>
     <view class="dimension-card card">
       <view wx:if="{{personal.dimensionSummaryText}}" class="dimension-summary-text">
-        <text class="dimension-summary-icon">💡</text>
         <text>{{personal.dimensionSummaryText}}</text>
       </view>
-      <!-- 五维环形进度 -->
-      <view class="radar-rings">
-        <view class="radar-ring-item {{item.key === personal.weakestDimension.key ? 'ring-weakest' : ''}}" wx:for="{{personal.dimensionAverages}}" wx:key="key">
-          <view class="ring-box">
-            <view class="ring-fill" style="background: conic-gradient({{item.color}} {{item.value}}%, #eef0f6 0);">
-              <view class="ring-hole">
-                <text class="ring-score">{{item.value}}</text>
-              </view>
-            </view>
+      <!-- 五维横条（统一主色，最弱项标橙） -->
+      <view class="dimension-row" wx:for="{{personal.dimensionAverages}}" wx:key="key">
+        <view class="dimension-head">
+          <text class="dim-name {{item.key === personal.weakestDimension.key ? 'dim-name-weak' : ''}}">{{item.name}}</text>
+          <view class="dimension-head-right">
+            <text class="dim-tag" wx:if="{{item.key === personal.weakestDimension.key}}">待提升</text>
+            <text class="dim-score">{{item.value}}</text>
           </view>
-          <text class="ring-name">{{item.name}}</text>
-          <text class="ring-tag" wx:if="{{item.key === personal.weakestDimension.key}}">待提升</text>
-          <text class="ring-tag ring-ok" wx:else>良好</text>
         </view>
+        <view class="dimension-bar"><view class="dimension-fill {{item.key === personal.weakestDimension.key ? 'fill-weak' : 'fill-main'}}" style="width:{{item.value}}%;"></view></view>
       </view>
       <view wx:if="{{personal.weaknessActionText}}" class="weakness-action-text">
-        <text class="weakness-action-icon">🎯</text>
         <text>{{personal.weaknessActionText}}</text>
       </view>
     </view>
@@ -200,7 +188,6 @@
         </view>
       </view>
       <view class="no-recent" wx:if="{{personal.recentSessions.length === 0}}">
-        <text class="no-recent-icon">✨</text>
         <text class="no-recent-title">还没有训练记录</text>
         <text class="no-recent-desc">完成一次训练后，这里会展示你的五维能力图和成长曲线</text>
         <view class="no-recent-btn" bindtap="goTraining">去训练中心</view>
@@ -210,7 +197,6 @@
 
   <!-- 7. 查看训练历史（仅学员可见） -->
   <view class="history-banner" wx:if="{{!isAdmin}}" bindtap="viewHistory">
-    <text class="history-banner-icon">📋</text>
     <view class="history-banner-text">
       <text class="history-banner-title">查看训练历史</text>
       <text class="history-banner-desc">回顾完整对话、评分与复盘报告</text>

@@ -12,20 +12,20 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 28rpx;
-  background: #EEF0FF;
+  background: var(--color-primary-light);
   font-size: 40rpx;
   margin-bottom: 20rpx;
 }
 .empty-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #1A1A2E;
+  color: var(--text-strong);
 }
 .empty-text {
   margin-top: 12rpx;
   font-size: 24rpx;
   line-height: 1.6;
-  color: #8A93AD;
+  color: var(--text-secondary);
 }
 .empty-btn {
   margin-top: 24rpx;
@@ -34,7 +34,7 @@
   line-height: 76rpx;
   border-radius: 38rpx;
   color: #fff;
-  background: #5B6EF5;
+  background: var(--color-primary);
   font-size: 26rpx;
   font-weight: 600;
 }

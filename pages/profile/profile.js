@@ -1,11 +1,11 @@
 const api = require('../../utils/api.js');
 
 const DIMENSIONS = [
-  { key: 'knowledgeAccuracy', name: '知识准确性', color: '#667eea' },
-  { key: 'medicalCompliance', name: '医疗合规', color: '#52a67a' },
-  { key: 'needsDiscovery', name: '需求挖掘', color: '#6b9de8' },
-  { key: 'empathy', name: '同理心', color: '#e6a24b' },
-  { key: 'serviceEtiquette', name: '服务礼仪', color: '#8b75c9' }
+  { key: 'knowledgeAccuracy', name: '知识准确性' },
+  { key: 'medicalCompliance', name: '医疗合规' },
+  { key: 'needsDiscovery', name: '需求挖掘' },
+  { key: 'empathy', name: '同理心' },
+  { key: 'serviceEtiquette', name: '服务礼仪' }
 ];
 
 function scoreTier(score) {
@@ -30,9 +30,17 @@ Page({
     this.setData({ loading: true });
     api.getLearningProfile().then(data => {
       const dimensionAverages = data.dimensionAverages || {};
-      const dimensions = DIMENSIONS.map(item => Object.assign({}, item, {
+      const rawDimensions = DIMENSIONS.map(item => Object.assign({}, item, {
         score: dimensionAverages[item.key] || 0,
         tier: scoreTier(dimensionAverages[item.key] || 0)
+      }));
+      // 标记最弱维度（分数最低项），横条标橙引导关注
+      const weakestKey = rawDimensions.reduce(
+        (min, item) => (item.score < min.score ? item : min),
+        rawDimensions[0] || { score: 101 }
+      ).key;
+      const dimensions = rawDimensions.map(item => Object.assign({}, item, {
+        weakest: item.key === weakestKey
       }));
       const rawTrend = data.trend || [];
       const trend = rawTrend.map((item, i) => {

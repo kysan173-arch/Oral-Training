@@ -26,11 +26,8 @@
 
   <!-- 数据概览卡（主视觉） -->
   <view class="overview-card">
-    <view class="overview-deco overview-deco-1"></view>
-    <view class="overview-deco overview-deco-2"></view>
     <view class="overview-head">
       <text class="overview-title">我的训练概览</text>
-      <text class="overview-sub">持续练习，不断进步</text>
     </view>
     <view class="overview-stats">
       <view class="overview-stat">
@@ -56,7 +53,6 @@
       <view class="section-title-row">
         <text class="section-title">推荐场景</text>
       </view>
-      <text class="section-caption">精选训练，快速开始</text>
     </view>
     <view class="section-link" bindtap="startFromHome">更多 ›</view>
   </view>
@@ -77,7 +73,6 @@
       <view class="section-title-row">
         <text class="section-title">最近训练</text>
       </view>
-      <text class="section-caption">回顾最近练习</text>
     </view>
     <view class="section-link" bindtap="viewHistory">更多 ›</view>
   </view>
@@ -105,7 +100,7 @@
     <view class="section-link pill-btn" bindtap="viewPhrases">话术锦囊 ›</view>
   </view>
   <view class="swiper-wrap">
-    <swiper class="phrase-swiper" autoplay="{{true}}" interval="4000" duration="500" circular="{{true}}" current="{{swiperCurrent}}" bindchange="onSwiperChange" indicator-dots="{{false}}">
+    <swiper class="phrase-swiper" duration="500" circular="{{true}}" current="{{swiperCurrent}}" bindchange="onSwiperChange" indicator-dots="{{false}}">
       <swiper-item wx:for="{{hotPhrases}}" wx:key="id">
         <view class="phrase-card card">
           <view class="phrase-header">
@@ -139,6 +134,4 @@
     </view>
   </view>
   </block>
-
-  <text class="disclaimer">AI 模拟训练，不构成医疗建议；评分不替代医生、客服专家或正式培训考核。</text>
 </view>

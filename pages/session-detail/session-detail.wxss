@@ -1,0 +1,80 @@
+.detail-page { padding-bottom: 48rpx; background: var(--bg-grad, var(--color-bg)); min-height: 100vh; box-sizing: border-box; }
+
+/* ── 场景头部（白底克制） ── */
+.detail-hero { padding: 30rpx 28rpx 26rpx; margin-bottom: 26rpx; background: #fff; border-bottom: 1rpx solid var(--color-border); }
+.detail-kicker { display: block; color: var(--text-secondary); font-size: 22rpx; letter-spacing: 1rpx; }
+.detail-title-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12rpx; }
+.detail-title { font-size: 40rpx; font-weight: 600; color: var(--text-strong); }
+.status { flex-shrink: 0; padding: 6rpx 16rpx; border-radius: 18rpx; font-size: 22rpx; font-weight: 600; }
+.status.in_progress { color: var(--color-warning); background: var(--color-warning-light); }
+.status.completed { color: var(--color-primary); background: var(--color-primary-light); }
+.status.abandoned { color: var(--text-secondary); background: var(--color-bg); }
+.detail-meta { display: flex; justify-content: space-between; margin-top: 12rpx; color: var(--text-muted); font-size: 22rpx; }
+
+/* ── 通用标题区 ── */
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 28rpx 14rpx; }
+.section-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
+.section-caption { color: var(--text-secondary); font-size: 22rpx; }
+
+/* ── 卡片通用 ── */
+.card { background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
+.dimensions-card, .summary-card, .feedback-grid, .list-card, .principle-card, .chat-card { margin: 0 24rpx 26rpx; }
+
+/* ── 得分与五维 ── */
+.dimensions-card { padding: 26rpx; }
+.score-head { display: flex; align-items: baseline; gap: 8rpx; padding-bottom: 20rpx; margin-bottom: 20rpx; border-bottom: 1rpx dashed var(--color-border); }
+.score-value { font-size: 56rpx; font-weight: 600; color: var(--text-strong); line-height: 1; }
+.score-label { font-size: 24rpx; color: var(--text-secondary); }
+.dimension-row { margin-bottom: 18rpx; }
+.dimension-row:last-child { margin-bottom: 0; }
+.dimension-head { display: flex; align-items: center; justify-content: space-between; }
+.dim-name { color: var(--text-body); font-size: 26rpx; }
+.dim-score { font-weight: 600; font-size: 26rpx; }
+.score-bar { height: 13rpx; margin-top: 10rpx; overflow: hidden; border-radius: 8rpx; background: var(--color-border); }
+.score-fill { height: 100%; border-radius: 8rpx; }
+.fill-main { background: var(--color-primary); }
+
+/* ── 综合评价 ── */
+.summary-card { padding: 26rpx; color: var(--text-body); font-size: 26rpx; line-height: 1.7; }
+
+/* ── 反馈双卡 ── */
+.feedback-grid { display: flex; gap: 16rpx; }
+.feedback-card { flex: 1; min-height: 140rpx; padding: 22rpx; border-radius: 20rpx; }
+.feedback-good { background: var(--color-success-light); }
+.feedback-improve { background: var(--color-warning-light); }
+.feedback-title { display: block; margin-bottom: 12rpx; font-size: 26rpx; font-weight: 600; }
+.positive { color: var(--color-success); }
+.improve { color: var(--color-warning); }
+.feedback-item { display: block; margin-top: 8rpx; color: var(--text-body); font-size: 24rpx; line-height: 1.55; }
+
+/* ── 患者模拟摘要 ── */
+.list-card { padding: 22rpx 26rpx; color: var(--text-body); font-size: 26rpx; line-height: 1.7; }
+.topic-item { display: flex; align-items: flex-start; padding: 8rpx 0; }
+.topic-item + .topic-item { border-top: 1rpx dashed var(--color-border); margin-top: 6rpx; padding-top: 16rpx; }
+.topic-dot { width: 14rpx; height: 14rpx; flex-shrink: 0; margin: 18rpx 18rpx 0 2rpx; border-radius: 50%; background: var(--color-primary); }
+.principle-card { display: flex; align-items: flex-start; padding: 24rpx 26rpx; color: var(--text-body); font-size: 26rpx; font-weight: 600; line-height: 1.8; }
+.principle-index { display: flex; align-items: center; justify-content: center; width: 46rpx; height: 46rpx; flex-shrink: 0; margin-right: 18rpx; border-radius: 14rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 26rpx; font-weight: 600; }
+
+/* ── 完整对话 ── */
+.chat-card { padding: 26rpx; }
+.message-item { margin-bottom: 26rpx; }
+.message-item:last-child { margin-bottom: 0; }
+.message-head { display: flex; align-items: baseline; justify-content: space-between; }
+.message-role { color: var(--text-strong); font-size: 24rpx; font-weight: 600; }
+.message-time { color: var(--text-muted); font-size: 20rpx; }
+.message-text { margin-top: 8rpx; padding: 16rpx 18rpx; border-radius: 6rpx 20rpx 20rpx 20rpx; color: var(--text-body); background: var(--color-bg); font-size: 26rpx; line-height: 1.6; }
+.message-item.mine .message-text { color: #fff; background: var(--color-primary); border-radius: 20rpx 6rpx 20rpx 20rpx; }
+.learning-box { margin-top: 10rpx; padding: 14rpx 16rpx; border-radius: 12rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; line-height: 1.5; }
+.learning-label { display: block; margin-bottom: 4rpx; font-weight: 600; }
+.learning-point, .learning-boundary { display: block; margin-top: 4rpx; }
+.learning-boundary { padding-top: 8rpx; margin-top: 8rpx; border-top: 1rpx solid var(--color-border); color: var(--color-warning); }
+.empty-chat { padding: 30rpx; color: var(--text-muted); font-size: 24rpx; text-align: center; }
+
+/* ── 操作 ── */
+.detail-actions { padding: 0 24rpx; }
+.detail-actions button { width: 100%; height: 84rpx; line-height: 84rpx; font-size: 26rpx; font-weight: 600; }
+
+/* ── 加载态 ── */
+.loading-card { padding: 48rpx 32rpx; margin: 40rpx 24rpx; text-align: center; }
+.loading-title { display: block; color: var(--text-strong); font-size: 30rpx; font-weight: 600; }
+.retry-button { width: 100%; margin-top: 30rpx; }

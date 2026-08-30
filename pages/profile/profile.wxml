@@ -20,12 +20,8 @@
   </view>
 
   <block wx:elif="{{profile}}">
-    <!-- Hero 卡片 -->
-    <view class="profile-hero-card">
-      <view class="ph-deco ph-deco-1"></view>
-      <view class="ph-deco ph-deco-2"></view>
-      <view class="ph-accent-bar"></view>
-      <text class="eyebrow">MY LEARNING</text>
+    <!-- 页头 -->
+    <view class="profile-header">
       <text class="page-title">个人成长</text>
       <text class="page-intro">你的数据仅基于本人完成的客服训练报告，用于回顾练习重点，不用于排名或正式考核。</text>
     </view>
@@ -33,12 +29,12 @@
     <!-- 统计卡 横滑 -->
     <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="stat-row">
-        <view class="stat-card stat-card-blue">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{profile.overall.totalCompleted}}</text>
           <text class="stat-lbl">完成训练</text>
         </view>
-        <view class="stat-card stat-card-purple">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{profile.overall.averageScore}}</text>
           <text class="stat-lbl">平均得分</text>
@@ -57,10 +53,13 @@
       <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
         <view class="dimension-head">
           <text class="dim-name">{{item.name}}</text>
-          <text class="dim-score" style="color: {{item.color}};">{{item.score}}</text>
+          <view class="dimension-head-right">
+            <text class="dim-tag" wx:if="{{item.weakest}}">待提升</text>
+            <text class="dim-score">{{item.score}}</text>
+          </view>
         </view>
         <view class="score-bar">
-          <view class="score-fill" style="width: {{item.score}}%; background: {{item.color}};"></view>
+          <view class="score-fill {{item.weakest ? 'fill-weak' : 'fill-main'}}" style="width: {{item.score}}%;"></view>
         </view>
       </view>
     </view>

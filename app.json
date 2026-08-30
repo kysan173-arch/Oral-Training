@@ -7,6 +7,7 @@
     "pages/result/result",
     "pages/roleplay-result/roleplay-result",
     "pages/report/report",
+    "pages/session-detail/session-detail",
     "pages/admin/admin",
     "pages/member-detail/member-detail",
     "pages/mine/mine",
@@ -15,17 +16,17 @@
     "pages/profile/profile"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#5B6EF5",
+    "navigationBarBackgroundColor": "#FFFFFF",
     "navigationBarTitleText": "口腔客服智能陪练",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#F7F8FA",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F9FC",
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
     "custom": true,
     "color": "#A1A1AA",
-    "selectedColor": "#5B6EF5",
-    "backgroundColor": "#EEF0FF",
+    "selectedColor": "#1F3864",
+    "backgroundColor": "#EEF2F8",
     "borderStyle": "white",
     "list": [
       {

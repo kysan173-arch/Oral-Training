@@ -108,40 +108,11 @@
           <text class="scenario-name">{{scenario.name}}</text>
           <text class="scenario-summary">{{scenario.summary}}</text>
 
-          <!-- 分数行 -->
+          <!-- 分数行 + 画像状态 -->
           <view class="score-row">
             <text class="pass-score">及格分：{{scenario.passScore || 60}}分</text>
             <text class="best-score" wx:if="{{scenario.bestScore !== null && scenario.bestScore !== undefined}}">历史最佳：{{scenario.bestScore}}分</text>
-          </view>
-
-          <!-- 患者画像（必填，由用户自行填写） -->
-          <view class="profile-row">
-            <view class="profile-avatar">{{(customProfiles[scenario.id] && customProfiles[scenario.id].age) ? customProfiles[scenario.id].age + '岁' : '—'}}</view>
-            <view class="profile-copy">
-              <view class="profile-header-line">
-                <text class="profile-label">患者画像（必填）</text>
-                <text class="profile-edit-btn" bindtap="toggleCustomProfile" data-id="{{scenario.id}}">{{showCustomProfileId === scenario.id ? '收起' : (hasCustomProfile(scenario.id) ? '编辑' : '填写')}}</text>
-              </view>
-              <text class="profile-text {{hasCustomProfile(scenario.id) ? '' : 'profile-empty'}}">{{hasCustomProfile(scenario.id) ? profileSummary(scenario.id) : '请填写患者画像后开始训练'}}</text>
-            </view>
-          </view>
-
-          <!-- 自定义画像输入面板 -->
-          <view class="custom-profile-panel" wx:if="{{showCustomProfileId === scenario.id}}">
-            <view class="custom-profile-title">填写患者画像（必填）</view>
-            <view class="custom-input-row">
-              <text class="custom-input-label">年龄</text>
-              <input class="custom-input custom-input-short" type="number" placeholder="例如：35" value="{{customProfiles[scenario.id] ? customProfiles[scenario.id].age : ''}}" bindinput="onCustomProfileChange" data-id="{{scenario.id}}" data-field="age" />
-            </view>
-            <view class="custom-input-row">
-              <text class="custom-input-label">描述</text>
-              <input class="custom-input" placeholder="例如：刚拔完智齿，担心感染（必填）" value="{{customProfiles[scenario.id] ? customProfiles[scenario.id].description : ''}}" bindinput="onCustomProfileChange" data-id="{{scenario.id}}" data-field="description" />
-            </view>
-            <view class="custom-input-row">
-              <text class="custom-input-label">情绪</text>
-              <input class="custom-input" placeholder="例如：焦虑、犹豫" value="{{customProfiles[scenario.id] ? customProfiles[scenario.id].emotion : ''}}" bindinput="onCustomProfileChange" data-id="{{scenario.id}}" data-field="emotion" />
-            </view>
-            <text class="custom-profile-hint">请填写患者画像，AI 患者将基于你填写的画像进行对话</text>
+            <text class="profile-tag" wx:elif="{{!hasCustomProfile(scenario.id)}}">新场景</text>
           </view>
 
           <!-- 操作按钮 -->
@@ -156,6 +127,32 @@
     </view>
   </view>
 
-  <text class="disclaimer">AI 模拟训练，不构成医疗建议；客服不替代医生进行诊断或确定治疗方案。</text>
+  <!-- 患者画像底部弹层（首次训练时填写，不阻塞浏览） -->
+  <view class="profile-mask" wx:if="{{profileModalVisible}}" bindtap="closeProfileModal"></view>
+  <view class="profile-modal {{profileModalVisible ? 'profile-modal-show' : ''}}">
+    <view class="profile-modal-head">
+      <text class="profile-modal-title">填写患者画像</text>
+      <text class="profile-modal-close" bindtap="closeProfileModal">关闭</text>
+    </view>
+    <view class="profile-modal-body">
+      <view class="custom-input-row">
+        <text class="custom-input-label">年龄</text>
+        <input class="custom-input custom-input-short" type="number" placeholder="例如：35（选填）" value="{{customProfiles[profileModalScenarioId] ? customProfiles[profileModalScenarioId].age : ''}}" bindinput="onCustomProfileChange" data-id="{{profileModalScenarioId}}" data-field="age" />
+      </view>
+      <view class="custom-input-row">
+        <text class="custom-input-label">描述</text>
+        <input class="custom-input" placeholder="例如：刚拔完智齿，担心感染（选填）" value="{{customProfiles[profileModalScenarioId] ? customProfiles[profileModalScenarioId].description : ''}}" bindinput="onCustomProfileChange" data-id="{{profileModalScenarioId}}" data-field="description" />
+      </view>
+      <view class="custom-input-row">
+        <text class="custom-input-label">情绪</text>
+        <input class="custom-input" placeholder="例如：焦虑、犹豫（选填）" value="{{customProfiles[profileModalScenarioId] ? customProfiles[profileModalScenarioId].emotion : ''}}" bindinput="onCustomProfileChange" data-id="{{profileModalScenarioId}}" data-field="emotion" />
+      </view>
+      <text class="custom-profile-hint">不填写将使用场景默认患者画像，训练中可随时了解患者情况。</text>
+    </view>
+    <view class="profile-modal-actions">
+      <button class="primary-button profile-modal-btn" bindtap="confirmProfileAndStart">开始训练</button>
+      <text class="profile-skip" bindtap="skipProfileAndStart">使用默认画像直接开始</text>
+    </view>
+  </view>
   </block>
 </view>

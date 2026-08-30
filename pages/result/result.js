@@ -1,18 +1,22 @@
 const api = require('../../utils/api.js');
 
-const dimensionsFrom = score => [
-  { key: 'empathy', name: '情绪识别与同理心', score: score.empathy, color: '#667eea' },
-  { key: 'knowledgeAccuracy', name: '口腔知识准确性', score: score.knowledgeAccuracy, color: '#52a67a' },
-  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery, color: '#f0a34b' },
-  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette, color: '#6b9de8' },
-  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance, color: '#8b75c9' }
-];
+/* 分数分档：颜色只跟随分数（≥80 良好绿 / 60–79 中间蓝 / <60 待提升橙） */
+const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
 
+const dimensionsFrom = score => [
+  { key: 'empathy', name: '情绪识别与同理心', score: score.empathy },
+  { key: 'knowledgeAccuracy', name: '口腔知识准确性', score: score.knowledgeAccuracy },
+  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery },
+  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette },
+  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance }
+].map(item => Object.assign(item, { tier: scoreTier(item.score) }));
+
+/* 总分环档位色（与全局语义色 token 一致） */
 const levelFrom = score => {
-  if (score >= 90) return { key: 'excellent', name: '表现出色', note: '沟通与合规边界掌握较好', scoreColor: '#52a67a' };
-  if (score >= 80) return { key: 'good', name: '表现良好', note: '继续用具体场景巩固表达', scoreColor: '#667eea' };
-  if (score >= 60) return { key: 'qualified', name: '达到练习目标', note: '可优先复练薄弱维度', scoreColor: '#e6a24b' };
-  return { key: 'practice', name: '继续复练', note: '建议先查看错题与推荐表达', scoreColor: '#d26464' };
+  if (score >= 90) return { key: 'excellent', name: '表现出色', note: '沟通与合规边界掌握较好', scoreColor: '#2E8B6C' };
+  if (score >= 80) return { key: 'good', name: '表现良好', note: '继续用具体场景巩固表达', scoreColor: '#2E8B6C' };
+  if (score >= 60) return { key: 'qualified', name: '达到练习目标', note: '可优先复练薄弱维度', scoreColor: '#B97A1E' };
+  return { key: 'practice', name: '继续复练', note: '建议先查看错题与推荐表达', scoreColor: '#C2554A' };
 };
 
 const normalizeEvaluation = evaluation => Object.assign({}, evaluation, {
@@ -46,7 +50,9 @@ Page({
     loading: true,
     loadingText: '正在生成训练报告…',
     retryable: false,
-    timedOut: false
+    timedOut: false,
+    violationsExpanded: false,
+    roundCommentsExpanded: false
   },
 
   sessionId: '',
@@ -146,6 +152,9 @@ Page({
   viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
   viewMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
   viewProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+
+  toggleViolations() { this.setData({ violationsExpanded: !this.data.violationsExpanded }); },
+  toggleRoundComments() { this.setData({ roundCommentsExpanded: !this.data.roundCommentsExpanded }); },
 
   startNextScenario() {
     const scenario = this.data.nextScenario;

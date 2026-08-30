@@ -1,7 +1,7 @@
 {
   "navigationBarTitleText": "演示数据",
-  "navigationBarBackgroundColor": "#5B6EF5",
-  "navigationBarTextStyle": "white",
+  "navigationBarBackgroundColor": "#FFFFFF",
+  "navigationBarTextStyle": "black",
   "enablePullDownRefresh": false,
-  "backgroundColor": "#f5f5f5"
+  "backgroundColor": "#F7F9FC"
 }

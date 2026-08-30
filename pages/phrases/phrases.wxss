@@ -1,35 +1,38 @@
 .phrases-page { padding: 28rpx 24rpx 48rpx; }
 .page-header { padding: 4rpx 4rpx 22rpx; }
 .eyebrow, .page-title, .page-intro { display: block; }
-.eyebrow { color: #5B6EF5; font-size: 22rpx; letter-spacing: 2rpx; font-weight: 600; }
-.page-title { margin-top: 12rpx; color: #303046; font-size: 32rpx; font-weight: 600; }
-.page-intro { margin-top: 12rpx; color: #888; font-size: 22rpx; line-height: 1.65; }
-.phrase-view-switch { display: flex; padding: 6rpx; margin: -4rpx 0 20rpx; border-radius: 18rpx; background: #e9ebf8; }
-.phrase-view { flex: 1; padding: 13rpx 10rpx; border-radius: 14rpx; color: #7780aa; font-size: 22rpx; text-align: center; }
-.phrase-view.selected { color: #fff; background: #5B6EF5; font-weight: 600; }
+.eyebrow { color: var(--color-primary); font-size: 22rpx; letter-spacing: 2rpx; font-weight: 600; }
+.page-title { margin-top: 12rpx; color: var(--text-strong); font-size: 40rpx; font-weight: 600; }
+.page-intro { margin-top: 12rpx; color: var(--text-secondary); font-size: 24rpx; line-height: 1.65; }
+.phrase-view-switch { display: flex; padding: 6rpx; margin: -4rpx 0 20rpx; border-radius: 18rpx; background: var(--color-primary-light); }
+.phrase-view { flex: 1; padding: 13rpx 10rpx; border-radius: 14rpx; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
+.phrase-view.selected { color: #fff; background: var(--color-primary); font-weight: 600; }
 .search-card { display: flex; align-items: center; padding: 10rpx 16rpx; }
-.search-input { flex: 1; height: 64rpx; color: #3C3A44; font-size: 26rpx; }
-.search-action, .clear-action { margin-left: 16rpx; color: #5B6EF5; font-size: 22rpx; }
-.clear-action { color: #999; }
+.search-input { flex: 1; height: 64rpx; color: var(--text-body); font-size: 26rpx; }
+.search-action, .clear-action { margin-left: 16rpx; color: var(--color-primary); font-size: 22rpx; }
+.clear-action { color: var(--text-muted); }
 .empty-card { padding: 0; }
 .phrase-list { display: flex; flex-direction: column; gap: 18rpx; }
 
 /* 加载骨架 */
 .phrase-skeleton { display: flex; flex-direction: column; gap: 18rpx; }
-.sk-card { height: 200rpx; border-radius: 20rpx; background: linear-gradient(90deg, #EEF0FF 25%, #E3E8FF 50%, #EEF0FF 75%); background-size: 200% 100%; animation: sk-shimmer 1.6s infinite; }
+.sk-card { height: 200rpx; border-radius: 20rpx; background: linear-gradient(90deg, var(--color-primary-light) 25%, #E3E8FF 50%, var(--color-primary-light) 75%); background-size: 200% 100%; animation: sk-shimmer 1.6s infinite; }
 @keyframes sk-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .phrase-card { padding: 24rpx; }
 .phrase-head, .phrase-actions { display: flex; align-items: center; justify-content: space-between; }
-.scene-tag { max-width: 75%; overflow: hidden; color: #5B6EF5; font-size: 22rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.round-tag { color: #8A93AD; font-size: 22rpx; }
-.patient-box, .phrase-box { display: flex; flex-direction: column; margin-top: 18rpx; padding: 16rpx; border-radius: 14rpx; color: #666; background: #f8f8fb; font-size: 22rpx; line-height: 1.55; }
-.patient-label, .phrase-label { margin-bottom: 5rpx; color: #999; font-size: 22rpx; }
-.phrase-box { color: #3C3A44; background: #f0f3ff; }
-.phrase-label { color: #5B6EF5; font-weight: 600; }
-.phrase-text { color: #3C3A44; font-size: 26rpx; }
-.reason-text { display: block; margin-top: 15rpx; color: #999; font-size: 22rpx; line-height: 1.55; }
+.scene-name { max-width: 75%; overflow: hidden; color: var(--text-strong); font-size: 26rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.round-tag { color: var(--text-muted); font-size: 22rpx; }
+.patient-box, .phrase-box { display: flex; flex-direction: column; margin-top: 18rpx; padding: 16rpx; border-radius: 14rpx; font-size: 22rpx; line-height: 1.55; }
+.patient-box { color: var(--text-secondary); background: var(--color-bg); }
+.phrase-box { color: var(--color-primary); background: var(--color-primary-light); }
+.patient-label, .phrase-label { margin-bottom: 5rpx; color: var(--text-muted); font-size: 22rpx; }
+.patient-text { color: var(--text-secondary); font-size: 24rpx; line-height: 1.55; }
+.phrase-label { color: var(--color-primary); font-weight: 600; }
+.phrase-text { color: var(--text-body); font-size: 26rpx; }
+.reason-text { display: block; margin-top: 15rpx; color: var(--text-muted); font-size: 22rpx; line-height: 1.55; }
 .phrase-actions { margin-top: 20rpx; font-size: 22rpx; }
-.copy-action { color: #5B6EF5; }
-.favorite-action { color: #5B6EF5; }
-.favorite-action.active { color: #d19040; }
-.train-action { color: #5B6EF5; }
+.phrase-action-right { display: flex; align-items: center; gap: 24rpx; }
+.copy-action { color: var(--color-primary); font-weight: 600; }
+.favorite-action { color: var(--text-secondary); }
+.favorite-action.active { color: var(--color-warning); }
+.train-action { color: var(--text-secondary); }

@@ -1,10 +1,9 @@
 {
   "navigationBarTitleText": "历史记录",
-  "navigationBarBackgroundColor": "#5B6EF5",
-  "navigationBarTextStyle": "white",
+  "navigationBarBackgroundColor": "#FFFFFF",
+  "navigationBarTextStyle": "black",
   "enablePullDownRefresh": false,
   "usingComponents": {
-    "radar-chart": "/components/radar-chart/radar-chart",
     "empty-state": "/components/empty-state/empty-state"
   }
 }

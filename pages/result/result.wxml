@@ -1,10 +1,8 @@
 <view class="page-shell result-page" wx:if="{{!loading}}">
   <view class="result-hero">
-    <view class="hero-deco hero-deco-1"></view>
-    <view class="hero-deco hero-deco-2"></view>
     <text class="result-kicker">训练完成 · {{scenario.name}}</text>
     <view class="score-ring">
-      <view class="score-ring-fill" style="background: conic-gradient({{level.scoreColor}} {{scorePercent}}%, rgba(255,255,255,.14) 0);">
+      <view class="score-ring-fill" style="background: conic-gradient({{level.scoreColor}} {{scorePercent}}%, #E3E9F2 0);">
         <view class="score-ring-hole">
           <text class="score-value" style="color: {{level.scoreColor}}">{{evaluation.totalScore}}</text>
           <text class="score-unit">/ 100</text>
@@ -12,50 +10,60 @@
       </view>
     </view>
     <text class="score-caption">本次训练总分</text>
-    <view class="level-badge {{level.key}}"><text>{{level.name}}</text><text class="level-note">{{level.note}}</text></view>
+    <view class="level-badge {{level.key}}"><text>{{level.name}}</text></view>
+    <text class="result-summary">{{level.note}}</text>
     <text class="result-time">{{session.startedAt}} — {{session.finishedAt}}</text>
   </view>
 
-  <view class="notice-box"><text class="notice-icon">!</text><text>自动评分基于固定 MVP 评分量表，仅用于演示和辅助反馈，不替代专家审核或正式考核。</text></view>
+  <view class="notice-box"><text class="notice-icon">i</text><text>自动评分基于固定 MVP 评分量表，仅用于演示和辅助反馈，不替代专家审核或正式考核。</text></view>
 
   <view class="section-title-row"><text class="section-title">五维能力</text><text class="section-caption">按完整对话综合评价</text></view>
   <view class="dimensions-card card">
-    <view class="dimension-rings">
-      <view class="dimension-ring-item" wx:for="{{dimensions}}" wx:key="key">
-        <view class="dimension-ring-box">
-          <view class="dimension-ring-fill" style="background: conic-gradient({{item.color}} {{item.score}}%, #eef0f6 0);">
-            <view class="dimension-ring-hole"><text class="dimension-ring-score">{{item.score}}</text></view>
-          </view>
-        </view>
-        <text class="dimension-ring-name">{{item.name}}</text>
+    <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
+      <view class="dimension-head">
+        <text class="dim-name">{{item.name}}</text>
+        <text class="dim-score tier-{{item.tier}}">{{item.score}}</text>
+      </view>
+      <view class="score-bar">
+        <view class="score-fill fill-main" style="width: {{item.score}}%;"></view>
       </view>
     </view>
+    <view class="dimension-summary"><text class="summary-label">综合评价</text><text>{{evaluation.summary}}</text></view>
   </view>
-
-  <view class="section-title-row"><text class="section-title">综合评价</text></view>
-  <view class="evaluation-card card"><text class="evaluation-text">{{evaluation.summary}}</text></view>
 
   <view class="feedback-grid">
-    <view class="feedback-card feedback-good"><text class="feedback-title positive">👍 做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view>
-    <view class="feedback-card feedback-improve"><text class="feedback-title improve">📈 下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view>
+    <view class="feedback-card feedback-good"><text class="feedback-icon">✓</text><view class="feedback-copy"><text class="feedback-title positive">做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view></view>
+    <view class="feedback-card feedback-improve"><text class="feedback-icon improve-icon">→</text><view class="feedback-copy"><text class="feedback-title improve">下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view></view>
   </view>
 
-  <view class="section-title-row"><text class="section-title">严重违规</text><text class="section-caption">{{evaluation.violations.length}} 项</text></view>
+  <view class="section-title-row">
+    <text class="section-title">严重违规</text>
+    <text class="section-caption fold-toggle" wx:if="{{evaluation.violations.length > 0}}" bindtap="toggleViolations">{{violationsExpanded ? '收起' : '展开全部 ' + evaluation.violations.length + ' 项'}}</text>
+  </view>
   <view class="empty-card card" wx:if="{{evaluation.violations.length === 0}}"><text>本次没有识别到严重违规，继续保持医疗合规边界。</text></view>
-  <view class="violation-card card" wx:for="{{evaluation.violations}}" wx:key="id">
-    <view class="violation-top"><text class="violation-type">{{item.type}}</text><text class="deduction">-{{item.deduction}}分</text></view>
-    <text class="quote">“{{item.quote}}”</text>
-    <text class="violation-reason">{{item.reason}}</text>
-    <view class="rewrite-box"><text class="rewrite-label">建议改写</text><text>{{item.rewrite}}</text></view>
-  </view>
+  <block wx:else>
+    <view class="violation-card card" wx:for="{{violationsExpanded ? evaluation.violations : evaluation.violations.slice(0, 1)}}" wx:key="id">
+      <view class="violation-top"><text class="violation-type">{{item.type}}</text><text class="deduction">-{{item.deduction}}分</text></view>
+      <text class="quote">“{{item.quote}}”</text>
+      <text class="violation-reason">{{item.reason}}</text>
+      <view class="rewrite-box"><text class="rewrite-label">建议改写</text><text>{{item.rewrite}}</text></view>
+    </view>
+    <view class="fold-more" wx:if="{{!violationsExpanded && evaluation.violations.length > 1}}" bindtap="toggleViolations">还有 {{evaluation.violations.length - 1}} 项违规，展开查看 ›</view>
+  </block>
 
-  <view class="section-title-row"><text class="section-title">关键轮次点评</text><text class="section-caption">{{evaluation.roundComments.length}} 个回合</text></view>
-  <view class="round-card card" wx:for="{{evaluation.roundComments}}" wx:key="round">
-    <view class="round-badge"><text class="round-label">第 {{item.round}} 轮</text></view>
-    <text class="round-quote">“{{item.userQuote}}”</text>
-    <text class="round-comment">{{item.comment}}</text>
-    <view class="round-rewrite"><text class="rewrite-label">更优表达</text><text>{{item.rewrite}}</text></view>
+  <view class="section-title-row">
+    <text class="section-title">关键轮次点评</text>
+    <text class="section-caption fold-toggle" wx:if="{{evaluation.roundComments.length > 1}}" bindtap="toggleRoundComments">{{roundCommentsExpanded ? '收起' : '展开全部 ' + evaluation.roundComments.length + ' 个回合'}}</text>
   </view>
+  <block wx:if="{{evaluation.roundComments.length}}">
+    <view class="round-card card" wx:for="{{roundCommentsExpanded ? evaluation.roundComments : evaluation.roundComments.slice(0, 1)}}" wx:key="round">
+      <view class="round-badge"><text class="round-label">第 {{item.round}} 轮</text></view>
+      <text class="round-quote">“{{item.userQuote}}”</text>
+      <text class="round-comment">{{item.comment}}</text>
+      <view class="round-rewrite"><text class="rewrite-label">更优表达</text><text>{{item.rewrite}}</text></view>
+    </view>
+    <view class="fold-more" wx:if="{{!roundCommentsExpanded && evaluation.roundComments.length > 1}}" bindtap="toggleRoundComments">还有 {{evaluation.roundComments.length - 1}} 个回合点评，展开查看 ›</view>
+  </block>
 
   <view class="section-title-row"><text class="section-title">本次可收录话术</text><text class="section-caption">来自已点评轮次</text></view>
   <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>本次暂无可收录的话术，完成更多训练后可在话术锦囊中回顾。</text></view>
@@ -73,9 +81,9 @@
       <button class="secondary-button result-btn-sub" bindtap="viewMistakes">错题复练</button>
     </view>
     <view class="result-link-row">
-      <text class="text-button" bindtap="viewProfile">查看个人成长</text>
-      <text class="link-divider">|</text>
-      <text class="text-button" bindtap="viewHistory">查看历史记录</text>
+      <text class="text-button" bindtap="viewProfile">个人成长</text>
+      <text class="link-divider">·</text>
+      <text class="text-button" bindtap="viewHistory">历史记录</text>
     </view>
   </view>
   <text class="disclaimer">AI模拟训练，不构成医疗建议。</text>

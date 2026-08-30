@@ -1,13 +1,15 @@
 const api = require('../../utils/api.js');
 
 const normalizeScenario = (item, customProfile) => {
-  // 患者画像由用户必填，优先展示自定义画像
-  const base = Object.assign({}, item, {
-    patientAge: (customProfile && customProfile.age) ? `${customProfile.age}岁` : '年龄待填写',
-    patientConcern: (customProfile && customProfile.description) ? customProfile.description : '描述待填写',
-    patientEmotion: (customProfile && customProfile.emotion) ? customProfile.emotion : ''
+  // 优先展示自定义画像；未填写时回退到场景默认患者画像
+  const fallback = (item && item.patientProfile) || {};
+  const hasCustom = customProfile && (customProfile.age || customProfile.description || customProfile.emotion);
+  const profile = hasCustom ? customProfile : fallback;
+  return Object.assign({}, item, {
+    patientAge: profile.age ? `${profile.age}岁` : '年龄待填写',
+    patientConcern: profile.description || '描述待填写',
+    patientEmotion: profile.emotion || ''
   });
-  return base;
 };
 
 const normalizeMessages = messages => messages.map(message => Object.assign({}, message, {
@@ -39,6 +41,7 @@ Page({
     hintRemaining: 3,
     requestingHint: false,
     quickPhrases: QUICK_PHRASES,
+    assistExpanded: false,
     customProfile: null
   },
 
@@ -101,6 +104,10 @@ Page({
     const phrase = e.currentTarget.dataset.phrase || '';
     if (!phrase) return;
     this.setData({ inputValue: phrase });
+  },
+
+  toggleAssist() {
+    this.setData({ assistExpanded: !this.data.assistExpanded });
   },
 
   requestHint() {

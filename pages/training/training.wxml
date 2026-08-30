@@ -25,16 +25,24 @@
 
   <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
   <view class="assist-panel">
-    <view class="assist-head"><text class="assist-title">训练辅助</text><text wx:if="{{requestingHint}}" class="hint-action">提示生成中…</text><text wx:elif="{{hintRemaining > 0}}" class="hint-action" bindtap="requestHint">获取提示（剩余 {{hintRemaining}} 次）</text><text wx:else class="hint-action disabled">本次提示已用完</text></view>
-    <scroll-view class="quick-scroll" scroll-x="true" enable-flex="true"><view class="quick-row"><text wx:for="{{quickPhrases}}" wx:key="*this" class="quick-chip" bindtap="useQuickPhrase" data-phrase="{{item}}">{{item}}</text></view></scroll-view>
-    <view class="hint-list" wx:if="{{hints.length}}"><view class="hint-card" wx:for="{{hints}}" wx:key="number"><text class="hint-label">提示 {{item.number}}</text><text class="hint-content">{{item.content}}</text></view></view>
+    <view class="assist-head" bindtap="toggleAssist">
+      <text class="assist-title">训练辅助</text>
+      <text class="assist-toggle">{{assistExpanded ? '收起 ▴' : '展开 ▾'}}</text>
+      <text wx:if="{{requestingHint}}" class="hint-action">提示生成中…</text>
+      <text wx:elif="{{hintRemaining > 0}}" class="hint-action" catchtap="requestHint">获取提示（剩余 {{hintRemaining}} 次）</text>
+      <text wx:else class="hint-action disabled">本次提示已用完</text>
+    </view>
+    <block wx:if="{{assistExpanded}}">
+      <scroll-view class="quick-scroll" scroll-x="true" enable-flex="true"><view class="quick-row"><text wx:for="{{quickPhrases}}" wx:key="*this" class="quick-chip" bindtap="useQuickPhrase" data-phrase="{{item}}">{{item}}</text></view></scroll-view>
+      <view class="hint-list" wx:if="{{hints.length}}"><view class="hint-card" wx:for="{{hints}}" wx:key="number"><text class="hint-label">提示 {{item.number}}</text><text class="hint-content">{{item.content}}</text></view></view>
+    </block>
   </view>
   <view class="input-area">
     <input class="input-field" maxlength="1000" placeholder="输入你的回复…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing || pendingClientMessageId}}" />
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>
   </view>
   <view class="training-footer">
+    <button class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishTraining" aria-role="button" disabled="{{sending || finishing || currentRound < 1}}">{{finishing ? '生成报告中…' : '结束训练'}}</button>
     <text class="abandon-link" bindtap="abandonTraining">强制结束</text>
-    <view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishTraining" aria-role="button">{{finishing ? '生成报告中…' : '结束训练'}}</view>
   </view>
 </view>

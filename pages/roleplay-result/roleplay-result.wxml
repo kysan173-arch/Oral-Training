@@ -1,7 +1,5 @@
 <view class="page-shell roleplay-result-page" wx:if="{{!loading}}">
   <view class="result-hero">
-    <view class="hero-deco hero-deco-1"></view>
-    <view class="hero-deco hero-deco-2"></view>
     <text class="result-kicker">患者模拟完成 · {{scenario.name}}</text>
     <view class="hero-icon"><text>✓</text></view>
     <text class="hero-title">学习复盘已生成</text>

@@ -16,27 +16,6 @@ const buildCalendar = checkin => {
   return cells;
 };
 
-const computeLevel = points => {
-  const levels = [
-    { level: 1, name: '见习客服', min: 0, max: 49 },
-    { level: 2, name: '初级客服', min: 50, max: 149 },
-    { level: 3, name: '资深客服', min: 150, max: 299 },
-    { level: 4, name: '高级顾问', min: 300, max: 499 },
-    { level: 5, name: '首席顾问', min: 500, max: Infinity }
-  ];
-  const current = levels.find(l => points >= l.min && points <= l.max) || levels[0];
-  const progress = current.max === Infinity ? 100
-    : Math.min(100, Math.round((points - current.min) / (current.max - current.min) * 100));
-  return {
-    level: current.level,
-    levelName: current.name,
-    currentPoints: points,
-    nextLevelPoints: current.max === Infinity ? points : current.max,
-    progress,
-    isMax: current.level === 5
-  };
-};
-
 Page({
   data: {
     loading: true,
@@ -52,12 +31,11 @@ Page({
     loadErrorMsg: '',
     displayName: '',
     avatar: '',
-    levelInfo: { level: 1, levelName: '见习客服', currentPoints: 0, nextLevelPoints: 50, progress: 0, isMax: false },
-    rulesExpanded: false,
-    checkinBurst: false,
     showDemoPicker: false,
     demoUsers: [],
-    currentUserId: ''
+    currentUserId: '',
+    checkinExpanded: false,
+    rulesExpanded: false
   },
 
   onShow() {
@@ -152,17 +130,13 @@ Page({
       const savedAvatar = wx.getStorageSync('mine_avatar') || '';
       const savedNickname = wx.getStorageSync('mine_nickname') || '';
       const displayName = savedNickname || data.user.displayName;
-      const levelInfo = computeLevel(data.points);
       const streakDays = data.checkin.streakDays;
-      let streakText = '从今天开始记录';
-      if (streakDays >= 30) streakText = `🔥 已连续 ${streakDays} 天，太厉害了！`;
-      else if (streakDays >= 7) streakText = `🔥 连续签到 ${streakDays} 天，保持节奏`;
-      else if (streakDays > 0) streakText = `🔥 连续签到 ${streakDays} 天`;
+      let streakText = data.checkin.checkedToday ? '今天已打卡' : '今天还没打卡';
+      if (streakDays > 0) streakText += ` · 已连续 ${streakDays} 天`;
       this.setData({
         mine: data,
         displayName,
         avatar: savedAvatar,
-        levelInfo,
         calendarDays: buildCalendar(data.checkin),
         streakText,
         loading: false,
@@ -236,6 +210,10 @@ Page({
 
   toggleRules() {
     this.setData({ rulesExpanded: !this.data.rulesExpanded });
+  },
+
+  toggleCheckin() {
+    this.setData({ checkinExpanded: !this.data.checkinExpanded });
   },
 
   goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },

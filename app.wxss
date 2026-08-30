@@ -7,30 +7,32 @@
    字重仅 400 / 600，字号仅 32 / 26 / 22。 */
 page {
   /* 主色（品牌蓝） */
-  --color-primary: #5B6EF5;          /* 主色 */
-  --color-primary-dark: #4A5CD8;     /* 主色·按压/深 */
-  --color-primary-light: #EEF0FF;    /* 主色·浅底 */
-  --color-primary-pale: #F5F6FF;     /* 主色·极浅底 */
+  --color-primary: #1F3864;          /* 主色（深海军蓝） */
+  --color-primary-dark: #16294D;     /* 主色·按压/深 */
+  --color-primary-light: #EEF2F8;    /* 主色·浅底 */
+  --color-primary-pale: #F5F8FC;     /* 主色·极浅底 */
 
   /* 警示（唯一状态色） */
-  --color-warning: #FF9500;          /* 唯一警示/状态色 */
-  --color-warning-light: #FFF5E6;    /* 警示·浅底 */
+  --color-warning: #B97A1E;          /* 唯一警示/状态色 */
+  --color-warning-light: #FBF1E2;    /* 警示·浅底 */
 
   /* 中性（文字/底） */
-  --text-strong: #1A1A2E;            /* 标题文字（主文字） */
-  --text-body: #3C3A44;              /* 正文 */
-  --text-secondary: #8A93AD;         /* 次级文字（统一中性灰） */
-  --text-muted: #A6A3AC;             /* 弱文字/占位 */
-  --text-disabled: #CCC9CE;          /* 禁用 */
-  --color-border: #ECE9E4;           /* 分隔线/边框 */
-  --color-bg: #FBFAF8;               /* 页面背景（暖白） */
-  --bg-grad: linear-gradient(180deg, #FCFBF9 0%, #F7F5F1 100%);  /* 暖白渐变 */
+  --text-strong: #16233B;            /* 标题文字（主文字） */
+  --text-body: #3C4658;              /* 正文 */
+  --text-secondary: #6B7A93;         /* 次级文字（统一中性灰） */
+  --text-muted: #9AA6B8;             /* 弱文字/占位 */
+  --text-disabled: #C6CDD8;          /* 禁用 */
+  --color-border: #E3E9F2;           /* 分隔线/边框 */
+  --color-bg: #F7F9FC;               /* 页面背景（浅蓝灰） */
+  --bg-grad: linear-gradient(180deg, #F9FBFD 0%, #F2F5F9 100%);  /* 浅蓝灰渐变 */
 
-  /* 兼容旧语义变量：状态统一收敛到主色/警示 */
-  --color-success: #5B6EF5;          /* 收敛为主色 */
-  --color-success-light: #EEF0FF;    /* 收敛为浅蓝 */
-  --color-danger: #FF9500;           /* 收敛为警示橙 */
-  --color-danger-light: #FFF5E6;     /* 收敛为浅橙 */
+  /* 语义色（达标 / 提醒 / 违规，仅用于状态与分数分档） */
+  --color-success: #2E8B6C;          /* 达标 / 良好 */
+  --color-success-light: #E7F4EE;
+  --color-warning: #B97A1E;          /* 提醒 / 待提升 */
+  --color-warning-light: #FBF1E2;
+  --color-danger:  #C2554A;          /* 违规 / 负向 */
+  --color-danger-light: #FBE9E7;
 
   /* 圆角 */
   --radius-lg: 24rpx;                /* 大卡 */
@@ -63,12 +65,14 @@ page {
   padding-bottom: 30rpx;
 }
 
-/* ── 3. 卡片 ─────────────────────────────────── */
+/* ── 3. 卡片 ───────────────────────────────────
+   层级原则：普通卡片用 1rpx 边框；主视觉卡（hero、概览卡）
+   由各自页面显式加强阴影，形成主次。 */
 .card {
   background: var(--color-surface, #fff);
   border-radius: var(--radius-lg);
   padding: 30rpx;
-  box-shadow: var(--shadow-sm);
+  border: 1rpx solid var(--color-border);
 }
 .card.card-press {
   transition: transform .15s, box-shadow .15s;
@@ -184,6 +188,14 @@ button::after { border: none; }
 .tag-warning { color: var(--color-warning); background: var(--color-warning-light); }
 .tag-danger  { color: var(--color-danger); background: var(--color-danger-light); }
 .tag-neutral { color: var(--text-secondary); background: var(--color-bg); }
+
+/* ── 7.5 分数分档（颜色只跟随分数高低，不按维度分配） ── */
+.tier-high { color: var(--color-success); }
+.tier-mid  { color: var(--color-primary); }
+.tier-low  { color: var(--color-warning); }
+.fill-high { background: var(--color-success); }
+.fill-mid  { background: var(--color-primary); }
+.fill-low  { background: var(--color-warning); }
 
 /* ── 8. 通用间距工具（倍距体系 8/12/16/20/24） ── */
 .mt-8 { margin-top: 8rpx; } .mb-8 { margin-bottom: 8rpx; }

@@ -22,8 +22,6 @@
   <block wx:elif="{{isAdmin && adminData}}">
     <!-- Admin Hero -->
     <view class="mine-hero admin-hero">
-      <view class="hero-deco hero-deco-1"></view>
-      <view class="hero-deco hero-deco-2"></view>
       <view class="hero-avatar">
         <image wx:if="{{avatar}}" src="{{avatar}}" class="hero-avatar-img" mode="aspectFill"></image>
         <text wx:else class="hero-avatar-text">{{displayName.charAt(0)}}</text>
@@ -50,17 +48,17 @@
     <!-- 团队概览 -->
     <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="stat-row">
-        <view class="stat-card stat-card-blue">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{adminData.totalSessions}}</text>
           <text class="stat-lbl">本月训练</text>
         </view>
-        <view class="stat-card stat-card-purple">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{adminData.averageScore}}</text>
           <text class="stat-lbl">团队均分</text>
         </view>
-        <view class="stat-card stat-card-green">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/target.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{adminData.passRate}}%</text>
           <text class="stat-lbl">达标率</text>
@@ -102,8 +100,6 @@
   <block wx:elif="{{mine}}">
     <!-- Hero 个人卡片 -->
     <view class="mine-hero">
-      <view class="hero-deco hero-deco-1"></view>
-      <view class="hero-deco hero-deco-2"></view>
       <view class="hero-avatar">
         <image wx:if="{{avatar}}" src="{{avatar}}" class="hero-avatar-img" mode="aspectFill"></image>
         <text wx:else class="hero-avatar-text">{{displayName.charAt(0)}}</text>
@@ -113,7 +109,7 @@
           <text class="hero-name">{{displayName}}</text>
           <view class="hero-level-tag">Lv.{{levelInfo.level}}</view>
         </view>
-        <text class="hero-subtitle">把每一次练习沉淀为自己的沟通能力</text>
+        <text class="hero-subtitle">已完成 {{mine.stats.totalCompleted}} 次训练 · 平均 {{mine.stats.averageScore}} 分</text>
         <view class="hero-level-row" wx:if="{{!levelInfo.isMax}}">
           <view class="hero-level-bar">
             <view class="hero-level-fill" style="width:{{levelInfo.progress}}%;"></view>
@@ -132,7 +128,6 @@
           </view>
         </view>
         <view class="demo-switch-entry" bindtap="openDemoPicker">
-          <text class="demo-switch-icon">🔄</text>
           <text class="demo-switch-text">切换演示账号</text>
         </view>
       </view>
@@ -142,17 +137,17 @@
     <!-- 统计卡 横滑 -->
     <scroll-view class="stat-scroll" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="stat-row">
-        <view class="stat-card stat-card-blue">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{mine.stats.totalCompleted}}</text>
           <text class="stat-lbl">完成训练</text>
         </view>
-        <view class="stat-card stat-card-purple">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/score.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{mine.stats.averageScore}}</text>
           <text class="stat-lbl">平均得分</text>
         </view>
-        <view class="stat-card stat-card-green">
+        <view class="stat-card">
           <view class="stat-icon"><image class="stat-icon-img" src="/static/image/data/target.png" mode="aspectFit"></image></view>
           <text class="stat-val">{{mine.stats.passRate}}%</text>
           <text class="stat-lbl">练习达标率</text>
@@ -160,15 +155,55 @@
       </view>
     </scroll-view>
 
+    <!-- 学习工具（置顶：训练相关入口优先） -->
+    <view class="section-heading"><view><text>学习工具</text><text>全部基于本人记录</text></view></view>
+    <view class="tool-card card tool-tool-growth tool-prominent" bindtap="goProfile">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/growth.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">个人成长</text>
+        <text class="tool-sub">五维能力与训练走势</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-tool-mistake" bindtap="goMistakes">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">错题复练</text>
+        <text class="tool-sub">回到需要调整的表达</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-tool-phrase" bindtap="goPhrases">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">话术锦囊</text>
+        <text class="tool-sub">从报告中提炼的合规表达</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+    <view class="tool-card card tool-tool-favorite" bindtap="goFavorites">
+      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/favorite.png" mode="aspectFit"></image></view>
+      <view class="tool-body">
+        <text class="tool-title">我的话术收藏</text>
+        <text class="tool-sub">已收藏 {{mine.favoritesCount}} 条</text>
+      </view>
+      <text class="tool-arrow">›</text>
+    </view>
+
     <!-- 签到板块 -->
     <view class="section-heading">
-      <view><text>每日签到</text><text class="streak-sub {{mine.checkin.streakDays >= 7 ? 'streak-hot' : ''}}">{{streakText}}</text></view>
+      <view bindtap="toggleCheckin" class="checkin-head">
+        <text>每日签到</text>
+        <text class="checkin-toggle">{{checkinExpanded ? '收起 ▴' : '展开 ▾'}}</text>
+        <text class="streak-sub {{mine.checkin.streakDays >= 7 ? 'streak-hot' : ''}}">{{streakText}}</text>
+      </view>
       <view class="checkin-wrap">
         <button class="checkin-button {{mine.checkin.checkedToday ? 'checked' : ''}}" bindtap="checkIn" disabled="{{checkingIn || mine.checkin.checkedToday}}">{{checkingIn ? '签到中' : mine.checkin.checkedToday ? '今日已签到' : '签到 +10'}}</button>
         <view class="checkin-burst {{checkinBurst ? 'checkin-burst-active' : ''}}">+10</view>
       </view>
     </view>
 
+    <block wx:if="{{checkinExpanded}}">
     <!-- 签到数据（列表式，与上方卡片区分） -->
     <view class="checkin-list card">
       <view class="checkin-item">
@@ -193,7 +228,7 @@
       </view>
     </view>
 
-    <!-- 日历（参考图风格：居中大标题 + 圆角方块 + 今天紫色实心） -->
+    <!-- 日历（居中大标题 + 圆角方块 + 今天主色实心） -->
     <view class="calendar-card card">
       <text class="calendar-title">{{mine.checkin.year}} 年 {{mine.checkin.month}} 月</text>
       <view class="weekdays"><text wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text></view>
@@ -224,48 +259,10 @@
         </view>
       </view>
     </view>
+    </block>
 
     <view class="section-spacer"></view>
-
-    <!-- 学习工具 -->
-    <view class="section-heading"><view><text>学习工具</text><text>全部基于本人记录</text></view></view>
-    <view class="tool-card card tool-tool-growth tool-prominent" bindtap="goProfile">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/growth.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">个人成长</text>
-        <text class="tool-sub">GROWTH · 五维能力与训练走势</text>
-      </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card tool-tool-mistake" bindtap="goMistakes">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">错题复练</text>
-        <text class="tool-sub">MISTAKES · 回到需要调整的表达</text>
-      </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card tool-tool-phrase" bindtap="goPhrases">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">话术锦囊</text>
-        <text class="tool-sub">PHRASES · 从报告中提炼的合规表达</text>
-      </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card tool-tool-favorite" bindtap="goFavorites">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/favorite.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">我的话术收藏</text>
-        <text class="tool-sub">FAVORITES · 已收藏 {{mine.favoritesCount}} 条</text>
-      </view>
-      <text class="tool-arrow">›</text>
-    </view>
   </block>
-  <view class="disclaimer-wrap">
-    <text class="disclaimer" wx:if="{{isAdmin}}">主管数据仅供管理辅导使用，不涉及学员对话内容。</text>
-    <text class="disclaimer" wx:else>学习积分和训练数据不用于排名、兑换或正式考核。</text>
-  </view>
 
   <!-- 切换演示账号面板 -->
   <view class="demo-mask" wx:if="{{showDemoPicker}}" bindtap="closeDemoPicker"></view>

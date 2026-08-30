@@ -1,7 +1,7 @@
 <view class="vault-page">
   <!-- Search -->
   <view class="search-bar">
-    <text class="search-icon">🔍</text>
+    <image class="search-icon" src="/static/image/tools/search.png" mode="aspectFit"></image>
     <input
       class="search-input"
       placeholder="搜索话术（如：种植牙、比价、投诉）"

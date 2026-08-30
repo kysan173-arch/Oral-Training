@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>口腔客服 AI 陪练小程序 · UI 审查与改版建议</title>
+<style>
+  :root {
+    --primary: #1F3864;      /* 专业深海军蓝 */
+    --primary-soft: #EEF2F8; /* 极浅蓝灰底 */
+    --accent: #2F6FED;       /* 克制蓝 CTA */
+    --text-strong: #16233B;
+    --text-body: #3C4658;
+    --text-secondary: #6B7A93;
+    --text-muted: #9AA6B8;
+    --border: #E3E9F2;
+    --bg: #F7F9FC;
+    --card: #FFFFFF;
+    --success: #2E8B6C;
+    --warning: #B97A1E;
+    --danger: #C2554A;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text-body);
+    line-height: 1.7;
+    font-size: 15px;
+    padding-bottom: 60px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── 头部 ── */
+  .report-head {
+    background: var(--primary);
+    color: #fff;
+    padding: 48px 0 40px;
+    margin-bottom: 36px;
+  }
+  .report-head .kicker { font-size: 13px; letter-spacing: 3px; opacity: .7; margin-bottom: 10px; }
+  .report-head h1 { font-size: 26px; font-weight: 600; margin-bottom: 12px; }
+  .report-head p { font-size: 14px; opacity: .82; max-width: 640px; }
+  .report-head .meta { margin-top: 20px; display: flex; gap: 24px; font-size: 12px; opacity: .65; }
+
+  /* ── 章节 ── */
+  .section { margin-bottom: 44px; }
+  .section-title {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 20px; font-weight: 600; color: var(--text-strong);
+    margin-bottom: 20px;
+  }
+  .section-title .num {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+    background: var(--primary); color: #fff; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .section-desc { color: var(--text-secondary); font-size: 14px; margin-bottom: 20px; }
+
+  /* ── 卡片 ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-size: 16px; font-weight: 600; color: var(--text-strong); margin-bottom: 10px; }
+  .card h4 { font-size: 14px; font-weight: 600; color: var(--text-strong); margin: 16px 0 8px; }
+
+  /* ── 问题/建议列表 ── */
+  .issue { display: flex; gap: 12px; margin-bottom: 12px; font-size: 14px; }
+  .issue .mark {
+    flex-shrink: 0; width: 20px; height: 20px; margin-top: 2px;
+    border-radius: 50%; font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .issue.bad .mark { background: #FDEBEA; color: var(--danger); }
+  .issue.good .mark { background: #E7F4EE; color: var(--success); }
+  .issue b { color: var(--text-strong); font-weight: 600; }
+  .fix { background: #F0F5FF; border: 1px solid #D8E5FB; border-radius: 8px; padding: 12px 16px; font-size: 13.5px; color: var(--text-body); margin: 10px 0 18px; }
+  .fix b { color: var(--accent); }
+
+  /* ── 表格 ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 8px 0 4px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-strong); font-weight: 600; background: #F4F7FB; font-size: 13px; }
+  td code, p code {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 12.5px; background: #F0F3F8; border-radius: 4px; padding: 1px 6px; color: var(--primary);
+  }
+
+  /* ── 色板 ── */
+  .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+  .swatch { width: calc(25% - 9px); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  .swatch .color { height: 56px; }
+  .swatch .info { padding: 8px 10px; font-size: 12px; }
+  .swatch .info .name { color: var(--text-strong); font-weight: 600; }
+  .swatch .info .hex { color: var(--text-muted); font-family: monospace; font-size: 11px; }
+
+  /* ── 优先级 ── */
+  .priority-item { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px dashed var(--border); }
+  .priority-item:last-child { border-bottom: none; }
+  .priority-tag {
+    flex-shrink: 0; width: 56px; height: 28px; border-radius: 6px;
+    font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  }
+  .p0 { background: var(--primary); color: #fff; }
+  .p1 { background: #E8EEF9; color: var(--primary); }
+  .p2 { background: #F1F3F7; color: var(--text-secondary); }
+  .priority-body b { color: var(--text-strong); display: block; margin-bottom: 4px; }
+  .priority-body p { font-size: 13.5px; color: var(--text-secondary); }
+
+  /* ── 摘要 ── */
+  .summary-box {
+    background: linear-gradient(135deg, #F0F5FF, #F7FAFF);
+    border: 1px solid #D8E5FB; border-radius: var(--radius);
+    padding: 24px; margin-bottom: 16px;
+  }
+  .summary-box h3 { color: var(--primary); font-size: 15px; margin-bottom: 8px; }
+  .summary-box p { font-size: 14px; }
+
+  .tag-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 500; margin-right: 8px;
+  }
+  .pill-bad { background: #FDEBEA; color: var(--danger); }
+  .pill-sev { background: #FEF3E2; color: var(--warning); }
+
+  .footnote { color: var(--text-muted); font-size: 12px; margin-top: 30px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="report-head">
+  <div class="wrap">
+    <div class="kicker">UI/UX 审查报告</div>
+    <h1>口腔客服 AI 陪练小程序 · 设计诊断与改版建议</h1>
+    <p>基于 ui-ux-pro-max 设计智能对全部 13 个页面 + 自定义 TabBar 的逐页审查。目标风格:简洁克制、学员可直达训练、无"AI 味"。</p>
+    <div class="meta">
+      <span>审查范围:13 页面 · 4 Tab</span>
+      <span>风格方向:极简瑞士风 / 专业克制</span>
+      <span>生成时间:2026-08-30</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ═══ 一、总诊断 ═══ -->
+  <div class="section">
+    <div class="section-title"><span class="num">1</span>总诊断:为什么会有"AI 味"</div>
+    <div class="summary-box">
+      <h3>一句话结论</h3>
+      <p>问题不在功能,而在<strong>视觉语言过于"热闹"</strong>:高饱和靛蓝大色块、浅紫底铺满全站、彩色标签与彩条装饰过多、信息密度过载。学员进来第一眼看到的是"设计",而不是"训练入口"。</p>
+    </div>
+    <div class="card">
+      <h3>四个核心来源</h3>
+      <div class="issue bad"><span class="mark">1</span><div><b>配色是最大的"AI 味"来源。</b>品牌色 #5B6EF5 是典型的高饱和靛蓝(偏紫),配合 #EEF0FF 浅紫底在首页概览卡、对话页头部、结果页 hero、模式切换、各类标签中大面积使用——这正是当下 AI 产品模板的"标准紫",辨识度反而最低。</div></div>
+      <div class="issue bad"><span class="mark">2</span><div><b>装饰性元素堆叠。</b>卡片顶部彩色横条(<code>::before</code>)、双色渐变、胶囊标签、多重阴影同时出现,视觉噪声大。同一屏最多同时出现 4-5 种彩色(蓝/橙/绿/红/灰)。</div></div>
+      <div class="issue bad"><span class="mark">3</span><div><b>信息密度过载。</b>首页 6 个模块、结果页 12 个区块、训练场景页三层嵌套卡片,一屏塞进过多内容。学员需要"扫视"而非"直接看到"重点。</div></div>
+      <div class="issue bad"><span class="mark">4</span><div><b>文字层级太单薄。</b>全局只有 32/26/22 三档字号,页面标题与卡片标题几乎同号;22rpx(≈11px)还被用作正文,对比度不足,读起来吃力。</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ 二、全局基础 ═══ -->
+  <div class="section">
+    <div class="section-title"><span class="num">2</span>全局基础(app.wxss / app.json / TabBar)</div>
+    <div class="section-desc">全局已有不错的设计 token 雏形,但存在几个影响全局观感的问题。</div>
+    <div class="card">
+      <h3>发现的问题</h3>
+      <div class="issue bad"><span class="mark">!</span><div><b>导航栏整块品牌蓝</b>(<code>navigationBarBackgroundColor: #5B6EF5</code>),每个 tab 页顶部都是大蓝条,是"AI 味"的第一印象来源。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>主色饱和度过高</b>,且页面多处硬编码 <code>#5B6EF5 / #EEF0FF</code> 而不是引用 CSS 变量,后续换色成本高。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>字号体系只有三档</b>,且 26rpx 同时充当正文和次级文字,层级区分不足;22rpx 被用于大量正文(如首页场景描述、最近训练时间),偏小。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>状态色使用较克制(值得肯定)</b>,但标签的彩色底(浅绿/浅橙/浅红底 + 彩色文字)在列表中密集出现时仍是噪声。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>TabBar 选中色为品牌蓝</b>,与全局"紫"绑定;图标用 PNG,选中态仅换色。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>换主色为专业深海军蓝 #1F3864</b>,CTA 用克制蓝 #2F6FED;导航栏改纯白底 + 深色文字(<code>navigationBarTextStyle: "black"</code>),页面内用浅蓝灰 #EEF2F8 代替 #EEF0FF。整体从"紫调"转向"蓝灰调",立即去掉一半 AI 味。</div>
+      <div class="fix"><b>字号扩为五档</b>:40rpx 页面大标题 / 32rpx 卡片标题 / 28rpx 正文 / 24rpx 辅助 / 22rpx 注脚。正文不再用 26rpx 以下,22rpx 只做时间、提示等弱信息。</div>
+      <div class="fix"><b>全站消灭硬编码色</b>,所有 <code>#5B6EF5</code> 换成 <code>var(--color-primary)</code>,统一走 token。</div>
+    </div>
+  </div>
+
+  <!-- ═══ 三、逐页审查 ═══ -->
+  <div class="section">
+    <div class="section-title"><span class="num">3</span>逐页审查(13 页 + TabBar)</div>
+
+    <!-- 3.0 TabBar -->
+    <div class="card">
+      <h3>TabBar(首页 / 训练 / 数据 / 我的)</h3>
+      <div class="issue bad"><span class="mark">!</span><div><b>4 个 Tab 均正常</b>,但"数据"Tab 对学员展示的是个人数据、对主管展示机构数据,<b>同一 Tab 双角色语义</b>在视觉上未做区分。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>选中态图标仅换 PNG 颜色,选中/未选对比偏弱。</div></div>
+      <div class="fix"><b>建议</b>:TabBar 底色纯白 + 顶部细边框(已接近),选中色改新主色;图标可在后续统一替换为线性图标。</div>
+    </div>
+
+    <!-- home -->
+    <div class="card">
+      <h3>home · 首页 <span class="tag-pill pill-bad">AI 味最重</span></h3>
+      <div class="issue bad"><span class="mark">!</span><div><b>数据概览卡是整块高饱和蓝</b>(<code>background: var(--color-primary)</code> + 蓝阴影),一进首页第一眼就是大蓝块。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>页面 6 个模块叠放</b>:品牌问候、搜索、概览卡、推荐场景、最近训练、热门话术轮播,首屏信息过载,学员不知道先做什么。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>热门话术 swiper 自动轮播</b>(<code>autoplay</code> 4 秒),内容自己滚动,干扰阅读,是典型"为了动效而动效"。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>推荐场景卡顶部有彩色横条 + 彩色难度标签 + "去训练"链接,一张卡 3 个彩色元素。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>概览卡改白底</b>:去掉整块蓝,改为白卡片 + 1rpx 边框 + 极浅阴影,数据用大号深色数字(40rpx)做主视觉,状态色只用于达标/待提升。<b>首页降密度</b>:首屏只留 品牌问候 + 搜索 + 概览卡 + 推荐场景(2×2),"最近训练"和"热门话术"折叠为"更多"入口或次级区块。<b>去掉自动轮播</b>:改为静态 2 条精选 + "查看全部",或保留滑动但由学员手动切换。</div>
+    </div>
+
+    <!-- index -->
+    <div class="card">
+      <h3>index · 训练场景选择 <span class="tag-pill pill-sev">三层嵌套</span></h3>
+      <div class="issue bad"><span class="mark">!</span><div><b>卡片套卡片套面板</b>:分类卡(可折叠)→ 情景卡 → 患者画像输入面板,三层嵌套,展开后一屏高度失控。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>每张情景卡同时出现</b>:序号、难度胶囊、进行中标记、名称、描述、及格分、历史最佳、患者画像行、画像编辑按钮、训练按钮、重新开始链接——单卡信息过载。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div><b>"患者画像(必填)"打断训练动线</b>:学员想练,却被要求先填三行表单(年龄/描述/情绪),这是转化率最大的摩擦点。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>模式切换滑块 + 边界提示条(浅紫底)又加一层紫色。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>拉平层级</b>:分类卡只做入口,点击后进入单一"场景列表"页(列表行式:名称 + 难度 + 历史最佳 + 训练按钮),去掉三层嵌套。<b>画像后置</b>:把"必填画像"改成开始训练后的第一轮引导(在对话页顶部一次性填写),或提供"默认画像"一键使用,不阻塞开始按钮。<b>信息减负</b>:卡片默认只显示 名称 + 难度 + 得分,其余(及格分、画像)收进"详情"。</div>
+    </div>
+
+    <!-- training -->
+    <div class="card">
+      <h3>training · 客服训练对话页(核心页面) <span style="color:var(--success);font-size:13px">✓ 已改版</span></h3>
+      <div class="issue good"><span class="mark">✓</span><div><b>头部已改白</b>:白底 + 深色文字 + 细边框,轮次计数器为浅蓝灰胶囊,不抢对话注意力。</div></div>
+      <div class="issue good"><span class="mark">✓</span><div><b>辅助面板默认收起</b>:训练辅助只留一行标题(展开 ▾),点击展开快捷话术与历史提示,对话区可视范围更大。</div></div>
+      <div class="issue good"><span class="mark">✓</span><div><b>操作主次已对调</b>:"结束训练"改为实心主按钮(深蓝底),"强制结束"降为灰色小字并保留二次确认。</div></div>
+      <div class="issue good"><span class="mark">✓</span><div><b>气泡已强化区分</b>:自己(客服)深蓝实心白字,患者白底 + 1rpx 边框,长对话下边界清晰;聊天气泡字号 28rpx。</div></div>
+    </div>
+
+    <!-- roleplay -->
+    <div class="card">
+      <h3>roleplay · 患者模拟对话页</h3>
+      <div class="issue bad"><span class="mark">!</span><div>与 training 同构,同样的问题:<b>头部大蓝块 + 辅助面板(建议提示)常驻</b>。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>"标准客服"消息下方跟随<b>学习要点卡片 + 合规边界</b>,信息块较大,会打断"我(患者)提问 → 客服回答"的对话流。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>按钮文案"提问"(学员扮演患者)与 training 的"发送"不一致,但视觉完全一样,容易混淆两种模式。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>学习要点折叠</b>:默认只显示"客服答复",学习要点收进"学习要点 ▾"展开;<b>或用分隔卡片</b>与对话气泡在视觉上明显分离(灰底 + 左侧细线)。<b>模式可辨识</b>:患者模拟页头部加一个轻量徽标"患者模拟",让学员知道此刻自己扮演患者。</div>
+    </div>
+
+    <!-- result -->
+    <div class="card">
+      <h3>result · 训练结果页 <span class="tag-pill pill-sev">12 区块</span></h3>
+      <div class="issue bad"><span class="mark">!</span><div><b>整页 12 个信息区块</b>:hero(蓝底+分数环)、免责、五维、综合评价、两条反馈卡、严重违规、关键轮次、可收录话术、4 个按钮、2 个链接——学员看完要滚很久。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>hero 又是<b>整块蓝 + conic-gradient 分数环 + 彩色等级徽章</b>,视觉最重但承载的信息只有"分数"。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>两个反馈卡(绿底/橙底)并排,彩色面积大;违规/轮次卡片还带彩色左边条。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>结果页做"3 个层次"</b>:① 顶部白卡:分数(大号数字)+ 等级 + 一句话总结;② 中间:五维 + 综合评价合并为一张卡;③ 反馈(做得好/下一步)用两栏浅底卡(取消强色边条,改用图标+文字)。<b>违规与轮次点评折叠</b>:默认只显示数量和第一项,点击展开。<b>操作区精简</b>:主按钮 1 个(下一场/复练)+ 次级按钮 2 个,链接收进"更多"。</div>
+    </div>
+
+    <!-- roleplay-result -->
+    <div class="card">
+      <h3>roleplay-result · 患者模拟复盘页</h3>
+      <div class="issue bad"><span class="mark">!</span><div>同样是<b>蓝底 hero</b> + 装饰圆(hero-deco),与 result 页风格重复,两个"结果页"观感雷同。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>总结卡引号排版、编号原则卡,信息本身清晰;<b>主要问题仍在头部与整体蓝调</b>。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>与 result 页统一为白卡 hero</b>,去掉装饰圆;保留"整体接待总结 → 已覆盖问题 → 关键原则 → 后续建议"的线性结构,这是一页好内容,只需去装饰、留呼吸感。</div>
+    </div>
+
+    <!-- report -->
+    <div class="card">
+      <h3>report · 历史记录页 <span style="color:var(--success);font-size:13px">✓ 已改版</span></h3>
+      <div class="issue good"><span class="mark">✓</span><div><b>历史卡已拆两层</b>:列表只显示 场景名 + 时间 + 状态 + 得分(单行摘要),整卡点击进入新增的"训练详情页"(session-detail),对话 / 雷达图 / 摘要反馈在详情页内加载,列表触控目标更清晰。</div></div>
+      <div class="issue good"><span class="mark">✓</span><div><b>筛选器已降饱和</b>:状态筛选选中态改为深色文字 + 细边框,不再用彩色胶囊;筛选卡改细边框。</div></div>
+      <div class="issue good"><span class="mark">✓</span><div>保留 <code>empty-state</code> / 骨架屏,加载体验良好。</div></div>
+    </div>
+
+    <!-- mine -->
+    <div class="card">
+      <h3>mine · 个人中心</h3>
+      <div class="issue bad"><span class="mark">!</span><div>信息量大(hero + 3 统计卡 + 签到 + 打卡列表 + 日历 + 积分规则 + 4 个工具卡),<b>签到/日历/积分对"训练型产品"是次要功能</b>,却占了近半屏。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>hero 大色块 + 渐变 + 角色切换胶囊,又是重装饰;4 个学习工具卡各有彩色图标底,彩色密度高。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>骨架屏与加载态齐全(值得肯定)。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>学习工具置顶</b>:个人成长的入口(成长/错题/话术/收藏)提到 hero 下方,签到日历折叠进"我的成长"二级区。<b>hero 改白</b>或浅色渐变,角色切换降为普通文字按钮。<b>工具卡图标统一用单色线性图标</b>,取消彩色底,用"深蓝图标 + 白底"保持克制。</div>
+    </div>
+
+    <!-- phrases -->
+    <div class="card">
+      <h3>phrases · 话术锦囊</h3>
+      <div class="issue bad"><span class="mark">!</span><div>页面结构清晰(切换 + 搜索 + 列表),主要问题是<b>每张话术卡彩色标签较多</b>(场景标签 + 轮次标签 + 收藏/复制/训练三个操作)。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>"患者关切 / 推荐表达"两段文本的层级靠<b>彩色小标题</b>区分,可读性依赖颜色。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>标签降噪</b>:场景名用普通加粗文字,轮次用小号灰字;<b>推荐表达用深蓝文字</b> + 浅蓝灰底突出,患者关切用灰字,减少彩色胶囊。<b>操作区右侧排布</b>,主操作"复制"用文字按钮即可。</div>
+    </div>
+
+    <!-- mistakes -->
+    <div class="card">
+      <h3>mistakes · 错题复练</h3>
+      <div class="issue bad"><span class="mark">!</span><div>卡片结构清楚(当时表达 → 为什么 → 建议改写 → 操作),但<b>"当时表达 / 建议改写"两处彩色底</b>(蓝) + 优先级彩色标签,色彩偏多。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>开关"显示已掌握项目"用系统 switch,与全局风格略脱节。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>仅"建议改写"用浅蓝底强调</b>,"当时表达"用灰底;"为什么"纯文字。优先级标签保留但只用 2 档(优先/普通)颜色,中档用灰。<b>switch 保留</b>但可统一样式。</div>
+    </div>
+
+    <!-- profile -->
+    <div class="card">
+      <h3>profile · 个人成长</h3>
+      <div class="issue bad"><span class="mark">!</span><div>数据页面,结构合理(统计 + 能力画像 + 弱点 + 走势),主要问题:<b>五维横条用 3 色分档</b>(绿/蓝/橙),"练习重点"每项都有彩色标签。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>分数分档色(绿/蓝/橙)在多个页面重复出现,建议统一语义:达标=蓝、待提升=橙、违规=红,去掉"绿色=优秀"的额外档。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>能力横条统一用主色</b>(深蓝),只对"最弱项"标橙;分数颜色跟随 tier 但减少色相种类。<b>走势列表行内箭头/符号</b>已克制,保持。</div>
+    </div>
+
+    <!-- admin -->
+    <div class="card">
+      <h3>admin · 数据看板(主管)</h3>
+      <div class="issue bad"><span class="mark">!</span><div>信息架构好(概览 → 五维 → 场景 → 建议 → 成员),<b>主要问题是头部蓝底 hero</b> 与"主管"角色大色块,以及成员达标色环(绿/红)与彩色徽章。</div></div>
+      <div class="issue bad"><span class="mark">!</span><div>锚点导航胶囊组,彩色密度高。</div></div>
+      <h4>建议</h4>
+      <div class="fix"><b>hero 改浅色</b>:白底 + 深色标题 + 细边框,与学员端保持同一设计语言;时间筛选用分段控件(白底细边框)。<b>成员达标环</b>保留(它是有意义的数据可视化),但降低饱和;锚点导航改文字链接 + 下划线态。</div>
+    </div>
+
+    <!-- member-detail -->
+    <div class="card">
+      <h3>member-detail · 成员详情(主管)</h3>
+      <div class="issue bad"><span class="mark">!</span><div>依赖 admin 的同套组件(未单独读 wxss,结构与 admin 一致),预期同样存在 hero 色块与彩色标签密度问题。</div></div>
+      <div class="fix"><b>建议</b>:沿用 admin 的改版方案,成员详情聚焦"五维 + 最近训练 + 建议",减少装饰。</div>
+    </div>
+  </div>
+
+  <!-- ═══ 四、新设计系统 ═══ -->
+  <div class="section">
+    <div class="section-title"><span class="num">4</span>建议的新设计系统(可直接替换 token)</div>
+    <div class="section-desc">方向:专业深海军蓝 + 克制蓝 CTA + 中性蓝灰底,极简瑞士风,让内容成为主角。</div>
+    <div class="card">
+      <h3>色板</h3>
+      <div class="swatches">
+        <div class="swatch"><div class="color" style="background:#1F3864"></div><div class="info"><div class="name">主色 Primary</div><div class="hex">#1F3864</div></div></div>
+        <div class="swatch"><div class="color" style="background:#2F6FED"></div><div class="info"><div class="name">CTA 蓝</div><div class="hex">#2F6FED</div></div></div>
+        <div class="swatch"><div class="color" style="background:#EEF2F8"></div><div class="info"><div class="name">浅蓝灰底</div><div class="hex">#EEF2F8</div></div></div>
+        <div class="swatch"><div class="color" style="background:#F7F9FC"></div><div class="info"><div class="name">页面背景</div><div class="hex">#F7F9FC</div></div></div>
+        <div class="swatch"><div class="color" style="background:#16233B"></div><div class="info"><div class="name">标题文字</div><div class="hex">#16233B</div></div></div>
+        <div class="swatch"><div class="color" style="background:#3C4658"></div><div class="info"><div class="name">正文</div><div class="hex">#3C4658</div></div></div>
+        <div class="swatch"><div class="color" style="background:#6B7A93"></div><div class="info"><div class="name">次级文字</div><div class="hex">#6B7A93</div></div></div>
+        <div class="swatch"><div class="color" style="background:#E3E9F2"></div><div class="info"><div class="name">边框</div><div class="hex">#E3E9F2</div></div></div>
+        <div class="swatch"><div class="color" style="background:#2E8B6C"></div><div class="info"><div class="name">达标/成功</div><div class="hex">#2E8B6C</div></div></div>
+        <div class="swatch"><div class="color" style="background:#B97A1E"></div><div class="info"><div class="name">待提升</div><div class="hex">#B97A1E</div></div></div>
+        <div class="swatch"><div class="color" style="background:#C2554A"></div><div class="info"><div class="name">违规/危险</div><div class="hex">#C2554A</div></div></div>
+        <div class="swatch"><div class="color" style="background:#FFFFFF"></div><div class="info"><div class="name">卡片</div><div class="hex">#FFFFFF</div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>字号体系(五档)</h3>
+      <table>
+        <tr><th>档位</th><th>字号</th><th>用途</th><th>字重</th></tr>
+        <tr><td>H1 页面大标题</td><td>40rpx</td><td>页面首屏标题(如"选择训练场景")</td><td>600</td></tr>
+        <tr><td>H2 卡片标题</td><td>32rpx</td><td>卡片/区块标题</td><td>600</td></tr>
+        <tr><td>B1 正文</td><td>28rpx</td><td>对话、描述、说明</td><td>400</td></tr>
+        <tr><td>B2 辅助</td><td>24rpx</td><td>标签、次级信息、按钮文字</td><td>400/600</td></tr>
+        <tr><td>CAP 注脚</td><td>22rpx</td><td>时间、提示、免责声明</td><td>400</td></tr>
+      </table>
+      <div class="fix"><b>关键</b>:正文最低 28rpx(≈14px),全站不再用 22rpx 承载正文;22rpx 仅限弱信息。行高正文 1.6,标题 1.3。</div>
+    </div>
+
+    <div class="card">
+      <h3>组件规则(去装饰)</h3>
+      <table>
+        <tr><th>组件</th><th>现状</th><th>改后</th></tr>
+        <tr><td>卡片</td><td>圆角 20-24rpx + 顶部彩条 + 阴影</td><td>圆角统一 16rpx,1rpx 边框,无彩条,普通卡无阴影</td></tr>
+        <tr><td>主按钮</td><td>胶囊 46rpx 圆角 + 品牌蓝</td><td>圆角 16rpx,深蓝底白字,按压 0.97 缩放</td></tr>
+        <tr><td>标签</td><td>彩色底胶囊(蓝/绿/橙/红)</td><td>中性浅灰底 + 深灰文字为主;状态色仅留 2 处/屏</td></tr>
+        <tr><td>导航栏</td><td>品牌蓝底白字</td><td>白底深字,细边框</td></tr>
+        <tr><td>Hero 区</td><td>整块蓝 + 渐变 + 装饰圆</td><td>白卡/浅蓝灰底,大号深色数字</td></tr>
+        <tr><td>对话气泡</td><td>自己=蓝实心,对方=白底</td><td>自己=深蓝 #1F3864 白字,对方=白底+边框</td></tr>
+        <tr><td>进度/分数</td><td>conic-gradient 环 + 三色分档</td><td>环可保留但减淡,颜色档位收敛为 达标蓝/待提升橙/违规红</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ 五、优先级路线图 ═══ -->
+  <div class="section">
+    <div class="section-title"><span class="num">5</span>实施优先级(按 ROI 排序)</div>
+    <div class="card">
+      <div class="priority-item">
+        <div class="priority-tag p0">P0 ✓</div>
+        <div class="priority-body">
+          <b>换主色 + 导航栏改白</b>
+          <p><strong style="color:var(--success)">已于 2026-08-30 完成。</strong>app.json / app.wxss token 与全站 23 个文件已替换为 <code>#1F3864</code> 深海军蓝系,导航栏改白底黑字,语义色统一为 <code>#2E8B6C / #B97A1E / #C2554A</code>。</p>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="priority-tag p0">P0 ✓</div>
+        <div class="priority-body">
+          <b>首页与对话页头部去大色块</b>
+          <p><strong style="color:var(--success)">已于 2026-08-30 完成。</strong>home 概览卡、training/roleplay 头部、result 与 roleplay-result hero 均改为白底 + 细边框,大数字/浅色图标承接主视觉。</p>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="priority-tag p1">P1 ✓</div>
+        <div class="priority-body">
+          <b>训练场景页拉平层级 + 画像后置</b>
+          <p><strong style="color:var(--success)">已于 2026-08-30 完成。</strong>去掉情景卡内嵌画像行与输入面板,改为点击开始训练时弹出底部半屏画像面板;支持"使用默认画像直接开始",后端空画像已确认兼容。</p>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="priority-tag p1">P1 ✓</div>
+        <div class="priority-body">
+          <b>结果页分区折叠 + 操作精简</b>
+          <p><strong style="color:var(--success)">已于 2026-08-30 完成。</strong>综合评价并入五维卡;严重违规与关键轮次点评默认折叠(显示首项 + 展开);操作区链接弱化。</p>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="priority-tag p2">P2 ✓</div>
+        <div class="priority-body">
+          <b>字号五档化 + 全站去硬编码色</b>
+          <p><strong style="color:var(--success)">已于 2026-08-30 完成。</strong>页面大标题统一 40rpx,页面介绍 24rpx,对话气泡/场景描述提到 28rpx,反馈正文 24rpx;13 个 wxss 文件的旧色值(<code>#8A93AD/#3C3A44/#1A1A2E/#ECE9E4/#FBFAF8</code> 等)替换为 token 引用。</p>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="priority-tag p2">P2 ✓</div>
+        <div class="priority-body">
+          <b>mine/admin/report 页降密度</b>
+          <p><strong style="color:var(--success)">已于 2026-08-30 完成。</strong>个人中心 hero 改白底、学习工具置顶于签到之前;数据看板 hero 与时间筛选改白底/浅底分段控件;历史卡状态胶囊改浅底深字,旧紫色阴影(rgba 91,110,245 / 102,126,234)全部清理。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">本报告由 ui-ux-pro-max 设计智能 + 全量代码审查生成 · 建议按 P0 → P2 分批实施,每批改完在微信开发者工具中过一遍训练全流程(选择场景 → 对话 → 结果 → 历史)</div>
+</div>
+
+</body>
+</html>

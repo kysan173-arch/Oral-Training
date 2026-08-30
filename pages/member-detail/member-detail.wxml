@@ -2,24 +2,23 @@
   <view class="loading-card card" wx:if="{{loading}}"><text>正在读取成员学习摘要…</text></view>
   <block wx:elif="{{detail}}">
     <view class="member-hero card"><view class="hero-avatar">{{detail.member.initial}}</view><view class="hero-copy"><text class="hero-name">{{detail.member.displayName}}</text><text class="hero-meta">加入于 {{detail.member.joinedAt}}</text><text class="hero-note">仅展示训练聚合和复盘摘要，不包含原始对话。</text></view></view>
-    <view class="stat-grid"><view class="stat-card card"><text>{{detail.completedSessions}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{detail.averageScore}}</text><text>平均得分</text></view><view class="stat-card card"><text>{{detail.passRate}}%</text><text>练习达标率</text></view></view>
+    <view class="stat-grid"><view class="stat-card card"><text>{{detail.completedSessions}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{detail.averageScoreText}}</text><text>平均得分</text></view><view class="stat-card card"><text>{{detail.passRateText}}%</text><text>练习达标率</text></view></view>
 
     <view class="section-heading"><text>五维能力</text><text>完成报告均值</text></view>
     <view class="dimensions-card card">
-      <view class="dimension-rings">
-        <view class="dimension-ring-item" wx:for="{{dimensions}}" wx:key="key">
-          <view class="dimension-ring-box">
-            <view class="dimension-ring-fill" style="background: conic-gradient({{item.color}} {{item.score}}%, #EEF0FF 0);">
-              <view class="dimension-ring-hole"><text class="dimension-ring-score">{{item.score}}</text></view>
-            </view>
-          </view>
-          <text class="dimension-ring-name">{{item.name}}</text>
+      <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
+        <view class="dimension-head">
+          <text class="dim-name">{{item.name}}</text>
+          <text class="dim-score">{{item.scoreText}}</text>
+        </view>
+        <view class="score-bar">
+          <view class="score-fill fill-main" style="width: {{item.score}}%;"></view>
         </view>
       </view>
     </view>
 
     <view class="section-heading"><text>建议关注</text><text>基于相对薄弱维度</text></view>
-    <view class="weakness-card card {{item.severity}}" wx:for="{{detail.weaknesses}}" wx:key="key"><view><text class="weakness-name">{{item.name}}</text><text class="weakness-score">{{item.score}} 分</text></view><text class="weakness-text">{{item.suggestion}}</text></view>
+    <view class="weakness-card card {{item.severity}}" wx:for="{{detail.weaknesses}}" wx:key="key"><view><text class="weakness-name">{{item.name}}</text><text class="weakness-score">{{item.scoreText}} 分</text></view><text class="weakness-text">{{item.suggestion}}</text></view>
 
     <view class="section-heading"><text>最近成长记录</text><text>最多 12 次</text></view>
     <view class="timeline-card card" wx:if="{{detail.trend.length}}"><view wx:for="{{detail.trend}}" wx:key="sessionId" class="timeline-row"><view><text class="timeline-name">{{item.scenarioName}}</text><text class="timeline-date">{{item.date}}</text></view><text class="timeline-score">{{item.scoreText}}</text></view></view>

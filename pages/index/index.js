@@ -1,10 +1,10 @@
 const api = require('../../utils/api.js');
 
 const CATEGORY_CONFIG = [
-  { id: 'consultation', name: '咨询解答', icon: '💬', description: '先了解患者关切，再清楚说明服务边界' },
-  { id: 'price_negotiation', name: '价格异议', icon: '🧾', description: '客观说明费用构成，不承诺固定价格' },
-  { id: 'complaint_handling', name: '投诉安抚', icon: '🤝', description: '先回应情绪，及时引导联系医生或复诊' },
-  { id: 'recommendation', name: '项目推荐', icon: '🧭', description: '从真实需求出发，不替代医生判断' }
+  { id: 'consultation', name: '咨询解答', icon: '咨', description: '先了解患者关切，再清楚说明服务边界' },
+  { id: 'price_negotiation', name: '价格异议', icon: '价', description: '客观说明费用构成，不承诺固定价格' },
+  { id: 'complaint_handling', name: '投诉安抚', icon: '诉', description: '先回应情绪，及时引导联系医生或复诊' },
+  { id: 'recommendation', name: '项目推荐', icon: '推', description: '从真实需求出发，不替代医生判断' }
 ];
 
 const DIFFICULTY_MAP = {
@@ -53,9 +53,10 @@ Page({
     // 自由提问模式
     freeDescription: '',
     activeFreeSession: null,
-    // 自定义画像
+    // 自定义画像（底部弹层，非阻塞）
     customProfiles: {},
-    showCustomProfileId: ''
+    profileModalVisible: false,
+    profileModalScenarioId: ''
   },
 
   onShow() {
@@ -148,7 +149,8 @@ Page({
       expandedId: '',
       expandedCategories: {},
       freeDescription: '',
-      showCustomProfileId: ''
+      profileModalVisible: false,
+      profileModalScenarioId: ''
     }, () => {
       this.loadScenarios();
       if (mode === 'patient_simulation') {
@@ -202,11 +204,6 @@ Page({
   // 自定义患者画像
   // ═══════════════════════════════════════
 
-  toggleCustomProfile(e) {
-    const id = e.currentTarget.dataset.id;
-    this.setData({ showCustomProfileId: this.data.showCustomProfileId === id ? '' : id });
-  },
-
   onCustomProfileChange(e) {
     const { id, field } = e.currentTarget.dataset;
     const value = e.detail.value;
@@ -228,25 +225,57 @@ Page({
       this.goTraining(scenario.activeSession.id);
       return;
     }
-    // 收集自定义画像（只传非空字段）
+    // 有已填画像 → 直接开始；否则弹层引导（可跳过用默认画像）
+    if (this.hasCustomProfile(id)) {
+      this.startWithCustomProfile(id);
+    } else {
+      this.setData({ profileModalVisible: true, profileModalScenarioId: id });
+    }
+  },
+
+  closeProfileModal() {
+    this.setData({ profileModalVisible: false });
+  },
+
+  // 用当前已填画像创建会话（描述必填校验放在这里）
+  startWithCustomProfile(id) {
     const source = this.data.customProfiles[id] || {};
     const profileData = {};
     if (source.age && String(source.age).trim()) profileData.age = String(source.age).trim();
     if (source.description && String(source.description).trim()) profileData.description = String(source.description).trim();
     if (source.emotion && String(source.emotion).trim()) profileData.emotion = String(source.emotion).trim();
 
-    // 必填校验：至少需要患者描述
     if (!profileData.description) {
-      this.setData({ showCustomProfileId: id });
-      wx.showToast({ title: '请先填写患者画像（描述为必填）', icon: 'none' });
+      wx.showToast({ title: '请填写患者描述（描述为必填）', icon: 'none' });
       return;
     }
 
     api.createSession(id, profileData).then(data => {
       const sessionId = data.session.id;
-      // 将自定义画像存入本地，供 training 页面读取
       wx.setStorageSync(`customProfile_${sessionId}`, JSON.stringify(profileData));
       this.goTraining(sessionId);
+    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+  },
+
+  // 弹层确认：以当前填写的画像开始（描述仍必填，但允许跳过到默认画像）
+  confirmProfileAndStart() {
+    const id = this.data.profileModalScenarioId;
+    const source = this.data.customProfiles[id] || {};
+    const hasDescription = !!(source.description && String(source.description).trim());
+    if (!hasDescription) {
+      wx.showToast({ title: '请填写患者描述（描述为必填）', icon: 'none' });
+      return;
+    }
+    this.setData({ profileModalVisible: false });
+    this.startWithCustomProfile(id);
+  },
+
+  // 跳过画像：使用场景默认患者画像直接开始
+  skipProfileAndStart() {
+    const id = this.data.profileModalScenarioId;
+    this.setData({ profileModalVisible: false });
+    api.createSession(id, {}).then(data => {
+      this.goTraining(data.session.id);
     }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
   },
 
@@ -324,7 +353,7 @@ Page({
       title: '放弃进行中的模拟？',
       content: '放弃后当前问答将标记为已放弃，无法恢复，之后可重新开始新的患者模拟。',
       confirmText: '确认放弃',
-      confirmColor: '#df7781',
+      confirmColor: '#C65A4E',
       success: result => {
         if (!result.confirm) return;
         api.abandonRoleplaySession(sessionId).then(() => {

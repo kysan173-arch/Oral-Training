@@ -1,11 +1,10 @@
 <view class="page-shell mistakes-page">
   <view class="page-header">
-    <text class="eyebrow">PRACTICE AGAIN</text>
     <text class="page-title">错题复练</text>
     <text class="page-intro">每一项都来自你的评分报告。复练时请优先练习建议改写中的沟通结构与合规边界。</text>
   </view>
 
-  <view class="toolbar card"><text>显示已掌握项目</text><switch checked="{{includeMastered}}" color="#5B6EF5" bindchange="toggleMastered" /></view>
+  <view class="toolbar card"><text>显示已掌握项目</text><switch checked="{{includeMastered}}" color="#1F3864" bindchange="toggleMastered" /></view>
 
   <view class="mistake-skeleton" wx:if="{{loading}}">
     <view class="sk-card"></view>
@@ -13,7 +12,7 @@
     <view class="sk-card"></view>
   </view>
   <view class="empty-card card" wx:elif="{{mistakes.length === 0}}">
-    <empty-state icon="📝" title="{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}" text="完成训练并生成报告后，系统会把需要改进的表达收录在这里。" actionText="去话术锦囊看看" bind:action="goPhrases"></empty-state>
+    <empty-state title="{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}" text="完成训练并生成报告后，系统会把需要改进的表达收录在这里。" actionText="去话术锦囊看看" bind:action="goPhrases"></empty-state>
   </view>
 
   <view class="mistake-list" wx:else>

@@ -1,0 +1,100 @@
+<view class="page-shell detail-page">
+  <!-- 加载态 -->
+  <view class="loading-card card" wx:if="{{loading}}">
+    <text class="loading-title">正在加载记录…</text>
+  </view>
+
+  <!-- 加载失败 -->
+  <view class="loading-card card" wx:elif="{{loadError}}">
+    <text class="loading-title">{{loadError}}</text>
+    <button class="primary-button retry-button" bindtap="loadDetail">重新加载</button>
+  </view>
+
+  <block wx:elif="{{session}}">
+    <!-- 场景头部 -->
+    <view class="detail-hero">
+      <text class="detail-kicker">{{isRoleplay ? '患者模拟' : '客服训练'}} · {{session.scenarioName || '训练记录'}}</text>
+      <view class="detail-title-row">
+        <text class="detail-title">{{session.scenarioName}}</text>
+        <text class="status {{session.status}}">{{statusText}}</text>
+      </view>
+      <view class="detail-meta">
+        <text>{{session.startedAt || ''}}</text>
+        <text>{{session.currentRound}} / {{session.maxRounds}} 轮</text>
+      </view>
+    </view>
+
+    <!-- 客服训练：得分 + 五维 -->
+    <block wx:if="{{!isRoleplay && evaluation && !evaluation.pending}}">
+      <view class="section-title-row"><text class="section-title">得分与五维</text></view>
+      <view class="dimensions-card card">
+        <view class="score-head">
+          <text class="score-value">{{evaluation.totalScore}}</text>
+          <text class="score-label">分</text>
+        </view>
+        <radar-chart dimensions="{{dimensions}}" canvas-width="260" canvas-height="230"></radar-chart>
+        <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
+          <view class="dimension-head">
+            <text class="dim-name">{{item.name}}</text>
+            <text class="dim-score tier-{{item.tier}}">{{item.score}}</text>
+          </view>
+          <view class="score-bar">
+            <view class="score-fill fill-main" style="width: {{item.score}}%;"></view>
+          </view>
+        </view>
+      </view>
+
+      <view class="section-title-row"><text class="section-title">综合评价</text></view>
+      <view class="summary-card card"><text>{{evaluation.summary}}</text></view>
+
+      <view class="feedback-grid">
+        <view class="feedback-card feedback-good"><text class="feedback-title positive">做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view>
+        <view class="feedback-card feedback-improve"><text class="feedback-title improve">下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view>
+      </view>
+    </block>
+
+    <!-- 患者模拟：复盘摘要 -->
+    <block wx:if="{{isRoleplay && summary}}">
+      <view class="section-title-row"><text class="section-title">整体接待总结</text></view>
+      <view class="summary-card card"><text>{{summary.summary}}</text></view>
+
+      <view class="section-title-row"><text class="section-title">已覆盖的问题</text><text class="section-caption">{{summary.coveredTopics.length}} 项</text></view>
+      <view class="list-card card">
+        <view class="topic-item" wx:for="{{summary.coveredTopics}}" wx:key="*this">
+          <view class="topic-dot"></view>
+          <text>{{item}}</text>
+        </view>
+      </view>
+
+      <view class="section-title-row"><text class="section-title">关键服务原则</text><text class="section-caption">{{summary.keyPrinciples.length}} 条</text></view>
+      <view class="principle-card card" wx:for="{{summary.keyPrinciples}}" wx:key="*this">
+        <view class="principle-index">{{index + 1}}</view>
+        <text>{{item}}</text>
+      </view>
+    </block>
+
+    <!-- 完整对话 -->
+    <view class="section-title-row"><text class="section-title">完整对话</text><text class="section-caption">{{messages.length}} 条消息</text></view>
+    <view class="chat-card card">
+      <view class="message-item {{item.role === 'user' || item.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{messages}}" wx:key="id">
+        <view class="message-head">
+          <text class="message-role">{{item.role === 'user' ? '客服' : item.role === 'patient' ? '患者' : item.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}}</text>
+          <text class="message-time">{{item.time}}</text>
+        </view>
+        <view class="message-text">{{item.content}}</view>
+        <view class="learning-box" wx:if="{{item.role === 'standard_customer' && item.learningPoints.length}}">
+          <text class="learning-label">学习要点</text>
+          <text class="learning-point" wx:for="{{item.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text>
+          <text wx:if="{{item.complianceBoundary}}" class="learning-boundary">合规边界：{{item.complianceBoundary}}</text>
+        </view>
+      </view>
+      <view class="empty-chat" wx:if="{{messages.length === 0}}"><text>该记录暂无对话内容。</text></view>
+    </view>
+
+    <!-- 操作 -->
+    <view class="detail-actions">
+      <button wx:if="{{session.status === 'in_progress'}}" class="primary-button" bindtap="goTraining">{{isRoleplay ? '继续模拟' : '继续训练'}}</button>
+      <button wx:else class="primary-button" bindtap="goResult">{{isRoleplay ? '查看复盘' : '查看报告'}}</button>
+    </view>
+  </block>
+</view>

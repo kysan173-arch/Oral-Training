@@ -1,6 +1,6 @@
 <view class="page-shell roleplay-page">
   <view class="roleplay-header">
-    <view class="customer-title"><view class="customer-dot"></view><view><text class="customer-name">标准客服</text><text class="customer-subtitle">{{isFreeMode ? '自由模拟' : scenario.name}}</text></view></view>
+    <view class="customer-title"><view class="customer-dot"></view><view><view class="customer-name-row"><text class="customer-name">标准客服</text><text class="mode-badge">{{isFreeMode ? '自由模拟' : '患者模拟'}}</text></view><text class="customer-subtitle">{{isFreeMode ? '自由模拟' : scenario.name}}</text></view></view>
     <view class="round-counter"><text class="round-value">{{currentRound}}</text><text class="round-total">/ {{maxRounds}}轮</text></view>
   </view>
   <view class="profile-strip">
@@ -32,5 +32,8 @@
     <input class="input-field" maxlength="1000" placeholder="以患者身份输入问题…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing || pendingClientMessageId}}" />
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '提问'}}</button>
   </view>
-  <view class="roleplay-footer"><text class="leave-link" bindtap="leaveRoleplay">暂存并退出</text><view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishRoleplay" aria-role="button">{{finishing ? '生成复盘中…' : '结束并复盘'}}</view></view>
+  <view class="roleplay-footer">
+    <view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishRoleplay" aria-role="button">{{finishing ? '生成复盘中…' : '结束并复盘'}}</view>
+    <text class="leave-link" bindtap="leaveRoleplay">暂存并退出</text>
+  </view>
 </view>

@@ -2,9 +2,9 @@
   display: flex;
   align-items: center;
   padding-bottom: env(safe-area-inset-bottom);
-  background: linear-gradient(180deg, #EEF0FF 0%, #E3E8FF 100%);
-  border-top: 1rpx solid rgba(91, 110, 245, .08);
-  box-shadow: 0 -4rpx 20rpx rgba(91, 110, 245, .06);
+  background: #fff;
+  border-top: 1rpx solid var(--color-border, var(--color-border));
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, .03);
 }
 
 .tab-item {
@@ -28,6 +28,6 @@
 }
 
 .tab-item.selected .tab-text {
-  color: #5B6EF5;
+  color: var(--color-primary);
   font-weight: 600;
 }

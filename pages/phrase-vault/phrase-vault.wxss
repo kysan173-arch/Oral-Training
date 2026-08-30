@@ -16,7 +16,9 @@
 }
 
 .search-icon {
-  font-size: 32rpx;
+  flex-shrink: 0;
+  width: 30rpx;
+  height: 30rpx;
   margin-right: 12rpx;
 }
 
