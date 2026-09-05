@@ -1,12 +1,13 @@
 <view class="page-shell result-page" wx:if="{{!loading}}">
   <view class="result-hero">
     <text class="result-kicker">训练完成 · {{scenario.name}}</text>
-    <view class="score-circle"><text class="score-value">{{evaluation.totalScore}}</text><text class="score-unit">/ 100</text></view>
+    <view class="score-circle"><view class="score-content"><text class="score-value">{{evaluation.totalScore}}</text><text class="score-unit">/ 100</text></view></view>
     <text class="score-caption">本次训练总分</text>
+    <view class="level-badge {{level.key}}"><text>{{level.name}}</text><text class="level-note">{{level.note}}</text></view>
     <text class="result-time">{{session.startedAt}} — {{session.finishedAt}}</text>
   </view>
 
-  <view class="notice-box"><text class="notice-icon">!</text><text>自动评分基于固定 MVP 评分量表，仅用于演示和辅助反馈，不替代专家审核或正式考核。</text></view>
+  <view class="notice-box"><text class="notice-icon">!</text><text>自动评分基于固定练习量表，仅用于辅助复盘，不替代专家审核、正式考核或医疗判断。</text></view>
 
   <view class="section-title-row"><text class="section-title">五维得分</text><text class="section-caption">按完整对话综合评价</text></view>
   <view class="dimensions-card card">
@@ -40,9 +41,18 @@
     <text class="round-comment">{{item.comment}}</text>
     <view class="round-rewrite"><text class="rewrite-label">更优表达</text><text>{{item.rewrite}}</text></view>
   </view>
+  <view class="radar-card card"><radar-chart dimensions="{{dimensions}}" canvas-width="300" canvas-height="260"></radar-chart><text>五维能力图仅用于本次训练复盘。</text></view>
 
-  <view class="result-actions"><button class="primary-button" bindtap="restartTraining">重新训练</button><button class="secondary-button" bindtap="viewScenes">返回场景列表</button><button class="text-button" bindtap="viewHistory">查看历史记录</button></view>
-  <text class="disclaimer">AI模拟训练，不构成医疗建议。</text>
+  <view class="section-title-row"><text class="section-title">本次可收录话术</text><text class="section-caption">来自已点评轮次</text></view>
+  <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>本次暂无可收录的话术，完成更多训练后可在话术锦囊中回顾。</text></view>
+  <view class="phrase-card card" wx:for="{{evaluation.recommendedPhrases}}" wx:key="phraseKey">
+    <text class="phrase-patient" wx:if="{{item.patientSays}}">患者：{{item.patientSays}}</text>
+    <text class="phrase-copy">{{item.csReply}}</text>
+    <text class="phrase-reason">{{item.reason}}</text>
+  </view>
+
+  <view class="result-actions"><button wx:if="{{nextScenario}}" class="primary-button" bindtap="startNextScenario">下一场：{{nextScenario.name}}</button><button wx:else class="primary-button" bindtap="restartTraining">重新训练</button><button class="secondary-button" bindtap="viewPhrases">查看话术锦囊</button><button class="secondary-button" bindtap="viewMistakes">进行错题复练</button><button class="text-button" bindtap="viewProfile">查看个人成长</button><button class="text-button" bindtap="viewHistory">查看历史记录</button></view>
+  <text class="disclaimer">AI 模拟训练，不构成医疗建议。</text>
 </view>
 
 <view class="page-shell result-page loading-result" wx:if="{{loading}}">

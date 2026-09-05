@@ -49,14 +49,21 @@ function Assert-ApiCode {
 
 function Invoke-Sql {
   param([string]$Sql)
-  $output = & $PsqlPath $DatabaseUrl -v ON_ERROR_STOP=1 -X -Atc $Sql
+  $output = & $PsqlPath --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -X -Atc $Sql
   if ($LASTEXITCODE -ne 0) { throw 'SQL assertion/setup failed.' }
   ($output -join "`n").Trim()
 }
 
 try {
   $health = Invoke-TestApi GET '/health' $null
-  Assert-ApiCode $health 200 0
+  Assert-ApiCode $health 503 0
+  if ($health.Payload.data.ready -or $health.Payload.data.status -ne 'unhealthy' -or
+      -not $health.Payload.data.database -or -not $health.Payload.data.workerRunning -or
+      $health.Payload.data.workersInDatabaseBackoff -ne 0 -or
+      $health.Payload.data.databasePool.maximum -lt 4 -or
+      $health.Payload.data.databasePool.open -gt $health.Payload.data.databasePool.maximum) {
+    throw 'Health endpoint did not isolate the missing model from other healthy components.'
+  }
   if ($health.Payload.data.modelConfigured) {
     throw 'Refusing state-machine test while a model key is configured.'
   }
@@ -117,6 +124,49 @@ try {
   $jobAfterRetry = Invoke-Sql "SELECT COUNT(*)||':'||MAX(generation) FROM ai_jobs WHERE dedupe_key='evaluation:$sessionId'"
   if ($jobAfterRetry -ne '1:2') { throw "Manual retry did not open a new task generation: $jobAfterRetry" }
 
+  for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $evaluation = Invoke-TestApi GET "/sessions/$sessionId/evaluation" $null
+    if ($evaluation.Payload.data.status -eq 'failed') { break }
+    Start-Sleep -Milliseconds 100
+  }
+  if ($evaluation.Payload.data.status -ne 'failed') {
+    throw 'Retried unconfigured model task did not reach failed state.'
+  }
+
+  Invoke-Sql "DELETE FROM evaluations WHERE session_id='$sessionId'" | Out-Null
+  $missingEvaluationRetry = Invoke-TestApi POST "/sessions/$sessionId/evaluation/retry" @{}
+  Assert-ApiCode $missingEvaluationRetry 202 0
+  Start-Sleep -Milliseconds 500
+  $recreatedEvaluation = Invoke-Sql "SELECT COUNT(*)||':'||MAX(generation) FROM evaluations e JOIN ai_jobs j ON j.target_id=e.session_id WHERE e.session_id='$sessionId'"
+  if ($recreatedEvaluation -ne '1:3') {
+    throw "Retry did not recreate a missing evaluation row: $recreatedEvaluation"
+  }
+
+  for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $evaluation = Invoke-TestApi GET "/sessions/$sessionId/evaluation" $null
+    if ($evaluation.Payload.data.status -eq 'failed') { break }
+    Start-Sleep -Milliseconds 100
+  }
+  if ($evaluation.Payload.data.status -ne 'failed') {
+    throw 'Recreated evaluation did not reach failed state.'
+  }
+
+  Invoke-Sql "DELETE FROM ai_jobs WHERE dedupe_key='evaluation:$sessionId'; DELETE FROM evaluations WHERE session_id='$sessionId'; UPDATE sessions SET evaluation_status='generating', total_score=NULL WHERE id='$sessionId';" | Out-Null
+  $repairedFinish = Invoke-TestApi POST "/sessions/$sessionId/finish" @{}
+  Assert-ApiCode $repairedFinish 202 0
+  if ($repairedFinish.Payload.data.evaluationStatus -ne 'generating') {
+    throw 'Repeated finish did not repair missing evaluation state.'
+  }
+  for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $evaluation = Invoke-TestApi GET "/sessions/$sessionId/evaluation" $null
+    if ($evaluation.Payload.data.status -eq 'failed') { break }
+    Start-Sleep -Milliseconds 100
+  }
+  $repairedEvaluationState = Invoke-Sql "SELECT e.status||':'||j.status||':'||j.generation FROM evaluations e JOIN ai_jobs j ON j.target_id=e.session_id WHERE e.session_id='$sessionId'"
+  if ($evaluation.Payload.data.status -ne 'failed' -or $repairedEvaluationState -ne 'failed:dead:1') {
+    throw "Missing evaluation/job state was not self-healed: $repairedEvaluationState"
+  }
+
   $active = Invoke-TestApi POST '/sessions' @{ scenarioId = $scenarioId }
   Assert-ApiCode $active 201 0
   $abandonedId = $active.Payload.data.session.id
@@ -141,11 +191,46 @@ try {
   $roleplayAbandonedFinish = Invoke-TestApi POST "/roleplay/sessions/$roleplayAbandonedId/finish" @{}
   Assert-ApiCode $roleplayAbandonedFinish 409 'ROLEPLAY_SESSION_ABANDONED'
 
+  $roleplayRepairId = "roleplay_repair_$([Guid]::NewGuid().ToString('N'))"
+  $roleplayInputId = "roleplay_input_$([Guid]::NewGuid().ToString('N'))"
+  $roleplayReplyId = "roleplay_reply_$([Guid]::NewGuid().ToString('N'))"
+  $createdRoleplayIds.Add($roleplayRepairId)
+  Invoke-Sql @"
+INSERT INTO roleplay_sessions
+  (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, finished_at)
+SELECT '$roleplayRepairId', user_id, '$scenarioId', 'state repair', 'completed', 1, 10, NOW()
+FROM sessions WHERE id='$sessionId';
+INSERT INTO roleplay_messages
+  (id, session_id, role, content, round, client_message_id, reply_status)
+VALUES
+  ('$roleplayInputId', '$roleplayRepairId', 'learner_patient', '我担心治疗后疼痛。', 1,
+   'roleplay-repair-request', 'ready'),
+  ('$roleplayReplyId', '$roleplayRepairId', 'standard_customer',
+   '我理解您的担忧，具体情况需要医生结合检查评估。', 1, NULL, NULL);
+"@ | Out-Null
+  $repairedSummaryGet = Invoke-TestApi GET "/roleplay/sessions/$roleplayRepairId/summary" $null
+  Assert-ApiCode $repairedSummaryGet 200 0
+  if ($repairedSummaryGet.Payload.data.status -ne 'generating') {
+    throw 'Summary polling did not repair missing summary state.'
+  }
+  $summary = $null
+  for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $summary = Invoke-TestApi GET "/roleplay/sessions/$roleplayRepairId/summary" $null
+    if ($summary.Payload.data.status -eq 'failed') { break }
+    Start-Sleep -Milliseconds 100
+  }
+  $repairedSummaryState = Invoke-Sql "SELECT s.status||':'||j.status||':'||j.generation FROM roleplay_summaries s JOIN ai_jobs j ON j.target_id=s.session_id WHERE s.session_id='$roleplayRepairId'"
+  if ($summary.Payload.data.status -ne 'failed' -or $repairedSummaryState -ne 'failed:dead:1') {
+    throw "Missing summary/job state was not self-healed: $repairedSummaryState"
+  }
+
   [pscustomobject]@{
     Result = 'passed'
     IdempotencyConflict = $conflict.Payload.code
     PendingCode = $pending.Payload.code
-    EvaluationGeneration = 2
+    EvaluationGeneration = 3
+    EvaluationSelfHeal = $repairedEvaluationState
+    SummarySelfHeal = $repairedSummaryState
     TrainingAbandonedCode = $abandonedFinish.Payload.code
     RoleplayAbandonedCode = $roleplayAbandonedFinish.Payload.code
   } | ConvertTo-Json -Compress

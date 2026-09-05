@@ -1,0 +1,41 @@
+.profile-page { padding: 28rpx 24rpx 48rpx; }
+.profile-hero { padding: 10rpx 4rpx 26rpx; }
+.eyebrow, .page-title, .page-intro { display: block; }
+.eyebrow { color: #667eea; font-size: 20rpx; letter-spacing: 2rpx; font-weight: 700; }
+.page-title { margin-top: 12rpx; color: #303046; font-size: 42rpx; font-weight: 700; }
+.page-intro { margin-top: 12rpx; color: #888; font-size: 23rpx; line-height: 1.65; }
+.loading-card, .empty-card { padding: 38rpx 28rpx; color: #888; text-align: center; font-size: 24rpx; }
+.stats-grid { display: flex; gap: 14rpx; }
+.stat-card { flex: 1; padding: 22rpx 8rpx; text-align: center; }
+.stat-value, .stat-label { display: block; }
+.stat-value { color: #667eea; font-size: 38rpx; font-weight: 700; }
+.stat-value.positive { color: #47a170; }
+.stat-label { margin-top: 7rpx; color: #999; font-size: 20rpx; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin: 32rpx 4rpx 16rpx; }
+.section-title, .section-caption { display: block; }
+.section-title { color: #333; font-size: 30rpx; font-weight: 700; }
+.section-caption { margin-top: 5rpx; color: #aaa; font-size: 21rpx; }
+.section-link { color: #667eea; font-size: 22rpx; }
+.dimension-card { padding: 24rpx; }
+.dimension-row { margin-bottom: 22rpx; }
+.dimension-row:last-child { margin-bottom: 0; }
+.dimension-head, .weakness-head, .learning-summary, .trend-card { display: flex; align-items: center; justify-content: space-between; }
+.dimension-head { color: #666; font-size: 24rpx; }
+.dimension-head text:last-child { font-weight: 700; }
+.score-bar { height: 13rpx; margin-top: 10rpx; overflow: hidden; border-radius: 8rpx; background: #eff0f4; }
+.score-fill { height: 100%; border-radius: 8rpx; }
+.weakness-card { padding: 22rpx 24rpx; margin-bottom: 14rpx; color: #777; font-size: 23rpx; line-height: 1.6; }
+.weakness-head { margin-bottom: 9rpx; color: #ad743e; font-size: 25rpx; font-weight: 700; }
+.learning-summary { padding: 24rpx; margin-top: 18rpx; }
+.summary-title, .summary-text { display: block; }
+.summary-title { color: #444; font-size: 27rpx; font-weight: 700; }
+.summary-text { margin-top: 7rpx; color: #999; font-size: 22rpx; }
+.summary-link { color: #667eea; font-size: 23rpx; }
+.trend-card { padding: 22rpx 24rpx; margin-bottom: 12rpx; }
+.trend-scene, .trend-date { display: block; }
+.trend-scene { color: #555; font-size: 25rpx; font-weight: 600; }
+.trend-date { margin-top: 6rpx; color: #aaa; font-size: 20rpx; }
+.trend-score { color: #667eea; font-size: 29rpx; font-weight: 700; }
+.action-grid { display: flex; gap: 16rpx; margin-top: 28rpx; }
+.action-grid button { flex: 1; margin: 0; }
+.train-button { width: 100%; margin-top: 16rpx; }

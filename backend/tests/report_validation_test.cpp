@@ -94,6 +94,89 @@ int main() {
     std::cerr << "round comment was not grounded in the user message\n";
     return 1;
   }
+  if (normalized["recommendedPhrases"].size() != 1 ||
+      normalized["recommendedPhrases"][0]["patientSays"] != messages[0]["content"] ||
+      normalized["recommendedPhrases"][0]["csReply"] !=
+          normalized["roundComments"][0]["recommendedRewrite"]) {
+    std::cerr << "report-derived phrase insight was not grounded correctly\n";
+    return 1;
+  }
+  if (normalized["learningMistakes"].size() != 1 ||
+      normalized["learningMistakes"][0]["kind"] != "improvement" ||
+      normalized["learningMistakes"][0]["originalQuote"] != messages[1]["content"]) {
+    std::cerr << "report-derived learning mistake was not created correctly\n";
+    return 1;
+  }
+
+  const auto expect_invalid_report = [](const json& report, const json& history) {
+    try {
+      (void)normalizeReport(report, history);
+      return false;
+    } catch (const ApiError& error) {
+      return error.code == "MODEL_INVALID_RESPONSE";
+    }
+  };
+  auto missing_dimension_report = safe_report;
+  missing_dimension_report["dimensionScores"].erase("empathy");
+  auto invalid_dimension_report = safe_report;
+  invalid_dimension_report["dimensionScores"]["empathy"] = "75";
+  auto missing_array_report = safe_report;
+  missing_array_report.erase("improvements");
+  auto missing_summary_report = safe_report;
+  missing_summary_report.erase("summary");
+  auto empty_strengths_report = safe_report;
+  empty_strengths_report["strengths"] = json::array();
+  auto missing_violations_report = safe_report;
+  missing_violations_report.erase("violations");
+  auto invalid_strength_round = safe_report;
+  invalid_strength_round["strengths"][0]["round"] = 2;
+  auto invalid_improvement_round = safe_report;
+  invalid_improvement_round["improvements"][0]["round"] = 2;
+  const json two_round_messages = json::array({
+      messages[0], messages[1],
+      {{"role", "patient"}, {"content", "那我下一步怎么做？"}, {"round", 1}},
+      {{"role", "user"}, {"content", "我可以先协助安排医生面诊。"}, {"round", 2}},
+  });
+  if (!expect_invalid_report(missing_dimension_report, messages) ||
+      !expect_invalid_report(invalid_dimension_report, messages) ||
+      !expect_invalid_report(missing_array_report, messages) ||
+      !expect_invalid_report(missing_summary_report, messages) ||
+      !expect_invalid_report(empty_strengths_report, messages) ||
+      !expect_invalid_report(missing_violations_report, messages) ||
+      !expect_invalid_report(invalid_strength_round, messages) ||
+      !expect_invalid_report(invalid_improvement_round, messages) ||
+      !expect_invalid_report(safe_report, two_round_messages)) {
+    std::cerr << "incomplete report schema or invalid round reference was accepted\n";
+    return 1;
+  }
+
+  std::atomic<int> heartbeat_renewals{0};
+  {
+    LeaseHeartbeat heartbeat(
+        [&heartbeat_renewals] {
+          heartbeat_renewals.fetch_add(1);
+          return true;
+        },
+        std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  if (heartbeat_renewals.load() < 2) {
+    std::cerr << "job lease heartbeat did not renew repeatedly\n";
+    return 1;
+  }
+  std::atomic<int> lost_renewals{0};
+  LeaseHeartbeat lost_heartbeat(
+      [&lost_renewals] {
+        lost_renewals.fetch_add(1);
+        return false;
+      },
+      std::chrono::milliseconds(10));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  lost_heartbeat.stop();
+  if (!lost_heartbeat.leaseLost() || lost_renewals.load() != 1) {
+    std::cerr << "job lease heartbeat did not stop after ownership loss\n";
+    return 1;
+  }
 
   auto capped_deduction_report = safe_report;
   capped_deduction_report["dimensionScores"]["medicalCompliance"] = 60;
@@ -106,6 +189,12 @@ int main() {
     std::cerr << "violation deduction was not capped at 50\n";
     return 1;
   }
+  if (normalized_deduction["learningMistakes"].size() != 1 ||
+      normalized_deduction["learningMistakes"][0]["kind"] != "violation" ||
+      normalized_deduction["learningMistakes"][0]["priority"] != "high") {
+    std::cerr << "violation learning mistake was not classified correctly\n";
+    return 1;
+  }
   capped_deduction_report["dimensionScores"]["medicalCompliance"] = 61;
   try {
     (void)normalizeReport(capped_deduction_report, messages);
@@ -114,6 +203,26 @@ int main() {
   } catch (const ApiError& error) {
     if (error.code != "MODEL_SCORE_INCONSISTENT") throw;
   }
+
+  auto cumulative_deduction_report = safe_report;
+  cumulative_deduction_report["dimensionScores"]["medicalCompliance"] = 61;
+  cumulative_deduction_report["violations"] = json::array({
+      {{"round", 1}, {"originalQuote", "是否需要拔牙"}, {"type", "边界表达不充分"},
+       {"reason", "需要明确说明诊疗判断边界。"}, {"deduction", 15},
+       {"recommendedRewrite", "是否需要拔牙，要由医生结合检查结果评估。"}},
+      {{"round", 1}, {"originalQuote", "医生结合检查结果评估"}, {"type", "沟通信息不完整"},
+       {"reason", "还应说明可协助安排面诊。"}, {"deduction", 15},
+       {"recommendedRewrite", "是否需要拔牙，要由医生结合检查结果评估。"}},
+  });
+  try {
+    (void)normalizeReport(cumulative_deduction_report, messages);
+    std::cerr << "inconsistent cumulative violation score was accepted\n";
+    return 1;
+  } catch (const ApiError& error) {
+    if (error.code != "MODEL_SCORE_INCONSISTENT") throw;
+  }
+  cumulative_deduction_report["dimensionScores"]["medicalCompliance"] = 60;
+  (void)normalizeReport(cumulative_deduction_report, messages);
 
   auto unsafe_report = safe_report;
   unsafe_report["roundComments"][0]["recommendedRewrite"] = "一般需要1-2年，费用2-5万元。";

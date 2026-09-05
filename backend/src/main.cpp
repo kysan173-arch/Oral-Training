@@ -3,6 +3,7 @@
 #include <pqxx/pqxx>
 
 #include <windows.h>
+#include <ws2tcpip.h>
 #include <bcrypt.h>
 #include <winhttp.h>
 
@@ -15,8 +16,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <functional>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -32,6 +35,8 @@
 #include <utility>
 #include <vector>
 
+#include "database_pool.h"
+
 using json = nlohmann::json;
 
 namespace {
@@ -39,6 +44,7 @@ namespace {
 constexpr char kDemoUserId[] = "demo-user-001";
 constexpr int kReplyLeaseSeconds = 180;
 constexpr int kJobLeaseSeconds = 180;
+constexpr int kJobLeaseHeartbeatSeconds = kJobLeaseSeconds / 3;
 constexpr char kSessionTimes[] = R"(
   to_char(started_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS started_at,
   to_char(updated_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS updated_at,
@@ -74,19 +80,78 @@ std::string trim(std::string value) {
   return value.substr(first, last - first + 1);
 }
 
+std::string lowercaseAscii(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+    return static_cast<char>(std::tolower(character));
+  });
+  return value;
+}
+
 bool getEnvBool(const char* name, bool fallback) {
-  const auto value = getEnv(name);
+  const auto value = lowercaseAscii(trim(getEnv(name)));
   if (value.empty()) return fallback;
-  return value == "1" || value == "true" || value == "TRUE" || value == "yes";
+  if (value == "1" || value == "true" || value == "yes" || value == "on") return true;
+  if (value == "0" || value == "false" || value == "no" || value == "off") return false;
+  throw std::runtime_error(std::string(name) +
+                           " must be one of: true, false, 1, 0, yes, no, on, off");
 }
 
 int getEnvInt(const char* name, int fallback) {
+  const auto value = trim(getEnv(name));
+  if (value.empty()) return fallback;
+  size_t consumed = 0;
   try {
-    const auto value = getEnv(name);
-    return value.empty() ? fallback : std::stoi(value);
+    const auto parsed = std::stoi(value, &consumed);
+    if (consumed != value.size()) throw std::invalid_argument("trailing characters");
+    return parsed;
   } catch (...) {
-    return fallback;
+    throw std::runtime_error(std::string(name) + " must be a valid integer");
   }
+}
+
+std::string normalizeIpAddress(std::string value) {
+  value = lowercaseAscii(trim(std::move(value)));
+  if (value.size() >= 2 && value.front() == '[' && value.back() == ']') {
+    value = value.substr(1, value.size() - 2);
+  }
+  if (value.rfind("::ffff:", 0) == 0 && value.find('.', 7) != std::string::npos) {
+    value.erase(0, 7);
+  }
+  IN_ADDR ipv4{};
+  if (InetPtonA(AF_INET, value.c_str(), &ipv4) == 1) {
+    char output[INET_ADDRSTRLEN] = {};
+    if (InetNtopA(AF_INET, &ipv4, output, sizeof(output)) != nullptr) return output;
+  }
+  IN6_ADDR ipv6{};
+  if (InetPtonA(AF_INET6, value.c_str(), &ipv6) == 1) {
+    char output[INET6_ADDRSTRLEN] = {};
+    if (InetNtopA(AF_INET6, &ipv6, output, sizeof(output)) != nullptr) {
+      return lowercaseAscii(output);
+    }
+  }
+  throw std::runtime_error("invalid IP address: " + value);
+}
+
+std::vector<std::string> getEnvIpList(const char* name) {
+  const auto source = trim(getEnv(name));
+  if (source.empty()) return {};
+  std::vector<std::string> addresses;
+  size_t start = 0;
+  while (start <= source.size()) {
+    const auto separator = source.find(',', start);
+    const auto item = source.substr(start, separator == std::string::npos
+        ? std::string::npos : separator - start);
+    const auto address = normalizeIpAddress(item);
+    if (std::find(addresses.begin(), addresses.end(), address) == addresses.end()) {
+      addresses.push_back(address);
+    }
+    if (addresses.size() > 32) {
+      throw std::runtime_error(std::string(name) + " cannot contain more than 32 addresses");
+    }
+    if (separator == std::string::npos) break;
+    start = separator + 1;
+  }
+  return addresses;
 }
 
 int clampInt(int value, int low, int high);
@@ -105,7 +170,10 @@ struct Config {
   int auth_token_ttl_seconds;
   std::string allowed_origin;
   bool require_https;
+  std::vector<std::string> trusted_proxy_ips;
   int worker_concurrency;
+  int database_pool_size;
+  int database_pool_wait_ms;
   int rate_limit_per_minute;
 
   static Config fromEnvironment() {
@@ -123,7 +191,10 @@ struct Config {
     config.auth_token_ttl_seconds = clampInt(getEnvInt("AUTH_TOKEN_TTL_SECONDS", 604800), 300, 2592000);
     config.allowed_origin = trim(getEnv("ALLOWED_ORIGIN", config.production ? "" : "*"));
     config.require_https = getEnvBool("REQUIRE_HTTPS", config.production);
+    config.trusted_proxy_ips = getEnvIpList("TRUSTED_PROXY_IPS");
     config.worker_concurrency = clampInt(getEnvInt("AI_WORKER_CONCURRENCY", 1), 1, 4);
+    config.database_pool_size = clampInt(getEnvInt("DATABASE_POOL_SIZE", 12), 4, 64);
+    config.database_pool_wait_ms = clampInt(getEnvInt("DATABASE_POOL_WAIT_MS", 3000), 100, 30000);
     config.rate_limit_per_minute = clampInt(getEnvInt("RATE_LIMIT_PER_MINUTE", 120), 10, 5000);
     const bool loopback = config.bind_address == "127.0.0.1" || config.bind_address == "::1" ||
                           config.bind_address == "localhost";
@@ -131,15 +202,33 @@ struct Config {
     if (config.auth_mode != "demo" && config.auth_mode != "wechat") {
       throw std::runtime_error("AUTH_MODE must be demo or wechat");
     }
+    if (config.port < 1 || config.port > 65535) {
+      throw std::runtime_error("PORT must be between 1 and 65535");
+    }
+    if (config.production && config.auth_mode != "wechat") {
+      throw std::runtime_error("AUTH_MODE must be wechat in production");
+    }
+    if (config.production && !config.require_https) {
+      throw std::runtime_error("REQUIRE_HTTPS must be true in production");
+    }
+    if (config.production && config.trusted_proxy_ips.empty()) {
+      throw std::runtime_error("TRUSTED_PROXY_IPS is required in production");
+    }
     if (config.production && config.allowed_origin.empty()) {
       throw std::runtime_error("ALLOWED_ORIGIN is required in production");
     }
     if (config.production && config.allowed_origin == "*") {
       throw std::runtime_error("ALLOWED_ORIGIN cannot be wildcard in production");
     }
+    if (config.production && config.allowed_origin.rfind("https://", 0) != 0) {
+      throw std::runtime_error("ALLOWED_ORIGIN must use https in production");
+    }
     if (config.auth_mode == "wechat" &&
         (config.wechat_app_id.empty() || config.wechat_app_secret.empty())) {
       throw std::runtime_error("WECHAT_APP_ID and WECHAT_APP_SECRET are required for wechat auth");
+    }
+    if (config.database_pool_size < config.worker_concurrency + 2) {
+      throw std::runtime_error("DATABASE_POOL_SIZE must exceed AI_WORKER_CONCURRENCY by at least 2");
     }
     return config;
   }
@@ -307,6 +396,11 @@ crow::response handle(Fn&& function) {
     return function();
   } catch (const ApiError& error) {
     return fail(error);
+  } catch (const DatabasePoolExhausted& error) {
+    std::cerr << json({{"event", "database_pool_exhausted"}, {"requestId", g_request_id},
+                      {"error", error.what()}}).dump() << '\n';
+    return makeResponse(503, {{"code", "DATABASE_BUSY"},
+                              {"message", "数据库连接繁忙，请稍后重试"}, {"data", nullptr}});
   } catch (const pqxx::sql_error& error) {
     std::cerr << json({{"event", "database_sql_error"}, {"requestId", g_request_id},
                       {"error", error.what()}}).dump() << '\n';
@@ -629,6 +723,8 @@ class ModelGateway {
 五维权重固定：knowledgeAccuracy 25%，medicalCompliance 25%，empathy 20%，needsDiscovery 20%，serviceEtiquette 10%。
 
 改进建议和推荐改写只能给出沟通结构与合规边界，不得编造价格、疗程、优惠、机构服务，不得推荐具体药物、操作或治疗手段；涉及治疗判断时必须明确需要医生结合检查评估。
+
+全部顶层字段都必须存在。五维分数必须是 0—100 的整数；strengths 和 improvements 各至少 1 项；violations 没有违规时使用空数组；roundComments 必须对每个 role=user 的实际客服轮次各点评一次，不能遗漏、重复或引用不存在的轮次。所有列表中的 round 都必须对应实际客服轮次。医疗合规分必须与全部违规的累计扣分一致：单项扣分达到 30 分，或累计扣分达到 30 分时，medicalCompliance 不得高于 60；累计扣分达到 60 分时不得高于 50。
 
 请只输出合法 json，结构如下：
 {"dimensionScores":{"knowledgeAccuracy":0,"medicalCompliance":0,"empathy":0,"needsDiscovery":0,"serviceEtiquette":0},"summary":"","strengths":[{"round":1,"evidence":"","content":""}],"improvements":[{"round":1,"content":""}],"violations":[{"round":1,"originalQuote":"","type":"","reason":"","deduction":0,"recommendedRewrite":""}],"roundComments":[{"round":1,"userMessage":"","comment":"","recommendedRewrite":""}]}
@@ -970,58 +1066,98 @@ json normalizeRoleplaySummary(const json& source, const json& messages) {
           {"nextPracticeSuggestions", roleplayAdviceList(source, "nextPracticeSuggestions", 1, 5, practice_fallbacks)}};
 }
 
-json reportArray(const json& source, const char* key, size_t max_items) {
-  if (!source.contains(key)) return json::array();
-  if (!source[key].is_array() || source[key].size() > max_items) {
+int requiredReportInteger(const json& object, const char* key, int minimum, int maximum) {
+  if (!object.contains(key)) {
+    throw ApiError(503, "MODEL_INVALID_RESPONSE", std::string("评分字段缺失：") + key);
+  }
+  if (!object[key].is_number()) {
+    throw ApiError(503, "MODEL_INVALID_RESPONSE", std::string("评分数值无效：") + key);
+  }
+  const auto value = object[key].get<double>();
+  if (!std::isfinite(value) || std::floor(value) != value || value < minimum || value > maximum) {
+    throw ApiError(503, "MODEL_INVALID_RESPONSE", std::string("评分数值超出范围：") + key);
+  }
+  return static_cast<int>(value);
+}
+
+json reportArray(const json& source, const char* key, size_t min_items, size_t max_items) {
+  if (!source.contains(key)) {
+    throw ApiError(503, "MODEL_INVALID_RESPONSE", std::string("评分字段缺失：") + key);
+  }
+  if (!source[key].is_array() || source[key].size() < min_items || source[key].size() > max_items) {
     throw ApiError(503, "MODEL_INVALID_RESPONSE", std::string("评分数组无效：") + key);
   }
   return source[key];
 }
 
+int maximumMedicalComplianceScore(const json& violations) {
+  int total_deduction = 0;
+  int largest_deduction = 0;
+  for (const auto& violation : violations) {
+    const auto deduction = violation.value("deduction", 0);
+    total_deduction += deduction;
+    largest_deduction = std::max(largest_deduction, deduction);
+  }
+  int maximum = 100;
+  if (total_deduction >= 60) maximum = 50;
+  else if (total_deduction >= 30) maximum = 60;
+  if (largest_deduction >= 30) maximum = std::min(maximum, 60);
+  return maximum;
+}
+
 json normalizeReport(const json& source, const json& messages) {
   if (!source.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "评分报告不是 JSON 对象");
   std::map<int, std::string> user_messages;
+  std::map<int, std::string> patient_messages;
   for (const auto& message : messages) {
     if (jsonString(message, "role") == "user") {
       user_messages[jsonInt(message, "round", -1)] = jsonString(message, "content");
+    } else if (jsonString(message, "role") == "patient") {
+      patient_messages[jsonInt(message, "round", -1)] = jsonString(message, "content");
     }
   }
   if (user_messages.empty()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "评分报告缺少客服对话依据");
 
-  const auto input_dimensions = source.value("dimensionScores", json::object());
-  if (!input_dimensions.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "五维评分格式无效");
+  if (!source.contains("dimensionScores") || !source["dimensionScores"].is_object()) {
+    throw ApiError(503, "MODEL_INVALID_RESPONSE", "五维评分格式无效");
+  }
+  const auto& input_dimensions = source["dimensionScores"];
   json dimensions = {
-      {"knowledgeAccuracy", clampInt(jsonInt(input_dimensions, "knowledgeAccuracy", 0), 0, 100)},
-      {"medicalCompliance", clampInt(jsonInt(input_dimensions, "medicalCompliance", 0), 0, 100)},
-      {"empathy", clampInt(jsonInt(input_dimensions, "empathy", 0), 0, 100)},
-      {"needsDiscovery", clampInt(jsonInt(input_dimensions, "needsDiscovery", 0), 0, 100)},
-      {"serviceEtiquette", clampInt(jsonInt(input_dimensions, "serviceEtiquette", 0), 0, 100)},
+      {"knowledgeAccuracy", requiredReportInteger(input_dimensions, "knowledgeAccuracy", 0, 100)},
+      {"medicalCompliance", requiredReportInteger(input_dimensions, "medicalCompliance", 0, 100)},
+      {"empathy", requiredReportInteger(input_dimensions, "empathy", 0, 100)},
+      {"needsDiscovery", requiredReportInteger(input_dimensions, "needsDiscovery", 0, 100)},
+      {"serviceEtiquette", requiredReportInteger(input_dimensions, "serviceEtiquette", 0, 100)},
   };
 
   json strengths = json::array();
-  for (const auto& item : reportArray(source, "strengths", 10)) {
+  for (const auto& item : reportArray(source, "strengths", 1, 10)) {
     if (!item.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "优势项格式无效");
-    const auto round = jsonInt(item, "round", 0);
-    if (round != 0 && user_messages.find(round) == user_messages.end()) {
+    const auto round = requiredReportInteger(item, "round", 1, 10);
+    if (user_messages.find(round) == user_messages.end()) {
       throw ApiError(503, "MODEL_INVALID_RESPONSE", "优势项引用了不存在的客服轮次");
     }
-    strengths.push_back({{"round", round}, {"evidence", reportText(item, "evidence", "", false, 500)},
+    strengths.push_back({{"round", round}, {"evidence", reportText(item, "evidence", "", true, 500)},
                          {"content", reportText(item, "content", "", true, 500)}});
   }
 
   json improvements = json::array();
-  for (const auto& item : reportArray(source, "improvements", 10)) {
+  for (const auto& item : reportArray(source, "improvements", 1, 10)) {
     if (!item.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "改进项格式无效");
+    const auto round = requiredReportInteger(item, "round", 1, 10);
+    if (user_messages.find(round) == user_messages.end()) {
+      throw ApiError(503, "MODEL_INVALID_RESPONSE", "改进项引用了不存在的客服轮次");
+    }
     const auto content = safeAdviceOrFallback(
         reportText(item, "content", "", true, 600),
         "可先回应患者担忧，并说明具体情况需要医生结合检查结果评估。");
-    improvements.push_back({{"round", jsonInt(item, "round", 0)}, {"content", content}});
+    improvements.push_back({{"round", round}, {"content", content}});
   }
 
   json violations = json::array();
-  for (const auto& item : reportArray(source, "violations", 20)) {
+  for (const auto& item : reportArray(source, "violations", 0, 20)) {
     if (!item.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "违规项格式无效");
-    const auto round = jsonInt(item, "round", -1);
+    const auto round = requiredReportInteger(item, "round", 1, 10);
     const auto user_message = user_messages.find(round);
     if (user_message == user_messages.end()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "违规项引用了不存在的客服轮次");
     const auto quote = reportText(item, "originalQuote", "", true, 1000);
@@ -1034,23 +1170,21 @@ json normalizeReport(const json& source, const json& messages) {
     violations.push_back({{"round", round}, {"originalQuote", quote},
                           {"type", reportText(item, "type", "", true, 100)},
                           {"reason", reportText(item, "reason", "", true, 600)},
-                          {"deduction", clampInt(jsonInt(item, "deduction", 0), 0, 50)},
+                          {"deduction", clampInt(requiredReportInteger(item, "deduction", 0, 100), 0, 50)},
                           {"recommendedRewrite", rewrite}});
   }
 
-  const bool has_severe_violation = std::any_of(
-      violations.begin(), violations.end(), [](const auto& violation) {
-        return violation.value("deduction", 0) >= 30;
-      });
-  if (has_severe_violation && dimensions["medicalCompliance"].get<int>() > 60) {
-    throw ApiError(503, "MODEL_SCORE_INCONSISTENT", "严重违规与医疗合规评分不一致");
+  const auto maximum_compliance = maximumMedicalComplianceScore(violations);
+  if (dimensions["medicalCompliance"].get<int>() > maximum_compliance) {
+    throw ApiError(503, "MODEL_SCORE_INCONSISTENT", "累计违规扣分与医疗合规评分不一致");
   }
 
   json round_comments = json::array();
+  std::map<int, json> comments_by_round;
   std::set<int> commented_rounds;
-  for (const auto& item : reportArray(source, "roundComments", 10)) {
+  for (const auto& item : reportArray(source, "roundComments", 1, 10)) {
     if (!item.is_object()) throw ApiError(503, "MODEL_INVALID_RESPONSE", "逐轮点评格式无效");
-    const auto round = jsonInt(item, "round", -1);
+    const auto round = requiredReportInteger(item, "round", 1, 10);
     const auto user_message = user_messages.find(round);
     if (user_message == user_messages.end() || !commented_rounds.insert(round).second) {
       throw ApiError(503, "MODEL_INVALID_RESPONSE", "逐轮点评引用了无效或重复的客服轮次");
@@ -1058,22 +1192,149 @@ json normalizeReport(const json& source, const json& messages) {
     const auto rewrite = safeAdviceOrFallback(
         reportText(item, "recommendedRewrite", "", true, 600),
         "我理解您的担忧，具体情况需要医生结合检查结果评估，我们可以先安排面诊沟通。");
-    round_comments.push_back({{"round", round}, {"userMessage", user_message->second},
-                              {"comment", reportText(item, "comment", "", true, 600)},
-                              {"recommendedRewrite", rewrite}});
+    const auto comment = reportText(item, "comment", "", true, 600);
+    const json normalized_comment = {{"round", round}, {"userMessage", user_message->second},
+                                     {"comment", comment}, {"recommendedRewrite", rewrite}};
+    comments_by_round[round] = normalized_comment;
+    round_comments.push_back(normalized_comment);
+  }
+
+  const auto patient_prompt_for_round = [&](int round) {
+    const auto after_prompt = patient_messages.lower_bound(round);
+    if (after_prompt == patient_messages.begin()) return std::string();
+    return std::prev(after_prompt)->second;
+  };
+
+  // These insights are derived from already validated report fields.  Keeping
+  // them in the report makes the phrase library reproducible without adding a
+  // second model response contract or storing client-authored training data.
+  json recommended_phrases = json::array();
+  std::set<std::string> phrase_texts;
+  const auto append_phrase = [&](int round, const std::string& phrase, const std::string& reason) {
+    if (round <= 0 || phrase.empty() || recommended_phrases.size() >= 8 || !phrase_texts.insert(phrase).second) {
+      return;
+    }
+    recommended_phrases.push_back({
+        {"phraseKey", "phrase-" + std::to_string(round) + "-" + std::to_string(recommended_phrases.size() + 1)},
+        {"round", round}, {"patientSays", patient_prompt_for_round(round)}, {"csReply", phrase},
+        {"reason", reason.empty() ? "可作为下一次接待时的合规表达参考。" : reason},
+    });
+  };
+  for (const auto& item : round_comments) {
+    append_phrase(item["round"].get<int>(), item["recommendedRewrite"].get<std::string>(),
+                  item["comment"].get<std::string>());
+  }
+  for (const auto& item : violations) {
+    append_phrase(item["round"].get<int>(), item["recommendedRewrite"].get<std::string>(),
+                  item["reason"].get<std::string>());
+  }
+
+  json learning_mistakes = json::array();
+  std::set<int> violation_rounds;
+  for (size_t index = 0; index < violations.size() && learning_mistakes.size() < 12; ++index) {
+    const auto& item = violations[index];
+    const auto round = item["round"].get<int>();
+    violation_rounds.insert(round);
+    learning_mistakes.push_back({
+        {"mistakeKey", "violation-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+        {"kind", "violation"}, {"priority", item["deduction"].get<int>() >= 30 ? "high" : "medium"},
+        {"round", round}, {"originalQuote", item["originalQuote"]}, {"reason", item["reason"]},
+        {"recommendedRewrite", item["recommendedRewrite"]},
+    });
+  }
+  for (size_t index = 0; index < improvements.size() && learning_mistakes.size() < 12; ++index) {
+    const auto& item = improvements[index];
+    const auto round = item["round"].get<int>();
+    const auto user_message = user_messages.find(round);
+    if (round <= 0 || user_message == user_messages.end() || violation_rounds.find(round) != violation_rounds.end()) {
+      continue;
+    }
+    const auto comment = comments_by_round.find(round);
+    const auto rewrite = comment == comments_by_round.end()
+        ? std::string("我理解您的担忧，具体情况需要医生结合检查结果评估，我们可以协助安排进一步沟通。")
+        : comment->second["recommendedRewrite"].get<std::string>();
+    learning_mistakes.push_back({
+        {"mistakeKey", "improvement-" + std::to_string(round) + "-" + std::to_string(index + 1)},
+        {"kind", "improvement"}, {"priority", "practice"}, {"round", round},
+        {"originalQuote", user_message->second}, {"reason", item["content"]},
+        {"recommendedRewrite", rewrite},
+    });
+  }
+  if (commented_rounds.size() != user_messages.size()) {
+    throw ApiError(503, "MODEL_INVALID_RESPONSE", "逐轮点评未覆盖全部客服轮次");
   }
 
   return {{"dimensionScores", dimensions},
-          {"summary", reportText(source, "summary", "已完成本次训练评分。", false, 1000)},
+          {"summary", reportText(source, "summary", "", true, 1000)},
           {"strengths", strengths}, {"improvements", improvements},
-          {"violations", violations}, {"roundComments", round_comments}};
+          {"violations", violations}, {"roundComments", round_comments},
+          {"recommendedPhrases", recommended_phrases}, {"learningMistakes", learning_mistakes}};
 }
+
+class LeaseHeartbeat {
+ public:
+  LeaseHeartbeat(std::function<bool()> renew, std::chrono::milliseconds interval)
+      : renew_(std::move(renew)), interval_(interval), thread_([this] { run(); }) {}
+
+  LeaseHeartbeat(const LeaseHeartbeat&) = delete;
+  LeaseHeartbeat& operator=(const LeaseHeartbeat&) = delete;
+
+  ~LeaseHeartbeat() { stop(); }
+
+  void stop() {
+    if (stopping_.exchange(true)) return;
+    condition_.notify_all();
+    if (thread_.joinable()) thread_.join();
+  }
+
+  bool leaseLost() const { return lease_lost_.load(); }
+
+ private:
+  void run() noexcept {
+    while (!stopping_.load()) {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (condition_.wait_for(lock, interval_, [this] { return stopping_.load(); })) return;
+      lock.unlock();
+      try {
+        if (!renew_()) {
+          lease_lost_.store(true);
+          return;
+        }
+      } catch (...) {
+        // A transient database error must not terminate the Worker thread. The
+        // next heartbeat can recover; final persistence still verifies ownership.
+      }
+    }
+  }
+
+  std::function<bool()> renew_;
+  std::chrono::milliseconds interval_;
+  std::atomic<bool> stopping_{false};
+  std::atomic<bool> lease_lost_{false};
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  std::thread thread_;
+};
+
+bool workerStateHealthy(bool stopping, int expected_workers, int running_workers,
+                        int workers_in_database_backoff) {
+  return !stopping && expected_workers > 0 && running_workers == expected_workers &&
+         workers_in_database_backoff == 0;
+}
+
+bool serviceReady(bool database_healthy, bool queue_available, bool worker_healthy,
+                  bool model_configured) {
+  return database_healthy && queue_available && worker_healthy && model_configured;
+}
+
+int healthStatusCode(bool ready) { return ready ? 200 : 503; }
 
 class Service {
  public:
-  explicit Service(const Config& config)
-      : database_(config.database_url), roleplay_database_(config.database_url), model_(config),
-        queue_(config.database_url), worker_concurrency_(config.worker_concurrency) {
+  Service(const Config& config, std::shared_ptr<DatabasePool> database_pool)
+      : database_pool_(std::move(database_pool)), database_(database_pool_),
+        roleplay_database_(database_pool_), model_(config), queue_(database_pool_),
+        worker_concurrency_(config.worker_concurrency) {
     startWorkers();
   }
 
@@ -1082,17 +1343,28 @@ class Service {
   ReliableDatabase& database() { return database_; }
   ReliableRoleplayDatabase& roleplayDatabase() { return roleplay_database_; }
   ModelGateway& model() { return model_; }
-  bool workerRunning() const {
-    return running_workers_.load() > 0 || (!workers_.empty() && !stopping_.load());
+  bool workerHealthy() const {
+    return workerStateHealthy(stopping_.load(), worker_concurrency_, running_workers_.load(),
+                              workers_in_database_backoff_.load());
   }
+  int runningWorkerCount() const { return running_workers_.load(); }
+  int workersInDatabaseBackoff() const { return workers_in_database_backoff_.load(); }
 
   json jobStats() const {
     try {
-      return queue_.stats();
+      auto stats = queue_.stats();
+      stats["available"] = true;
+      return stats;
     } catch (const std::exception& error) {
       std::cerr << json({{"event", "job_stats_error"}, {"error", error.what()}}).dump() << '\n';
-      return {{"pendingJobs", 0}, {"deadJobs", 0}};
+      return {{"available", false}, {"pendingJobs", 0}, {"deadJobs", 0}};
     }
+  }
+
+  json poolStats() const {
+    const auto stats = database_pool_->stats();
+    return {{"maximum", stats.maximum}, {"open", stats.open}, {"idle", stats.idle},
+            {"inUse", stats.in_use}, {"waiting", stats.waiting}};
   }
 
   json sendMessage(const std::string& user_id, const std::string& session_id,
@@ -1138,6 +1410,12 @@ class Service {
   void retryEvaluation(const std::string& user_id, const std::string& session_id) {
     database_.retryEvaluation(user_id, session_id);
     wakeWorkers();
+  }
+
+  json getEvaluation(const std::string& user_id, const std::string& session_id) {
+    const auto result = database_.getEvaluation(user_id, session_id);
+    if (result["status"] == "generating") wakeWorkers();
+    return result;
   }
 
   json sendRoleplayMessage(const std::string& user_id, const std::string& session_id,
@@ -1193,13 +1471,18 @@ class Service {
     wakeWorkers();
   }
 
+  json getSummary(const std::string& user_id, const std::string& session_id) {
+    const auto result = roleplay_database_.getSummary(user_id, session_id);
+    if (result["status"] == "generating") wakeWorkers();
+    return result;
+  }
+
  private:
   static bool retryableJobError(const std::string& code) {
     return code != "MODEL_AUTH_FAILED" && code != "MODEL_NOT_CONFIGURED" &&
            code != "MODEL_CONTENT_FILTERED" && code != "MODEL_UNSAFE_RESPONSE" &&
            code != "SESSION_NOT_FOUND" && code != "ROLEPLAY_SESSION_NOT_FOUND" &&
-           code != "SCENARIO_NOT_FOUND" && code != "UNKNOWN_JOB_TYPE" &&
-           code != "JOB_LEASE_LOST";
+           code != "SCENARIO_NOT_FOUND" && code != "UNKNOWN_JOB_TYPE";
   }
 
   void processJob(const AiJob& job) {
@@ -1228,9 +1511,14 @@ class Service {
     running_workers_.fetch_add(1);
     const auto worker_id = makeId("worker") + '_' + std::to_string(index);
     int database_backoff_seconds = 1;
+    bool in_database_backoff = false;
     while (!stopping_.load()) {
       try {
         const auto job = queue_.claim(worker_id);
+        if (in_database_backoff) {
+          workers_in_database_backoff_.fetch_sub(1);
+          in_database_backoff = false;
+        }
         database_backoff_seconds = 1;
         if (!job.has_value()) {
           std::unique_lock<std::mutex> lock(worker_mutex_);
@@ -1238,6 +1526,24 @@ class Service {
           continue;
         }
         try {
+          LeaseHeartbeat heartbeat(
+              [this, claimed_job = *job] {
+                try {
+                  const bool renewed = queue_.renewLease(claimed_job);
+                  if (!renewed) {
+                    std::cerr << json({{"event", "ai_job_lease_lost"},
+                                      {"jobId", claimed_job.id},
+                                      {"attempt", claimed_job.attempt}}).dump() << '\n';
+                  }
+                  return renewed;
+                } catch (const std::exception& error) {
+                  std::cerr << json({{"event", "ai_job_lease_renew_error"},
+                                    {"jobId", claimed_job.id},
+                                    {"error", error.what()}}).dump() << '\n';
+                  return true;
+                }
+              },
+              std::chrono::seconds(kJobLeaseHeartbeatSeconds));
           processJob(*job);
         } catch (const ApiError& error) {
           try {
@@ -1261,6 +1567,10 @@ class Service {
           }
         }
       } catch (const std::exception& error) {
+        if (!in_database_backoff) {
+          workers_in_database_backoff_.fetch_add(1);
+          in_database_backoff = true;
+        }
         std::cerr << json({{"event", "worker_database_error"}, {"workerId", worker_id},
                           {"backoffSeconds", database_backoff_seconds},
                           {"error", error.what()}}).dump() << '\n';
@@ -1269,9 +1579,16 @@ class Service {
                                 [this] { return stopping_.load(); });
         database_backoff_seconds = std::min(database_backoff_seconds * 2, 30);
       } catch (...) {
+        if (!in_database_backoff) {
+          workers_in_database_backoff_.fetch_add(1);
+          in_database_backoff = true;
+        }
         std::cerr << json({{"event", "worker_unknown_error"}, {"workerId", worker_id}}).dump() << '\n';
+        std::unique_lock<std::mutex> lock(worker_mutex_);
+        worker_signal_.wait_for(lock, std::chrono::seconds(1), [this] { return stopping_.load(); });
       }
     }
+    if (in_database_backoff) workers_in_database_backoff_.fetch_sub(1);
     running_workers_.fetch_sub(1);
   }
 
@@ -1289,6 +1606,7 @@ class Service {
 
   void wakeWorkers() { worker_signal_.notify_all(); }
 
+  std::shared_ptr<DatabasePool> database_pool_;
   ReliableDatabase database_;
   ReliableRoleplayDatabase roleplay_database_;
   ModelGateway model_;
@@ -1296,6 +1614,7 @@ class Service {
   int worker_concurrency_;
   std::atomic<bool> stopping_{false};
   std::atomic<int> running_workers_{0};
+  std::atomic<int> workers_in_database_backoff_{0};
   std::vector<std::thread> workers_;
   std::mutex worker_mutex_;
   std::condition_variable worker_signal_;
@@ -1307,19 +1626,31 @@ class Service {
 int main() {
   const auto config = Config::fromEnvironment();
   g_allowed_origin = config.allowed_origin;
-  Service service(config);
-  IdentityService identity(config);
+  const auto database_pool = std::make_shared<DatabasePool>(
+      config.database_url, static_cast<std::size_t>(config.database_pool_size),
+      std::chrono::milliseconds(config.database_pool_wait_ms));
+  Service service(config, database_pool);
+  IdentityService identity(config, database_pool);
   crow::SimpleApp app;
 
   CROW_ROUTE(app, "/api/health").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
     return handle(request, [&] {
       const auto stats = service.jobStats();
-      return ok({{"database", service.database().healthy()},
-                 {"modelConfigured", service.model().configured()},
-                 {"workerRunning", service.workerRunning()},
+      const bool database_healthy = service.database().healthy();
+      const bool model_configured = service.model().configured();
+      const bool worker_healthy = service.workerHealthy();
+      const bool ready = serviceReady(database_healthy, stats["available"].get<bool>(),
+                                      worker_healthy, model_configured);
+      return ok({{"status", ready ? "healthy" : "unhealthy"}, {"ready", ready},
+                 {"database", database_healthy}, {"modelConfigured", model_configured},
+                 {"workerRunning", worker_healthy},
+                 {"workerThreads", service.runningWorkerCount()},
+                 {"workersInDatabaseBackoff", service.workersInDatabaseBackoff()},
                  {"pendingJobs", stats["pendingJobs"]}, {"deadJobs", stats["deadJobs"]},
+                 {"databasePool", service.poolStats()},
                  {"runtimeApiKeyAllowed", identity.runtimeKeyAllowed()},
-                 {"authMode", identity.authMode()}, {"production", identity.production()}});
+                 {"authMode", identity.authMode()}, {"production", identity.production()}},
+                ready ? "ok" : "service unavailable", healthStatusCode(ready));
     });
   });
 
@@ -1417,7 +1748,7 @@ int main() {
       [&](const crow::request& request, const std::string& session_id) {
     return handle(request, [&] {
       const auto user = identity.authorize(request, true);
-      return ok(service.roleplayDatabase().getSummary(user.id, session_id));
+      return ok(service.getSummary(user.id, session_id));
     });
   });
 
@@ -1479,6 +1810,15 @@ int main() {
     });
   });
 
+  CROW_ROUTE(app, "/api/sessions/<string>/hint").methods(crow::HTTPMethod::POST)(
+      [&](const crow::request& request, const std::string& session_id) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.database().requestTrainingHint(user.id, session_id));
+    });
+  });
+
   CROW_ROUTE(app, "/api/sessions/<string>/finish").methods(crow::HTTPMethod::POST)(
       [&](const crow::request& request, const std::string& session_id) {
     return handle(request, [&] {
@@ -1493,7 +1833,7 @@ int main() {
       [&](const crow::request& request, const std::string& session_id) {
     return handle(request, [&] {
       const auto user = identity.authorize(request, true);
-      return ok(service.database().getEvaluation(user.id, session_id));
+      return ok(service.getEvaluation(user.id, session_id));
     });
   });
 
@@ -1506,10 +1846,107 @@ int main() {
     });
   });
 
+  CROW_ROUTE(app, "/api/learning/phrases").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto* search = request.url_params.get("search");
+      const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* favorites_only = request.url_params.get("favoritesOnly");
+      const auto* limit = request.url_params.get("limit");
+      bool requested_favorites_only = false;
+      if (favorites_only != nullptr) {
+        const auto value = std::string(favorites_only);
+        if (value == "true" || value == "1") requested_favorites_only = true;
+        else if (value != "false" && value != "0") throw ApiError(400, "INVALID_ARGUMENT", "favoritesOnly 参数无效");
+      }
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listLearningPhrases(
+          user.id, search == nullptr ? "" : search, scenario_id == nullptr ? "" : scenario_id,
+          requested_favorites_only, requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/phrases/<string>/<string>/favorite").methods(crow::HTTPMethod::PUT)(
+      [&](const crow::request& request, const std::string& session_id, const std::string& phrase_key) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      if (!body.is_object() || !body.contains("favorite") || !body["favorite"].is_boolean()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "favorite 必须为布尔值");
+      }
+      return ok(service.database().setLearningPhraseFavorite(
+          user.id, session_id, phrase_key, body["favorite"].get<bool>()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mistakes").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* include_mastered = request.url_params.get("includeMastered");
+      const auto* limit = request.url_params.get("limit");
+      bool requested_include_mastered = false;
+      if (include_mastered != nullptr) {
+        const auto value = std::string(include_mastered);
+        if (value == "true" || value == "1") requested_include_mastered = true;
+        else if (value != "false" && value != "0") throw ApiError(400, "INVALID_ARGUMENT", "includeMastered 参数无效");
+      }
+      int requested_limit = 50;
+      if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
+      return ok(service.database().listLearningMistakes(user.id, scenario_id == nullptr ? "" : scenario_id,
+                                                         requested_include_mastered, requested_limit));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mistakes/<string>/<string>").methods(crow::HTTPMethod::PUT)(
+      [&](const crow::request& request, const std::string& session_id, const std::string& mistake_key) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      const auto body = parseRequest(request);
+      if (!body.is_object() || !body.contains("mastered") || !body["mastered"].is_boolean()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "mastered 必须为布尔值");
+      }
+      return ok(service.database().setLearningMistakeMastery(
+          user.id, session_id, mistake_key, body["mastered"].get<bool>()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/profile").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().learningProfile(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/mine").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      return ok(service.database().learningMine(user.id));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/learning/checkins").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request, true);
+      if (!request.body.empty()) parseRequest(request);
+      return ok(service.database().checkIn(user.id));
+    });
+  });
+
   CROW_ROUTE(app, "/api/dashboard/summary").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
     return handle(request, [&] {
       const auto user = identity.authorize(request);
       return ok(service.database().dashboard(user.id, user.isAdmin()));
+    });
+  });
+
+  CROW_ROUTE(app, "/api/supervisor/dashboard").methods(crow::HTTPMethod::GET)([&](const crow::request& request) {
+    return handle(request, [&] {
+      const auto user = identity.authorize(request);
+      if (!user.isAdmin()) throw ApiError(403, "ROLE_FORBIDDEN", "仅主管可查看团队聚合数据");
+      const auto* range = request.url_params.get("range");
+      return ok(service.database().supervisorDashboard(range == nullptr ? "month" : range));
     });
   });
 
@@ -1524,7 +1961,7 @@ int main() {
       }
       crow::response response(204);
       response.set_header("Access-Control-Allow-Origin", config.allowed_origin);
-      response.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
       response.set_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id");
       response.set_header("Access-Control-Max-Age", "600");
       response.set_header("Vary", "Origin");

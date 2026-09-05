@@ -1,0 +1,32 @@
+.mistakes-page { padding: 28rpx 24rpx 48rpx; }
+.page-header { padding: 4rpx 4rpx 22rpx; }
+.eyebrow, .page-title, .page-intro { display: block; }
+.eyebrow { color: #e18558; font-size: 20rpx; letter-spacing: 2rpx; font-weight: 700; }
+.page-title { margin-top: 12rpx; color: #303046; font-size: 42rpx; font-weight: 700; }
+.page-intro { margin-top: 12rpx; color: #888; font-size: 23rpx; line-height: 1.65; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; padding: 20rpx 24rpx; margin-bottom: 22rpx; color: #666; font-size: 24rpx; }
+.loading-card, .empty-card { padding: 38rpx 28rpx; color: #888; text-align: center; font-size: 24rpx; }
+.empty-title, .empty-text { display: block; }
+.empty-title { color: #444; font-size: 29rpx; font-weight: 700; }
+.empty-text { margin-top: 12rpx; line-height: 1.6; }
+.empty-card button { width: 100%; margin-top: 24rpx; }
+.mistake-list { display: flex; flex-direction: column; gap: 18rpx; }
+.mistake-card { padding: 24rpx; }
+.mastered-card { opacity: .7; }
+.mistake-head, .mistake-actions { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.scene-name, .round-label { display: block; }
+.scene-name { color: #444; font-size: 27rpx; font-weight: 700; }
+.round-label { margin-top: 6rpx; color: #aaa; font-size: 21rpx; }
+.priority { flex-shrink: 0; padding: 7rpx 12rpx; border-radius: 16rpx; color: #7c77a9; background: #f0effa; font-size: 20rpx; }
+.priority.high { color: #c65f61; background: #fff0f0; }
+.priority.medium { color: #bf7b3e; background: #fff6e8; }
+.mastered-label { display: inline-block; margin-top: 15rpx; padding: 6rpx 12rpx; border-radius: 15rpx; color: #42946b; background: #edf8f1; font-size: 20rpx; }
+.quote-box, .reason-box, .rewrite-box { display: flex; flex-direction: column; margin-top: 16rpx; padding: 16rpx; border-radius: 14rpx; color: #666; background: #f8f8fb; font-size: 23rpx; line-height: 1.55; }
+.reason-box { background: #fff8ed; color: #8b704e; }
+.rewrite-box { color: #4c609b; background: #f0f3ff; }
+.field-label { margin-bottom: 5rpx; color: #999; font-size: 20rpx; }
+.rewrite-box .field-label { color: #667eea; font-weight: 700; }
+.mistake-actions { margin-top: 22rpx; font-size: 23rpx; }
+.mastery-action { color: #667eea; }
+.retrain-action { color: #4b9b72; }
+.bottom-links { display: flex; justify-content: space-around; margin-top: 32rpx; color: #667eea; font-size: 23rpx; }

@@ -1,16 +1,54 @@
 const api = require('../../utils/api.js');
 
-Page({
-  data: { sessions: [], expandedId: '', historyMode: 'customer_service' },
+const dimensionsFrom = score => [
+  { key: 'empathy', name: '同理心', score: score.empathy || 0, color: '#667eea' },
+  { key: 'knowledgeAccuracy', name: '知识准确性', score: score.knowledgeAccuracy || 0, color: '#52a67a' },
+  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery || 0, color: '#f0a34b' },
+  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette || 0, color: '#6b9de8' },
+  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance || 0, color: '#8b75c9' }
+];
 
-  onShow() { this.loadSessions(); },
+Page({
+  data: {
+    sessions: [],
+    expandedId: '',
+    expandedEvaluationId: '',
+    historyMode: 'customer_service',
+    statusFilters: [
+      { id: 'all', name: '全部' }, { id: 'completed', name: '已完成' },
+      { id: 'in_progress', name: '进行中' }, { id: 'abandoned', name: '已放弃' }
+    ],
+    scenarioFilters: [{ id: '', name: '全部场景' }],
+    selectedStatus: 'all',
+    selectedScenarioId: ''
+  },
+
+  onShow() {
+    this.loadScenarioFilters();
+    this.loadSessions();
+  },
+
+  loadScenarioFilters() {
+    api.getScenarios().then(data => {
+      const scenarioFilters = [{ id: '', name: '全部场景' }].concat((data.items || []).map(item => ({
+        id: item.id,
+        name: item.name
+      })));
+      this.setData({ scenarioFilters });
+    }).catch(() => {});
+  },
 
   loadSessions() {
     this.historyRequestVersion = (this.historyRequestVersion || 0) + 1;
     const requestVersion = this.historyRequestVersion;
     const requestedMode = this.data.historyMode;
     const isRoleplay = requestedMode === 'patient_simulation';
-    const request = isRoleplay ? api.getRoleplaySessions({ status: 'all', limit: 50 }) : api.getSessions({ status: 'all', limit: 50 });
+    const params = {
+      status: this.data.selectedStatus,
+      scenarioId: this.data.selectedScenarioId,
+      limit: 50
+    };
+    const request = isRoleplay ? api.getRoleplaySessions(params) : api.getSessions(params);
     request.then(data => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
       const sessions = data.items.map(item => Object.assign({}, item, {
@@ -23,9 +61,11 @@ Page({
             : '查看对话',
         evaluation: !isRoleplay && item.totalScore !== null ? { totalScore: item.totalScore } : null,
         isRoleplay,
-        messages: []
+        messages: [],
+        evaluationDetail: null,
+        evaluationLoading: false
       }));
-      this.setData({ sessions, expandedId: '' });
+      this.setData({ sessions, expandedId: '', expandedEvaluationId: '' });
     }).catch(error => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
       wx.showToast({ title: error.message || '历史记录加载失败', icon: 'none' });
@@ -35,7 +75,19 @@ Page({
   switchHistoryMode(e) {
     const mode = e.currentTarget.dataset.mode;
     if (!mode || mode === this.data.historyMode) return;
-    this.setData({ historyMode: mode, sessions: [], expandedId: '' }, () => this.loadSessions());
+    this.setData({ historyMode: mode, sessions: [], expandedId: '', expandedEvaluationId: '' }, () => this.loadSessions());
+  },
+
+  selectStatus(e) {
+    const selectedStatus = e.currentTarget.dataset.id || 'all';
+    if (selectedStatus === this.data.selectedStatus) return;
+    this.setData({ selectedStatus }, () => this.loadSessions());
+  },
+
+  selectScenario(e) {
+    const selectedScenarioId = e.currentTarget.dataset.id || '';
+    if (selectedScenarioId === this.data.selectedScenarioId) return;
+    this.setData({ selectedScenarioId }, () => this.loadSessions());
   },
 
   handleAction(e) {
@@ -76,6 +128,40 @@ Page({
     }).catch(error => {
       if (requestVersion !== this.conversationRequestVersion || requestedMode !== this.data.historyMode) return;
       wx.showToast({ title: error.message, icon: 'none' });
+    });
+  },
+
+  toggleEvaluation(e) {
+    const id = e.currentTarget.dataset.id;
+    const session = this.data.sessions.find(item => item.id === id);
+    if (!session || session.isRoleplay || session.status !== 'completed') return;
+    if (this.data.expandedEvaluationId === id) {
+      this.setData({ expandedEvaluationId: '' });
+      return;
+    }
+    if (session.evaluationDetail && !session.evaluationDetail.pending) {
+      this.setData({ expandedEvaluationId: id });
+      return;
+    }
+    this.evaluationRequestVersion = (this.evaluationRequestVersion || 0) + 1;
+    const requestVersion = this.evaluationRequestVersion;
+    const sessions = this.data.sessions.map(item => item.id === id
+      ? Object.assign({}, item, { evaluationLoading: true }) : item);
+    this.setData({ sessions, expandedEvaluationId: id });
+    api.getEvaluation(id).then(data => {
+      if (requestVersion !== this.evaluationRequestVersion || this.data.historyMode !== 'customer_service') return;
+      const detail = data.status === 'ready' && data.evaluation ? Object.assign({}, data.evaluation, {
+        dimensions: dimensionsFrom(data.evaluation.dimensionScores || {})
+      }) : { status: data.status, pending: true };
+      const nextSessions = this.data.sessions.map(item => item.id === id
+        ? Object.assign({}, item, { evaluationDetail: detail, evaluationLoading: false }) : item);
+      this.setData({ sessions: nextSessions });
+    }).catch(error => {
+      if (requestVersion !== this.evaluationRequestVersion) return;
+      const nextSessions = this.data.sessions.map(item => item.id === id
+        ? Object.assign({}, item, { evaluationLoading: false }) : item);
+      this.setData({ sessions: nextSessions, expandedEvaluationId: '' });
+      wx.showToast({ title: error.message || '报告加载失败', icon: 'none' });
     });
   }
 });

@@ -21,7 +21,6 @@
   <view class="list-card card practice-card"><text class="list-item" wx:for="{{summary.nextPracticeSuggestions}}" wx:key="*this">• {{item}}</text></view>
 
   <view class="result-actions"><button class="primary-button" bindtap="viewScenes">再练一个场景</button><button class="secondary-button action-button" bindtap="viewHistory">查看历史记录</button></view>
-  <text class="disclaimer">AI模拟训练，不构成医疗建议。</text>
 </view>
 
 <view class="page-shell roleplay-result-page loading-result" wx:if="{{loading}}">

@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Net.Http
 
 function Invoke-Api {
   param(
@@ -24,10 +25,34 @@ function Invoke-Api {
   return $response.data
 }
 
-$health = Invoke-Api GET '/health' $null
+function Invoke-Health {
+  $client = [System.Net.Http.HttpClient]::new()
+  try {
+    $response = $client.GetAsync("$BaseUrl/health").GetAwaiter().GetResult()
+    $payload = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ([int]$response.StatusCode -notin @(200, 503) -or $payload.code -ne 0) {
+      throw "Health API failed: HTTP $([int]$response.StatusCode) / $($payload.code)"
+    }
+    return $payload.data
+  } finally {
+    $client.Dispose()
+  }
+}
+
+$health = Invoke-Health
 if (-not $health.database) { throw 'Database health check failed.' }
 if (-not $health.workerRunning) { throw 'AI worker is not running.' }
+if ($health.workersInDatabaseBackoff -ne 0) { throw 'AI worker is backing off after a database error.' }
 if ($null -eq $health.pendingJobs -or $null -eq $health.deadJobs) { throw 'Worker health counters are missing.' }
+if ($health.databasePool.maximum -lt 4 -or
+    $health.databasePool.open -gt $health.databasePool.maximum) {
+  throw 'Database connection pool health is invalid.'
+}
+$expectedHealthStatus = if ($health.ready) { 'healthy' } else { 'unhealthy' }
+if ([bool]$health.ready -ne [bool]$health.modelConfigured -or
+    $health.status -ne $expectedHealthStatus) {
+  throw 'Health readiness does not match model availability.'
+}
 
 $login = Invoke-Api POST '/auth/wechat' @{ code = $WechatCode }
 if ([string]::IsNullOrWhiteSpace($login.accessToken)) { throw 'Login did not return an access token.' }

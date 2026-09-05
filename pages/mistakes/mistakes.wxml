@@ -1,0 +1,29 @@
+<view class="page-shell mistakes-page">
+  <view class="page-header">
+    <text class="eyebrow">PRACTICE AGAIN</text>
+    <text class="page-title">错题复练</text>
+    <text class="page-intro">每一项都来自你的评分报告。复练时请优先练习建议改写中的沟通结构与合规边界。</text>
+  </view>
+
+  <view class="toolbar card"><text>显示已掌握项目</text><switch checked="{{includeMastered}}" color="#667eea" bindchange="toggleMastered" /></view>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在整理需要复练的内容…</text></view>
+  <view class="empty-card card" wx:elif="{{mistakes.length === 0}}">
+    <text class="empty-title">{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}</text>
+    <text class="empty-text">完成训练并生成报告后，系统会把需要改进的表达收录在这里。</text>
+    <button class="primary-button" bindtap="goPhrases">去话术锦囊看看</button>
+  </view>
+
+  <view class="mistake-list" wx:else>
+    <view class="mistake-card card {{item.mastered ? 'mastered-card' : ''}}" wx:for="{{mistakes}}" wx:key="id">
+      <view class="mistake-head"><view><text class="scene-name">{{item.scenarioName}}</text><text class="round-label">第 {{item.round}} 轮 · {{item.kind === 'violation' ? '合规风险' : '改进练习'}}</text></view><text class="priority {{item.priority}}">{{item.priority === 'high' ? '优先复练' : item.priority === 'medium' ? '需要关注' : '练习建议'}}</text></view>
+      <text class="mastered-label" wx:if="{{item.mastered}}">已标记掌握</text>
+      <view class="quote-box" wx:if="{{item.originalQuote}}"><text class="field-label">当时表达</text><text>“{{item.originalQuote}}”</text></view>
+      <view class="reason-box"><text class="field-label">为什么需要调整</text><text>{{item.reason}}</text></view>
+      <view class="rewrite-box"><text class="field-label">建议改写</text><text>{{item.recommendedRewrite}}</text></view>
+      <view class="mistake-actions"><text class="mastery-action" bindtap="toggleMastery" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-mistake-key="{{item.mistakeKey}}" data-mastered="{{item.mastered}}">{{savingId === item.id ? '保存中…' : item.mastered ? '恢复为待练习' : '标记已掌握'}}</text><text class="retrain-action" bindtap="retrain" data-scenario-id="{{item.scenarioId}}">用此场景复练 ›</text></view>
+    </view>
+  </view>
+
+  <view class="bottom-links"><text bindtap="goPhrases">查看话术锦囊</text><text bindtap="goProfile">查看个人成长</text></view>
+</view>

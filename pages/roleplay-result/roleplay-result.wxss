@@ -19,7 +19,6 @@
 .result-actions { padding: 0 24rpx; }
 .result-actions button { width: 100%; height: 76rpx; line-height: 76rpx; margin-bottom: 16rpx; padding: 0; }
 .action-button { border: 0; }
-.disclaimer { display: block; color: #aaa; font-size: 21rpx; text-align: center; }
 .loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; }
 .loading-card { width: 100%; padding: 48rpx 32rpx; text-align: center; }
 .loading-title, .loading-text { display: block; }

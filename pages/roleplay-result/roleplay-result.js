@@ -1,4 +1,5 @@
 const api = require('../../utils/api.js');
+const { resultStateAction } = require('../../utils/result-state.js');
 
 Page({
   data: {
@@ -15,9 +16,15 @@ Page({
   pollTimer: null,
   waitStartedAt: 0,
   networkRetryIndex: 0,
+  stateRecoveryStarted: false,
+  stateRecoveryAttempted: false,
 
   onLoad(options) {
     this.sessionId = options.sessionId || '';
+    if (!this.sessionId) {
+      this.handleMissingSession();
+      return;
+    }
     this.waitStartedAt = Date.now();
     this.loadInitialData();
   },
@@ -25,7 +32,6 @@ Page({
   onUnload() { if (this.pollTimer) clearTimeout(this.pollTimer); },
 
   loadInitialData() {
-    if (!this.sessionId) return;
     Promise.all([
       api.getRoleplaySession(this.sessionId),
       api.getRoleplayScenarios()
@@ -41,12 +47,34 @@ Page({
     if (!this.sessionId || !this.data.session) return;
     api.getRoleplaySummary(this.sessionId).then(summaryData => {
       this.networkRetryIndex = 0;
-      if (summaryData.status === 'ready' && summaryData.summary) {
+      const action = resultStateAction(summaryData.status, this.data.session.status);
+      if (action === 'ready' && summaryData.summary) {
         this.setData({ summary: summaryData.summary, loading: false, retryable: false, timedOut: false });
         return;
       }
-      if (summaryData.status === 'failed') {
+      if (action === 'failed') {
         this.setData({ loading: true, loadingText: '复盘生成失败，可重新生成', retryable: true, timedOut: false });
+        return;
+      }
+      if (action === 'recover-generation') {
+        if (this.stateRecoveryAttempted) {
+          if (this.waitExpired()) {
+            this.showWaitActions('复盘任务暂未启动，你可以继续等待或返回历史记录。');
+          } else {
+            this.setData({ loading: true, loadingText: '正在等待复盘任务启动…', retryable: false });
+            this.schedule(() => this.pollSummary(), 2000);
+          }
+          return;
+        }
+        this.recoverGeneration();
+        return;
+      }
+      if (action === 'return-to-session') {
+        this.returnToRoleplay();
+        return;
+      }
+      if (action === 'return-to-history') {
+        this.returnToHistory();
         return;
       }
       if (this.waitExpired()) {
@@ -56,6 +84,56 @@ Page({
       this.setData({ loading: true, loadingText: '正在生成学习复盘…', retryable: false, timedOut: false });
       this.schedule(() => this.pollSummary(), 2000);
     }).catch(error => this.handleNetworkError(error, () => this.pollSummary()));
+  },
+
+  recoverGeneration() {
+    if (this.stateRecoveryStarted) return;
+    this.stateRecoveryStarted = true;
+    this.stateRecoveryAttempted = true;
+    this.setData({ loading: true, loadingText: '正在恢复复盘任务…', retryable: false, timedOut: false });
+    api.finishRoleplaySession(this.sessionId).then(() => {
+      this.stateRecoveryStarted = false;
+      this.waitStartedAt = Date.now();
+      this.pollSummary();
+    }).catch(error => {
+      this.stateRecoveryStarted = false;
+      this.stateRecoveryAttempted = false;
+      this.handleNetworkError(error, () => this.recoverGeneration());
+    });
+  },
+
+  returnToRoleplay() {
+    if (this.stateRecoveryStarted) return;
+    this.stateRecoveryStarted = true;
+    this.setData({ loading: true, loadingText: '患者模拟尚未结束，正在返回会话…', retryable: false });
+    wx.showModal({
+      title: '患者模拟尚未结束',
+      content: '完成至少一轮问答并结束模拟后，才能生成学习复盘。',
+      showCancel: false,
+      success: () => wx.redirectTo({ url: `/pages/roleplay/roleplay?sessionId=${this.sessionId}` })
+    });
+  },
+
+  returnToHistory() {
+    if (this.stateRecoveryStarted) return;
+    this.stateRecoveryStarted = true;
+    this.setData({ loading: true, loadingText: '该患者模拟无法生成复盘', retryable: false });
+    wx.showModal({
+      title: '无法生成复盘',
+      content: '该患者模拟已被放弃，请从历史记录选择其他已完成会话。',
+      showCancel: false,
+      success: () => wx.switchTab({ url: '/pages/report/report' })
+    });
+  },
+
+  handleMissingSession() {
+    this.setData({ loading: true, loadingText: '缺少患者模拟会话信息' });
+    wx.showModal({
+      title: '无法打开复盘',
+      content: '页面链接缺少会话信息，请从历史记录重新进入。',
+      showCancel: false,
+      success: () => wx.switchTab({ url: '/pages/report/report' })
+    });
   },
 
   handleNetworkError(error, retry) {

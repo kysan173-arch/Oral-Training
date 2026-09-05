@@ -50,6 +50,8 @@ FetchContent_MakeAvailable(crow nlohmann_json libpqxx)
 
 add_executable(oral_training_backend src/main.cpp)
 add_executable(report_validation_test tests/report_validation_test.cpp)
+add_executable(security_config_test tests/security_config_test.cpp)
+add_executable(database_feature_test tests/database_feature_test.cpp)
 
 set(ORAL_TRAINING_LIBRARIES
   Crow::Crow
@@ -63,12 +65,20 @@ set(ORAL_TRAINING_LIBRARIES
 
 target_link_libraries(oral_training_backend PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(report_validation_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
+target_link_libraries(security_config_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
+target_link_libraries(database_feature_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
 
 target_compile_definitions(oral_training_backend PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_definitions(report_validation_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_definitions(security_config_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_definitions(database_feature_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
 enable_testing()
 add_test(NAME report_validation COMMAND report_validation_test)
+add_test(NAME security_config COMMAND security_config_test)
+add_test(NAME client_recovery COMMAND node ${CMAKE_CURRENT_SOURCE_DIR}/tests/client_recovery_test.js)
+add_test(NAME database_feature COMMAND database_feature_test)
+set_tests_properties(database_feature PROPERTIES SKIP_RETURN_CODE 77)
 add_test(
   NAME client_static_checks
   COMMAND powershell -NoProfile -ExecutionPolicy Bypass
@@ -78,6 +88,10 @@ add_test(
 if(MSVC)
   target_compile_options(oral_training_backend PRIVATE /utf-8)
   target_compile_options(report_validation_test PRIVATE /utf-8)
+  target_compile_options(security_config_test PRIVATE /utf-8)
+  target_compile_options(database_feature_test PRIVATE /utf-8)
   target_compile_definitions(oral_training_backend PRIVATE _WIN32_WINNT=0x0A00)
   target_compile_definitions(report_validation_test PRIVATE _WIN32_WINNT=0x0A00)
+  target_compile_definitions(security_config_test PRIVATE _WIN32_WINNT=0x0A00)
+  target_compile_definitions(database_feature_test PRIVATE _WIN32_WINNT=0x0A00)
 endif()

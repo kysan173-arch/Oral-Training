@@ -21,6 +21,9 @@ foreach ($file in $jsonFiles) {
   }
 }
 
+& $node.Source (Join-Path $PSScriptRoot 'client_recovery_test.js')
+if ($LASTEXITCODE -ne 0) { throw 'Client recovery tests failed.' }
+
 [pscustomobject]@{
   Result = 'passed'
   JavaScriptFiles = $javascriptFiles.Count

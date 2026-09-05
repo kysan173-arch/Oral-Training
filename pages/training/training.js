@@ -10,6 +10,14 @@ const normalizeMessages = messages => messages.map(message => Object.assign({}, 
   time: message.createdAt || ''
 }));
 
+const QUICK_PHRASES = [
+  '我先帮您确认一下目前最关心的是哪一方面。',
+  '理解您的顾虑，我们可以先把相关情况了解清楚。',
+  '具体情况需要由医生结合检查评估，我可以协助安排咨询。',
+  '很抱歉让您感到不便，我们先一起确认下一步处理方式。',
+  '费用需要结合检查后的方案确认，我可以说明咨询和报价流程。'
+];
+
 Page({
   data: {
     session: null,
@@ -21,7 +29,12 @@ Page({
     scrollToView: '',
     sending: false,
     finishing: false,
-    pendingClientMessageId: ''
+    pendingClientMessageId: '',
+    hints: [],
+    hintLimit: 3,
+    hintRemaining: 3,
+    requestingHint: false,
+    quickPhrases: QUICK_PHRASES
   },
 
   sessionId: '',
@@ -31,11 +44,23 @@ Page({
 
   onLoad(options) {
     this.sessionId = options.sessionId || '';
+    if (!this.sessionId) {
+      this.handleMissingSession();
+      return;
+    }
     this.loadSession();
   },
 
+  handleMissingSession() {
+    wx.showModal({
+      title: '无法打开训练',
+      content: '页面链接缺少会话信息，请从场景列表重新进入。',
+      showCancel: false,
+      success: () => wx.switchTab({ url: '/pages/index/index' })
+    });
+  },
+
   loadSession() {
-    if (!this.sessionId) return;
     Promise.all([api.getSession(this.sessionId), api.getScenarios()]).then(([detail, scenarioData]) => {
       const scenario = scenarioData.items.find(item => item.id === detail.session.scenarioId);
       if (!scenario) throw new Error('训练场景不存在');
@@ -48,6 +73,9 @@ Page({
         inputValue: pendingMessage ? pendingMessage.content : this.data.inputValue,
         currentRound: detail.session.currentRound,
         maxRounds: detail.session.maxRounds,
+        hints: detail.hints || [],
+        hintLimit: detail.hintLimit || 3,
+        hintRemaining: detail.hintRemaining === undefined ? 3 : detail.hintRemaining,
         finishing: detail.session.status === 'completed'
       }, () => {
         this.scrollToBottom();
@@ -61,6 +89,31 @@ Page({
   },
 
   onInputChange(e) { this.setData({ inputValue: e.detail.value }); },
+
+  useQuickPhrase(e) {
+    if (this.data.sending || this.data.finishing) return;
+    const phrase = e.currentTarget.dataset.phrase || '';
+    if (!phrase) return;
+    this.setData({ inputValue: phrase });
+  },
+
+  requestHint() {
+    if (this.data.requestingHint || this.data.finishing || this.data.hintRemaining <= 0) return;
+    this.setData({ requestingHint: true });
+    api.requestTrainingHint(this.sessionId).then(data => {
+      const hint = data.hint;
+      const hints = hint ? this.data.hints.concat([hint]) : this.data.hints;
+      this.setData({
+        hints,
+        hintLimit: data.hintLimit || this.data.hintLimit,
+        hintRemaining: data.hintRemaining === undefined ? this.data.hintRemaining : data.hintRemaining,
+        requestingHint: false
+      }, () => this.scrollToBottom());
+    }).catch(error => {
+      this.setData({ requestingHint: false });
+      wx.showToast({ title: error.message || '训练提示获取失败', icon: 'none' });
+    });
+  },
 
   sendMessage() {
     const content = this.data.inputValue.trim();

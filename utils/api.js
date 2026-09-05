@@ -1,4 +1,5 @@
 const { getApiBaseUrl } = require('./config.js');
+const { DEFAULT_REQUEST_TIMEOUT, MODEL_REQUEST_TIMEOUT } = require('./request-policy.js');
 
 const TOKEN_KEY = 'oralTrainingAccessToken';
 const USER_KEY = 'oralTrainingUser';
@@ -16,13 +17,16 @@ const rawRequest = (path, options = {}) => new Promise((resolve, reject) => {
     url: `${baseUrl}${path}`,
     method: options.method || 'GET',
     data: options.data,
-    timeout: options.timeout || 30000,
+    timeout: options.timeout === undefined ? DEFAULT_REQUEST_TIMEOUT : options.timeout,
     header: Object.assign({ 'content-type': 'application/json' }, options.token
       ? { Authorization: `Bearer ${options.token}` }
       : {}),
     success: response => {
       const payload = response.data || {};
-      if (response.statusCode >= 200 && response.statusCode < 300 && payload.code === 0) {
+      const acceptedStatus = response.statusCode >= 200 && response.statusCode < 300;
+      const acceptedUnreadyHealth = options.acceptUnreadyHealth === true &&
+        response.statusCode === 503;
+      if ((acceptedStatus || acceptedUnreadyHealth) && payload.code === 0) {
         resolve(payload.data);
         return;
       }
@@ -90,18 +94,27 @@ const query = values => Object.keys(values)
   .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(values[key])}`)
   .join('&');
 
+const formatScore = value => {
+  const score = Number(value);
+  return Number.isFinite(score) ? Number(score.toFixed(1)) : 0;
+};
+
 module.exports = {
+  formatScore,
   ensureAuthenticated,
   clearAuthentication,
   getCurrentUser: () => wx.getStorageSync(USER_KEY) || null,
-  getHealth: () => request('/health', { public: true }),
+  getHealth: () => request('/health', { public: true, acceptUnreadyHealth: true }),
   setDeepSeekKey: apiKey => request('/config/deepseek-key', { method: 'POST', data: { apiKey } }),
   getScenarios: () => request('/scenarios'),
   createSession: scenarioId => request('/sessions', { method: 'POST', data: { scenarioId } }),
   restartSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/restart`, { method: 'POST', data: {} }),
   getSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}`),
   sendMessage: (sessionId, clientMessageId, content) => request(`/sessions/${encodeURIComponent(sessionId)}/messages`, {
-    method: 'POST', data: { clientMessageId, content }
+    method: 'POST', data: { clientMessageId, content }, timeout: MODEL_REQUEST_TIMEOUT
+  }),
+  requestTrainingHint: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/hint`, {
+    method: 'POST', data: {}
   }),
   finishSession: (sessionId, reason = 'manual') => request(`/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
@@ -114,7 +127,7 @@ module.exports = {
   restartRoleplaySession: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/restart`, { method: 'POST', data: {} }),
   getRoleplaySession: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}`),
   sendRoleplayMessage: (sessionId, clientMessageId, content) => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/messages`, {
-    method: 'POST', data: { clientMessageId, content }
+    method: 'POST', data: { clientMessageId, content }, timeout: MODEL_REQUEST_TIMEOUT
   }),
   finishRoleplaySession: (sessionId, reason = 'manual') => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
@@ -122,5 +135,19 @@ module.exports = {
   getRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary`),
   retryRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary/retry`, { method: 'POST', data: {} }),
   getRoleplaySessions: params => request(`/roleplay/sessions?${query(params || {})}`),
-  getDashboard: () => request('/dashboard/summary')
+  getDashboard: () => request('/dashboard/summary'),
+  getLearningPhrases: params => request(`/learning/phrases?${query(params || {})}`),
+  setLearningPhraseFavorite: (sessionId, phraseKey, favorite) => request(
+    `/learning/phrases/${encodeURIComponent(sessionId)}/${encodeURIComponent(phraseKey)}/favorite`,
+    { method: 'PUT', data: { favorite } }
+  ),
+  getLearningMistakes: params => request(`/learning/mistakes?${query(params || {})}`),
+  setLearningMistakeMastery: (sessionId, mistakeKey, mastered) => request(
+    `/learning/mistakes/${encodeURIComponent(sessionId)}/${encodeURIComponent(mistakeKey)}`,
+    { method: 'PUT', data: { mastered } }
+  ),
+  getLearningProfile: () => request('/learning/profile'),
+  getLearningMine: () => request('/learning/mine'),
+  checkIn: () => request('/learning/checkins', { method: 'POST', data: {} }),
+  getSupervisorDashboard: params => request(`/supervisor/dashboard?${query(params || {})}`)
 };

@@ -1,0 +1,18 @@
+<view class="page-shell mine-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在汇总成长数据…</text></view>
+  <block wx:elif="{{mine}}">
+    <view class="mine-hero"><view><text class="mine-name">{{mine.user.displayName}}</text><text class="mine-subtitle">把每一次练习沉淀为自己的沟通能力</text></view><view class="points-badge"><text class="points-value">{{mine.points}}</text><text class="points-label">学习积分</text></view></view>
+    <view class="points-note"><text>积分仅来自每日签到，用于记录学习坚持；不设兑换、排行或其他获取方式。</text></view>
+
+    <view class="stat-grid"><view class="stat-card card"><text>{{mine.stats.totalCompleted}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{mine.stats.averageScore}}</text><text>平均得分</text></view><view class="stat-card card"><text>{{mine.stats.passRate}}%</text><text>练习达标率</text></view></view>
+
+    <view class="section-heading"><view><text>每日签到</text><text>{{streakText}}</text></view><button class="checkin-button {{mine.checkin.checkedToday ? 'checked' : ''}}" bindtap="checkIn" disabled="{{checkingIn || mine.checkin.checkedToday}}">{{checkingIn ? '签到中' : mine.checkin.checkedToday ? '今日已签到' : '签到 +10'}}</button></view>
+    <view class="calendar-card card"><text class="calendar-title">{{mine.checkin.year}} 年 {{mine.checkin.month}} 月</text><view class="weekdays"><text wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text></view><view class="calendar-grid"><view wx:for="{{calendarDays}}" wx:key="index" class="calendar-cell {{item.checked ? 'checked' : ''}} {{item.isToday ? 'today' : ''}}"><text wx:if="{{!item.empty}}">{{item.day}}</text></view></view></view>
+
+    <view class="section-heading"><view><text>学习工具</text><text>全部基于本人记录</text></view></view>
+    <view class="tool-card card" bindtap="goProfile"><text class="tool-icon">📊</text><view><text>个人成长</text><text>查看五维能力和训练走势</text></view><text class="tool-arrow">›</text></view>
+    <view class="tool-card card" bindtap="goMistakes"><text class="tool-icon">📝</text><view><text>错题复练</text><text>回到需要调整的真实表达</text></view><text class="tool-arrow">›</text></view>
+    <view class="tool-card card" bindtap="goPhrases"><text class="tool-icon">💬</text><view><text>话术锦囊</text><text>从报告中提炼的合规表达</text></view><text class="tool-arrow">›</text></view>
+    <view class="tool-card card" bindtap="goFavorites"><text class="tool-icon">⭐</text><view><text>我的话术收藏</text><text>已收藏 {{mine.favoritesCount}} 条话术</text></view><text class="tool-arrow">›</text></view>
+  </block>
+</view>

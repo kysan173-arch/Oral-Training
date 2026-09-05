@@ -8,6 +8,77 @@ struct UserContext {
   bool isAdmin() const { return role == "admin"; }
 };
 
+std::vector<std::string> forwardedHeaderValues(const std::string& header, size_t max_items = 20) {
+  if (header.size() > 2048) {
+    throw ApiError(400, "FORWARDED_HEADER_INVALID", "代理转发请求头无效");
+  }
+  std::vector<std::string> values;
+  size_t start = 0;
+  while (start <= header.size()) {
+    const auto separator = header.find(',', start);
+    const auto value = trim(header.substr(start, separator == std::string::npos
+        ? std::string::npos : separator - start));
+    if (value.empty() || values.size() >= max_items) {
+      throw ApiError(400, "FORWARDED_HEADER_INVALID", "代理转发请求头无效");
+    }
+    values.push_back(value);
+    if (separator == std::string::npos) break;
+    start = separator + 1;
+  }
+  return values;
+}
+
+bool isTrustedProxy(const std::string& address, const std::vector<std::string>& trusted_proxies) {
+  try {
+    const auto normalized = normalizeIpAddress(address);
+    return std::find(trusted_proxies.begin(), trusted_proxies.end(), normalized) !=
+        trusted_proxies.end();
+  } catch (...) {
+    return false;
+  }
+}
+
+std::string resolveClientAddress(const std::string& remote_address,
+                                 const std::string& forwarded_for,
+                                 const std::vector<std::string>& trusted_proxies) {
+  std::string normalized_remote;
+  try {
+    normalized_remote = normalizeIpAddress(remote_address);
+  } catch (...) {
+    return "unknown";
+  }
+  if (!isTrustedProxy(normalized_remote, trusted_proxies) || forwarded_for.empty()) {
+    return normalized_remote;
+  }
+  const auto raw_chain = forwardedHeaderValues(forwarded_for);
+  std::vector<std::string> chain;
+  chain.reserve(raw_chain.size() + 1);
+  for (const auto& raw_address : raw_chain) {
+    try {
+      chain.push_back(normalizeIpAddress(raw_address));
+    } catch (...) {
+      throw ApiError(400, "FORWARDED_HEADER_INVALID", "X-Forwarded-For 包含无效地址");
+    }
+  }
+  chain.push_back(normalized_remote);
+  for (auto iterator = chain.rbegin(); iterator != chain.rend(); ++iterator) {
+    if (!isTrustedProxy(*iterator, trusted_proxies)) return *iterator;
+  }
+  return chain.front();
+}
+
+bool requestForwardedAsHttps(const std::string& remote_address,
+                             const std::string& forwarded_proto,
+                             const std::vector<std::string>& trusted_proxies) {
+  if (!isTrustedProxy(remote_address, trusted_proxies) || forwarded_proto.empty()) return false;
+  const auto values = forwardedHeaderValues(forwarded_proto);
+  const auto protocol = lowercaseAscii(values.back());
+  if (protocol != "http" && protocol != "https") {
+    throw ApiError(400, "FORWARDED_HEADER_INVALID", "X-Forwarded-Proto 无效");
+  }
+  return protocol == "https";
+}
+
 class SlidingWindowRateLimiter {
  public:
   explicit SlidingWindowRateLimiter(int limit) : limit_(limit) {}
@@ -40,13 +111,14 @@ class SlidingWindowRateLimiter {
 
 class IdentityService {
  public:
-  explicit IdentityService(Config config)
-      : config_(std::move(config)), limiter_(config_.rate_limit_per_minute),
+  IdentityService(Config config, std::shared_ptr<DatabasePool> database_pool)
+      : config_(std::move(config)), database_pool_(std::move(database_pool)),
+        limiter_(config_.rate_limit_per_minute),
         login_limiter_(std::max(10, config_.rate_limit_per_minute / 4)) {}
 
   json login(const crow::request& request, const std::string& code) {
     enforceTransportAndOrigin(request);
-    if (!login_limiter_.allow("login|" + request.remote_ip_address)) {
+    if (!login_limiter_.allow("login|" + clientAddress(request))) {
       throw ApiError(429, "RATE_LIMITED", "登录请求过于频繁，请稍后重试");
     }
     std::string user_id;
@@ -64,7 +136,7 @@ class IdentityService {
 
   UserContext authorize(const crow::request& request, bool learner_only = false) {
     enforceTransportAndOrigin(request);
-    if (!limiter_.allow("ip|" + request.remote_ip_address)) {
+    if (!limiter_.allow("ip|" + clientAddress(request))) {
       throw ApiError(429, "RATE_LIMITED", "请求过于频繁，请稍后重试");
     }
     const auto authorization = request.get_header_value("Authorization");
@@ -74,8 +146,8 @@ class IdentityService {
     }
     const auto token = authorization.substr(sizeof(prefix) - 1);
     if (token.size() < 32 || token.size() > 256) throw ApiError(401, "AUTH_INVALID", "登录状态无效");
-    pqxx::connection connection(config_.database_url);
-    pqxx::work tx(connection);
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
     const auto rows = tx.exec_params(R"(
       SELECT users.id, users.role, users.display_name
       FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
@@ -87,7 +159,7 @@ class IdentityService {
     const UserContext user{rows[0]["id"].c_str(), rows[0]["role"].c_str(),
                            rows[0]["display_name"].c_str()};
     if (learner_only && user.role != "learner") {
-      throw ApiError(403, "ROLE_FORBIDDEN", "管理员账号只能查看机构汇总");
+      throw ApiError(403, "ROLE_FORBIDDEN", "管理员账号不能使用学员训练与个人成长功能");
     }
     if (!limiter_.allow("user|" + user.id)) {
       throw ApiError(429, "RATE_LIMITED", "请求过于频繁，请稍后重试");
@@ -102,8 +174,16 @@ class IdentityService {
   const std::string& authMode() const { return config_.auth_mode; }
 
  private:
+  std::string clientAddress(const crow::request& request) const {
+    return resolveClientAddress(request.remote_ip_address,
+                                request.get_header_value("X-Forwarded-For"),
+                                config_.trusted_proxy_ips);
+  }
+
   void enforceTransportAndOrigin(const crow::request& request) const {
-    if (config_.require_https && request.get_header_value("X-Forwarded-Proto") != "https") {
+    if (config_.require_https && !requestForwardedAsHttps(
+        request.remote_ip_address, request.get_header_value("X-Forwarded-Proto"),
+        config_.trusted_proxy_ips)) {
       throw ApiError(400, "HTTPS_REQUIRED", "生产环境仅接受 HTTPS 请求");
     }
     const auto origin = request.get_header_value("Origin");
@@ -129,8 +209,8 @@ class IdentityService {
     const auto openid = jsonString(payload, "openid");
     if (openid.empty()) throw ApiError(401, "WECHAT_LOGIN_FAILED", "微信登录未返回用户标识");
     const auto user_id = "wx_" + sha256Hex(openid).substr(0, 32);
-    pqxx::connection connection(config_.database_url);
-    pqxx::work tx(connection);
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
     const auto rows = tx.exec_params(R"(
       INSERT INTO users(id, wechat_openid, display_name, role, status)
       VALUES ($1, $2, '微信用户', 'learner', 'active')
@@ -144,8 +224,8 @@ class IdentityService {
 
   json createSession(const std::string& user_id) const {
     const auto token = randomToken();
-    pqxx::connection connection(config_.database_url);
-    pqxx::work tx(connection);
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
     tx.exec("DELETE FROM auth_sessions WHERE expires_at <= NOW()");
     tx.exec_params(R"(
       INSERT INTO auth_sessions(token_hash, user_id, expires_at)
@@ -161,6 +241,7 @@ class IdentityService {
   }
 
   Config config_;
+  std::shared_ptr<DatabasePool> database_pool_;
   SlidingWindowRateLimiter limiter_;
   SlidingWindowRateLimiter login_limiter_;
 };

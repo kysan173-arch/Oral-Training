@@ -25,12 +25,24 @@ Page({
 
   onLoad(options) {
     this.sessionId = options.sessionId || '';
+    if (!this.sessionId) {
+      this.handleMissingSession();
+      return;
+    }
     this.initialPrompt = options.prompt ? decodeURIComponent(options.prompt) : '';
     this.loadSession();
   },
 
+  handleMissingSession() {
+    wx.showModal({
+      title: '无法打开患者模拟',
+      content: '页面链接缺少会话信息，请从场景列表重新进入。',
+      showCancel: false,
+      success: () => wx.switchTab({ url: '/pages/index/index' })
+    });
+  },
+
   loadSession() {
-    if (!this.sessionId) return;
     Promise.all([api.getRoleplaySession(this.sessionId), api.getRoleplayScenarios()]).then(([detail, scenarioData]) => {
       if (detail.session.status === 'completed') {
         wx.redirectTo({ url: `/pages/roleplay-result/roleplay-result?sessionId=${this.sessionId}` });

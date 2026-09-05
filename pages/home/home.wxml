@@ -10,25 +10,12 @@
   </view>
 
   <view class="model-key-card card" wx:if="{{showKeyConfig}}">
-    <text class="model-key-title">DeepSeek 模型密钥（本地演示）</text>
-    <text class="model-key-text">密钥仅提交给当前后端进程，不写入小程序缓存、数据库或代码仓库。已通过环境变量配置时无需填写。</text>
+    <text class="model-key-title">DeepSeek 模型密钥</text>
     <view class="key-input-row">
       <input class="key-input" password placeholder="输入 DeepSeek API Key" value="{{apiKey}}" bindinput="onKeyInput" disabled="{{savingKey}}" />
       <button class="key-save-button" bindtap="saveApiKey" disabled="{{savingKey || !apiKey}}">{{savingKey ? '配置中' : '配置'}}</button>
     </view>
     <text class="key-status" wx:if="{{keyStatus}}">{{keyStatus}}</text>
-  </view>
-
-  <view class="section-heading">
-    <view><text class="section-title">训练闭环</text><text class="section-caption">从场景选择到报告回顾</text></view>
-    <text class="mvp-badge">MVP</text>
-  </view>
-  <view class="flow-card card">
-    <view class="flow-item"><text class="flow-number">01</text><text>选择场景</text></view>
-    <text class="flow-arrow">›</text>
-    <view class="flow-item"><text class="flow-number">02</text><text>双模式对话</text></view>
-    <text class="flow-arrow">›</text>
-    <view class="flow-item"><text class="flow-number">03</text><text>查看报告/复盘</text></view>
   </view>
 
   <view class="section-heading stats-heading">
@@ -44,7 +31,10 @@
   <view class="quick-links" wx:if="{{!isAdmin}}">
     <view class="quick-link card" bindtap="startTraining"><text class="quick-icon">✦</text><view><text class="quick-title">开始一次新的练习</text><text class="quick-text">四个固定场景可选</text></view><text class="quick-arrow">›</text></view>
     <view class="quick-link card" bindtap="viewHistory"><text class="quick-icon">↺</text><view><text class="quick-title">回看历史记录</text><text class="quick-text">继续未完成训练或查看报告</text></view><text class="quick-arrow">›</text></view>
+    <view class="quick-link card" bindtap="viewProfile"><text class="quick-icon">◔</text><view><text class="quick-title">查看个人成长</text><text class="quick-text">回顾五维能力与练习重点</text></view><text class="quick-arrow">›</text></view>
+    <view class="quick-link card" bindtap="viewMine"><text class="quick-icon">★</text><view><text class="quick-title">我的成长与签到</text><text class="quick-text">每日 +10 积分，收藏常用话术</text></view><text class="quick-arrow">›</text></view>
+    <view class="quick-link card" bindtap="viewPhrases"><text class="quick-icon">▤</text><view><text class="quick-title">打开话术锦囊</text><text class="quick-text">收录已完成报告中的推荐表达</text></view><text class="quick-arrow">›</text></view>
+    <view class="quick-link card" bindtap="viewMistakes"><text class="quick-icon">↻</text><view><text class="quick-title">进行错题复练</text><text class="quick-text">针对真实报告中的改进项练习</text></view><text class="quick-arrow">›</text></view>
   </view>
 
-  <text class="disclaimer">AI模拟训练，不构成医疗建议；评分不替代医生、客服专家或正式培训考核。</text>
 </view>

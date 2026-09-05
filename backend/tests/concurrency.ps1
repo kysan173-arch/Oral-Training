@@ -84,7 +84,7 @@ try {
     if ($_.Exception.Response.StatusCode.value__ -ne 409) { throw }
   }
 
-  & $PsqlPath $DatabaseUrl -v ON_ERROR_STOP=1 -X -q -c @"
+  & $PsqlPath --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -X -q -c @"
 DO `$`$ BEGIN
   IF (SELECT COUNT(*) FROM messages WHERE session_id = '$sessionId' AND role = 'user' AND round = 1) <> 1 OR
      (SELECT COUNT(*) FROM messages WHERE session_id = '$sessionId' AND role = 'patient' AND round = 1) <> 1 THEN
@@ -97,5 +97,5 @@ END `$`$;
     ConvertTo-Json -Compress
 } finally {
   if ($jobs) { $jobs | Remove-Job -Force -ErrorAction SilentlyContinue }
-  & $PsqlPath $DatabaseUrl -v ON_ERROR_STOP=1 -X -q -c "DELETE FROM sessions WHERE id = '$sessionId';"
+  & $PsqlPath --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -X -q -c "DELETE FROM sessions WHERE id = '$sessionId';"
 }

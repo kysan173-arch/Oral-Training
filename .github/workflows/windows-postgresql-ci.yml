@@ -1,0 +1,133 @@
+name: Windows PostgreSQL CI
+
+on:
+  push:
+    branches:
+      - 'fix/**'
+      - 'integration/**'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-postgresql:
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start PostgreSQL and create disposable database
+        shell: pwsh
+        run: |
+          Set-Service -Name postgresql-x64-14 -StartupType Manual
+          Start-Service -Name postgresql-x64-14
+          $env:PGPASSWORD = 'root'
+          & "$env:PGBIN\createdb.exe" -U postgres oral_training_ci
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create PostgreSQL CI database.' }
+          "DATABASE_URL=postgresql://postgres:root@127.0.0.1:5432/oral_training_ci" >> $env:GITHUB_ENV
+          "PSQL_PATH=$env:PGBIN\psql.exe" >> $env:GITHUB_ENV
+          "$env:PGBIN" >> $env:GITHUB_PATH
+
+      - name: Client static checks
+        shell: pwsh
+        run: |
+          & .\backend\tests\static_checks.ps1
+
+      - name: Configure and build MSVC Release
+        shell: pwsh
+        run: |
+          cmake -S backend -B backend\build-msvc -G "Visual Studio 17 2022" -A x64 -DPostgreSQL_ROOT="$env:PGROOT"
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed.' }
+          cmake --build backend\build-msvc --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC Release build failed.' }
+
+      - name: Run CTest
+        shell: pwsh
+        run: |
+          ctest --test-dir backend\build-msvc -C Release --output-on-failure
+
+      - name: Verify migrations on empty and historical schemas
+        shell: pwsh
+        run: |
+          & .\backend\tests\migration_reliability.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
+
+      - name: Run no-model API, state-machine and session-concurrency tests
+        shell: pwsh
+        run: |
+          $env:PGPASSWORD = 'root'
+          $migrationFiles = @(
+            '001_initial.sql',
+            '002_roleplay.sql',
+            '003_reliability.sql',
+            '004_identity.sql',
+            '005_pair_and_state_repair.sql',
+            '006_learner_insights.sql',
+            '007_training_experience.sql',
+            '008_supervisor_growth.sql',
+            '009_legacy_report_totals.sql'
+          )
+          foreach ($migration in $migrationFiles) {
+            & $env:PSQL_PATH --dbname=$env:DATABASE_URL -v ON_ERROR_STOP=1 -X -f ".\backend\migrations\$migration"
+            if ($LASTEXITCODE -ne 0) { throw "Migration failed: $migration" }
+          }
+
+          $env:ORAL_TRAINING_TEST_DATABASE_URL = $env:DATABASE_URL
+          & .\backend\build-msvc\Release\database_feature_test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Database feature tests failed.' }
+          Remove-Item Env:ORAL_TRAINING_TEST_DATABASE_URL -ErrorAction SilentlyContinue
+
+          $env:PRODUCTION = 'false'
+          $env:AUTH_MODE = 'demo'
+          $env:ALLOW_RUNTIME_API_KEY = 'true'
+          $env:BIND_ADDRESS = '127.0.0.1'
+          $env:PORT = '8080'
+          $env:ALLOWED_ORIGIN = '*'
+          $env:REQUIRE_HTTPS = 'false'
+          $env:AI_WORKER_CONCURRENCY = '1'
+          $env:DATABASE_POOL_SIZE = '12'
+          $env:DATABASE_POOL_WAIT_MS = '3000'
+          Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
+
+          $stdout = Join-Path $env:RUNNER_TEMP 'oral-training-backend.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'oral-training-backend.stderr.log'
+          $backend = Start-Process -FilePath '.\backend\build-msvc\Release\oral_training_backend.exe' -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          try {
+            $started = $false
+            for ($attempt = 0; $attempt -lt 60; $attempt++) {
+              Start-Sleep -Seconds 1
+              if ($backend.HasExited) { break }
+              try {
+                $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/health' -SkipHttpErrorCheck -TimeoutSec 3
+                if ($response.StatusCode -in @(200, 503)) {
+                  $started = $true
+                  break
+                }
+              } catch {}
+            }
+            if (-not $started) {
+              Get-Content $stdout -ErrorAction SilentlyContinue
+              Get-Content $stderr -ErrorAction SilentlyContinue
+              throw 'Backend did not become reachable.'
+            }
+
+            & .\backend\tests\smoke.ps1
+            & .\backend\tests\state_machine.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
+            & .\backend\tests\session_concurrency.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
+          } finally {
+            if ($backend -and -not $backend.HasExited) {
+              Stop-Process -Id $backend.Id -Force
+            }
+            Get-Content $stdout -ErrorAction SilentlyContinue
+            Get-Content $stderr -ErrorAction SilentlyContinue
+          }

@@ -22,3 +22,6 @@ backend/.local-postgres.log
 backend/.backend.stdout.log
 backend/.backend.stderr.log
 backend/.env
+
+# Local presentation notes
+/种植牙基础咨询演示话术.txt
