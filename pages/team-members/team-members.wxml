@@ -1,0 +1,102 @@
+<view class="page-shell team-page">
+  <!-- 加载态 -->
+  <view class="skeleton-block" wx:if="{{loading}}">
+    <view class="skeleton-row-short"></view>
+    <view class="skeleton-row"></view>
+    <view class="skeleton-row"></view>
+    <view class="skeleton-row-short"></view>
+    <view class="skeleton-row"></view>
+  </view>
+
+  <!-- 加载失败 -->
+  <view class="load-failed card" wx:elif="{{loadError}}">
+    <text class="load-failed-title">团队成员加载失败</text>
+    <text class="load-failed-text">{{loadErrorMsg}}</text>
+    <text class="load-failed-action" bindtap="retryLoad">重新加载</text>
+  </view>
+
+  <block wx:else>
+    <!-- ── 团队成员 ── -->
+    <view class="section-title-row">
+      <text class="section-title">团队成员</text>
+      <text class="section-caption">{{memberTotal}} 人</text>
+    </view>
+
+    <view class="card team-card" wx:if="{{members.length}}">
+      <view class="team-row" wx:for="{{members}}" wx:key="id">
+        <view class="team-row-main" bindtap="openMember" data-id="{{item.id}}">
+          <view class="team-avatar">{{item.initial}}</view>
+          <view class="team-copy">
+            <text class="team-name">{{item.displayName}}</text>
+            <text class="team-meta">{{item.trainingText}}</text>
+            <text class="team-meta team-meta-sub">{{item.scoreText}}</text>
+          </view>
+          <text class="team-arrow">›</text>
+        </view>
+        <text
+          class="team-remove {{removingId === item.id ? 'disabled' : ''}}"
+          bindtap="confirmRemove"
+          data-id="{{item.id}}"
+          data-name="{{item.displayName}}"
+        >{{removingId === item.id ? '移出中…' : '移出'}}</text>
+      </view>
+      <text class="team-truncate" wx:if="{{memberTruncated}}">当前只列出前 {{members.length}} 名成员（共 {{memberTotal}} 人）。</text>
+    </view>
+
+    <view class="card team-card team-empty" wx:else>
+      <text class="team-empty-title">你的团队还没有成员</text>
+      <text class="team-empty-text">从下方「可添加学员」里挑选学员加入，加入后数据看板、成员列表和培训计划都会按团队成员统计。</text>
+    </view>
+
+    <!-- ── 可添加学员 ── -->
+    <view class="section-title-row">
+      <text class="section-title">可添加学员</text>
+      <text class="section-caption">还可添加 {{candidateTotal}} 人</text>
+    </view>
+
+    <view class="card team-card" wx:if="{{candidateTotal}}">
+      <input
+        class="member-search"
+        placeholder="搜索学员姓名"
+        placeholder-class="form-placeholder"
+        value="{{keyword}}"
+        bindinput="onSearchInput"
+      ></input>
+
+      <scroll-view class="member-list" scroll-y style="height: {{filteredCandidates.length > 20 ? '420rpx' : 'auto'}};" wx:if="{{filteredCandidates.length}}">
+        <view class="member-list-inner">
+          <text
+            class="member-chip {{item.selected ? 'selected' : ''}}"
+            wx:for="{{filteredCandidates}}"
+            wx:key="id"
+            bindtap="toggleCandidate"
+            data-id="{{item.id}}"
+          >{{item.displayName}}</text>
+        </view>
+      </scroll-view>
+      <view class="candidate-state" wx:else>
+        <text>{{keyword ? '没有匹配的学员' : '暂无可添加学员'}}</text>
+      </view>
+
+      <view class="candidate-foot">
+        <text class="candidate-hint">已选 {{selectedCount}} 人</text>
+        <view class="candidate-actions">
+          <text class="candidate-action" wx:if="{{filteredCandidates.length}}" bindtap="toggleAllFiltered">{{filteredAllSelected ? '取消全选' : '全选'}}</text>
+          <text class="candidate-action" wx:if="{{selectedCount}}" bindtap="clearSelection">清空</text>
+        </view>
+      </view>
+
+      <view class="add-bar">
+        <view class="add-btn {{selectedCount && !adding ? '' : 'disabled'}}" bindtap="submitAdd">{{adding ? '添加中…' : (selectedCount ? '添加 ' + selectedCount + ' 人到我的团队' : '请选择要添加的学员')}}</view>
+      </view>
+      <text class="candidate-scope" wx:if="{{candidateTotal > candidates.length}}">当前最多列出 {{candidates.length}} 名可添加学员（共 {{candidateTotal}} 人），可先添加一批后再次进入。</text>
+    </view>
+
+    <view class="card team-card team-empty" wx:else>
+      <text class="team-empty-title">没有可添加的学员</text>
+      <text class="team-empty-text">系统里的在职学员都已属于某个团队。若确有新学员需要加入，请让其先用微信登录一次小程序，账号创建后即可在这里被添加。</text>
+    </view>
+
+    <text class="page-note">一名学员只能属于一名主管。若学员已在其他主管的团队里，需要对方先移出后你才能添加。</text>
+  </block>
+</view>

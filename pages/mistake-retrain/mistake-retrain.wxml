@@ -1,0 +1,64 @@
+<view class="page-shell retrain-page">
+  <view class="page-header">
+    <text class="page-title">重练第 {{context.mistake.round}} 回合</text>
+    <text class="page-intro">患者会说出当时的原话。先自己作答，再对照当时的表达与点评。</text>
+  </view>
+
+  <view class="retrain-skeleton" wx:if="{{loading}}">
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+  </view>
+
+  <view class="empty-card card" wx:elif="{{loadError}}">
+    <empty-state title="错题加载失败" text="{{loadError}}" actionText="返回错题本" bind:action="goBack"></empty-state>
+  </view>
+
+  <block wx:elif="{{context}}">
+    <view class="profile-strip card">
+      <text class="scene-name">{{scenario.name}}</text>
+      <text class="profile-line">{{scenario.patientAge}}{{scenario.patientGender ? ' · ' + scenario.patientGender : ''}}{{scenario.patientEmotion ? ' · 情绪：' + scenario.patientEmotion : ''}}</text>
+      <text class="profile-concern">{{scenario.patientConcern}}</text>
+    </view>
+
+    <view class="chat-area">
+      <view class="bubble-row">
+        <view class="patient-avatar">患</view>
+        <view class="patient-bubble"><text>{{patientQuestion}}</text></view>
+      </view>
+    </view>
+
+    <view class="answer-card card">
+      <text class="field-label">你的新回答</text>
+      <textarea class="answer-input" value="{{inputValue}}" maxlength="1000"
+        placeholder="以客服身份重新回应这位患者…"
+        bindinput="onInputChange" disabled="{{submitting || !!result}}"></textarea>
+      <button class="submit-btn" bindtap="submit"
+        disabled="{{!inputValue || submitting || !!result}}">
+        {{submitting ? '点评生成中，约需数秒…' : '提交回答'}}
+      </button>
+    </view>
+
+    <view class="result-card card" wx:if="{{result}}">
+      <view class="verdict {{result.passed ? 'verdict-pass' : 'verdict-retry'}}">
+        {{result.passed ? '本次达标' : '建议再练一次'}}
+      </view>
+      <text class="field-label">点评</text>
+      <text class="result-text">{{result.comment}}</text>
+      <text class="field-label">推荐话术</text>
+      <view class="rewrite-row">
+        <text class="result-text">{{result.recommendedRewrite}}</text>
+        <text class="copy-action" bindtap="copyRewrite">复制</text>
+      </view>
+      <button wx:if="{{result.passed && !mastered}}" class="ghost-btn" bindtap="markMastered"
+        disabled="{{marking}}">{{marking ? '保存中…' : '标记为已掌握'}}</button>
+      <text class="mastered-note" wx:if="{{result.passed && mastered}}">该错题已标记掌握</text>
+    </view>
+
+    <view class="original-card card" wx:if="{{result && originalAnswer}}">
+      <text class="field-label">你当时的表达</text>
+      <text class="result-text">“{{originalAnswer}}”</text>
+      <text class="field-label" wx:if="{{context.mistake.reason}}">当时为什么需要调整</text>
+      <text class="result-text" wx:if="{{context.mistake.reason}}">{{context.mistake.reason}}</text>
+    </view>
+  </block>
+</view>

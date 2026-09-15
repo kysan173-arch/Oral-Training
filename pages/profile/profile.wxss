@@ -1,41 +1,125 @@
-.profile-page { padding: 28rpx 24rpx 48rpx; }
-.profile-hero { padding: 10rpx 4rpx 26rpx; }
-.eyebrow, .page-title, .page-intro { display: block; }
-.eyebrow { color: #667eea; font-size: 20rpx; letter-spacing: 2rpx; font-weight: 700; }
-.page-title { margin-top: 12rpx; color: #303046; font-size: 42rpx; font-weight: 700; }
-.page-intro { margin-top: 12rpx; color: #888; font-size: 23rpx; line-height: 1.65; }
-.loading-card, .empty-card { padding: 38rpx 28rpx; color: #888; text-align: center; font-size: 24rpx; }
-.stats-grid { display: flex; gap: 14rpx; }
-.stat-card { flex: 1; padding: 22rpx 8rpx; text-align: center; }
-.stat-value, .stat-label { display: block; }
-.stat-value { color: #667eea; font-size: 38rpx; font-weight: 700; }
-.stat-value.positive { color: #47a170; }
-.stat-label { margin-top: 7rpx; color: #999; font-size: 20rpx; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; margin: 32rpx 4rpx 16rpx; }
-.section-title, .section-caption { display: block; }
-.section-title { color: #333; font-size: 30rpx; font-weight: 700; }
-.section-caption { margin-top: 5rpx; color: #aaa; font-size: 21rpx; }
-.section-link { color: #667eea; font-size: 22rpx; }
-.dimension-card { padding: 24rpx; }
-.dimension-row { margin-bottom: 22rpx; }
+.profile-page { padding: 30rpx 24rpx 48rpx; background: var(--bg-grad, var(--color-bg)); }
+
+/* ── 骨架加载 ── */
+.skeleton-block { padding: 0 4rpx; }
+.skeleton-hero { height: 140rpx; border-radius: 24rpx; background: linear-gradient(90deg, var(--color-primary-light) 25%, #E3E8FF 50%, var(--color-primary-light) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.6s infinite; }
+.skeleton-stats { display: flex; gap: 14rpx; margin-top: 20rpx; }
+.skeleton-stat { flex: 1; height: 172rpx; border-radius: 20rpx; background: linear-gradient(90deg, var(--color-primary-light) 25%, #E3E8FF 50%, var(--color-primary-light) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.6s infinite; }
+.skeleton-bars { margin-top: 28rpx; padding: 20rpx; border-radius: 24rpx; background: #fff; }
+.skeleton-bar { width: 100%; height: 16rpx; margin-bottom: 20rpx; border-radius: 10rpx; background: linear-gradient(90deg, var(--color-primary-light) 25%, #E3E8FF 50%, var(--color-primary-light) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.6s infinite; }
+.skeleton-bar:last-child { margin-bottom: 0; }
+.skeleton-row { height: 48rpx; margin-top: 18rpx; border-radius: 12rpx; background: linear-gradient(90deg, var(--color-primary-light) 25%, #E3E8FF 50%, var(--color-primary-light) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.6s infinite; }
+.skeleton-row-short { width: 60%; height: 48rpx; margin-top: 22rpx; border-radius: 12rpx; background: linear-gradient(90deg, var(--color-primary-light) 25%, #E3E8FF 50%, var(--color-primary-light) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.6s infinite; }
+@keyframes skeleton-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.loading-card, .empty-card { padding: 38rpx 28rpx; color: #888; text-align: center; font-size: 26rpx; }
+
+/* ── 页面标题（纯文字，无容器、无装饰） ── */
+.profile-header { padding: 8rpx 4rpx 0; }
+.page-title { display: block; color: var(--text-strong); font-size: 40rpx; font-weight: 600; }
+.page-intro { display: block; margin-top: 10rpx; color: var(--text-secondary); font-size: 24rpx; line-height: 1.6; }
+
+/* ── 统计卡（三栏等分，图标 / 数字 / 标签共用一条中轴） ── */
+.stat-scroll { margin-top: 20rpx; }
+.stat-row { display: flex; gap: 14rpx; }
+.stat-card {
+  flex: 1; min-width: 0; box-sizing: border-box;
+  padding: 20rpx 6rpx 16rpx; text-align: center;
+  border-radius: 20rpx; background: #fff;
+  box-shadow: none;
+  border: 1rpx solid var(--color-border);
+}
+.stat-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 48rpx; height: 48rpx; margin: 0 auto 8rpx;
+  border-radius: 14rpx; background: var(--color-primary-light);
+}
+.stat-icon-img { width: 32rpx; height: 32rpx; }
+.stat-val { display: block; font-size: 32rpx; font-weight: 600; letter-spacing: .5rpx; line-height: 1.3; color: var(--text-strong); }
+.stat-card-delta.delta-positive .stat-val { color: var(--color-success); }
+.stat-card-delta.delta-negative .stat-val { color: var(--color-danger); }
+.stat-lbl { display: block; margin-top: 8rpx; color: var(--text-secondary); font-size: 22rpx; line-height: 1.4; }
+
+/* ── 章节标题 ── */
+.section-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 32rpx 4rpx 16rpx;
+  color: var(--text-strong); font-size: 32rpx; font-weight: 600;
+}
+.section-link { color: var(--color-primary); font-size: 22rpx; font-weight: 400; }
+
+/* ── 能力画像（横条统一主色，最弱项标橙） ── */
+.dimension-card { padding: 24rpx 26rpx; }
+.dimension-row { margin-bottom: 24rpx; }
 .dimension-row:last-child { margin-bottom: 0; }
-.dimension-head, .weakness-head, .learning-summary, .trend-card { display: flex; align-items: center; justify-content: space-between; }
-.dimension-head { color: #666; font-size: 24rpx; }
-.dimension-head text:last-child { font-weight: 700; }
-.score-bar { height: 13rpx; margin-top: 10rpx; overflow: hidden; border-radius: 8rpx; background: #eff0f4; }
+.dimension-head { display: flex; align-items: center; justify-content: space-between; }
+.dimension-head-right { display: flex; align-items: center; gap: 10rpx; }
+.dim-name { color: var(--text-body); font-size: 26rpx; }
+.dim-score { font-weight: 600; font-size: 26rpx; color: var(--text-strong); }
+.dim-tag { padding: 2rpx 12rpx; border-radius: 10rpx; color: var(--color-warning); background: var(--color-warning-light); font-size: 20rpx; font-weight: 600; }
+.score-bar {
+  position: relative;
+  height: 13rpx; margin-top: 10rpx;
+  overflow: hidden; border-radius: 8rpx;
+  background: var(--color-border);
+}
+.score-bar::after {
+  content: '';
+  position: absolute; left: 60%; top: 0; bottom: 0;
+  width: 2rpx;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,.10) 0, rgba(0,0,0,.10) 4rpx,
+    transparent 4rpx, transparent 8rpx
+  );
+}
 .score-fill { height: 100%; border-radius: 8rpx; }
-.weakness-card { padding: 22rpx 24rpx; margin-bottom: 14rpx; color: #777; font-size: 23rpx; line-height: 1.6; }
-.weakness-head { margin-bottom: 9rpx; color: #ad743e; font-size: 25rpx; font-weight: 700; }
-.learning-summary { padding: 24rpx; margin-top: 18rpx; }
-.summary-title, .summary-text { display: block; }
-.summary-title { color: #444; font-size: 27rpx; font-weight: 700; }
-.summary-text { margin-top: 7rpx; color: #999; font-size: 22rpx; }
-.summary-link { color: #667eea; font-size: 23rpx; }
-.trend-card { padding: 22rpx 24rpx; margin-bottom: 12rpx; }
+.fill-main { background: var(--color-primary); }
+.fill-weak { background: var(--color-warning); }
+
+/* ── 练习重点 ── */
+.weakness-card {
+  position: relative;
+  padding: 22rpx 24rpx; margin-bottom: 14rpx;
+  border-radius: 20rpx;
+}
+.weakness-head { display: flex; align-items: center; gap: 10rpx; margin-bottom: 10rpx; color: var(--text-body); font-size: 26rpx; font-weight: 600; }
+.weakness-tag { padding: 2rpx 12rpx; border-radius: 10rpx; background: var(--color-warning-light); color: var(--color-warning); font-size: 22rpx; font-weight: 600; }
+.weakness-score { margin-left: auto; color: var(--text-secondary); font-weight: 400; }
+.weakness-body { display: block; color: var(--text-secondary); font-size: 22rpx; line-height: 1.6; }
+
+/* ── 错题掌握进度 ── */
+.learning-summary { padding: 24rpx; margin-top: 6rpx; }
+.ls-header { display: flex; align-items: center; justify-content: space-between; }
+.ls-title { color: var(--text-body); font-size: 26rpx; font-weight: 600; }
+.ls-link { color: var(--color-primary); font-size: 22rpx; font-weight: 400; }
+.ls-stats { display: block; margin-top: 8rpx; color: var(--text-muted); font-size: 22rpx; }
+.ls-bar {
+  height: 10rpx; margin-top: 16rpx;
+  border-radius: 6rpx; background: var(--color-border);
+  overflow: hidden;
+}
+.ls-fill {
+  height: 100%; border-radius: 6rpx;
+  background: var(--color-primary);
+  transition: width .4s ease;
+}
+
+/* ── 训练走势 ── */
+.trend-card { display: flex; align-items: center; justify-content: space-between; padding: 22rpx 24rpx; margin-bottom: 12rpx; }
+.trend-left { flex: 1; min-width: 0; }
 .trend-scene, .trend-date { display: block; }
-.trend-scene { color: #555; font-size: 25rpx; font-weight: 600; }
-.trend-date { margin-top: 6rpx; color: #aaa; font-size: 20rpx; }
-.trend-score { color: #667eea; font-size: 29rpx; font-weight: 700; }
-.action-grid { display: flex; gap: 16rpx; margin-top: 28rpx; }
-.action-grid button { flex: 1; margin: 0; }
-.train-button { width: 100%; margin-top: 16rpx; }
+.trend-scene { color: var(--text-body); font-size: 26rpx; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trend-date { margin-top: 6rpx; color: var(--text-secondary); font-size: 22rpx; }
+.trend-right { display: flex; align-items: center; gap: 6rpx; flex-shrink: 0; }
+.trend-score { font-size: 26rpx; font-weight: 600; }
+.trend-arrow { font-size: 22rpx; font-weight: 600; }
+.trend-arrow.arrow-up   { color: var(--color-success); }
+.trend-arrow.arrow-down { color: var(--color-danger); }
+.trend-arrow.arrow-flat { color: var(--text-secondary); }
+
+/* ── 底部操作 ── */
+.train-button { width: 100%; height: 90rpx; line-height: 90rpx; margin-top: 30rpx; }
+.aux-links { display: flex; justify-content: center; gap: 44rpx; margin-top: 24rpx; padding-bottom: 12rpx; }
+.aux-link { display: flex; align-items: center; gap: 8rpx; color: var(--text-secondary); font-size: 22rpx; }
+.aux-link-img { width: 30rpx; height: 30rpx; }

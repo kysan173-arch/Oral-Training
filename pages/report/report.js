@@ -1,17 +1,20 @@
 const api = require('../../utils/api.js');
+const datetime = require('../../utils/datetime.js');
 
+// 雷达图维度取数（配色按我方墨蓝体系，淘汰 master 的 #667eea 紫粉）
 const dimensionsFrom = score => [
-  { key: 'empathy', name: '同理心', value: score.empathy, color: '#667eea' },
-  { key: 'knowledgeAccuracy', name: '知识准确性', value: score.knowledgeAccuracy, color: '#52a67a' },
-  { key: 'needsDiscovery', name: '需求挖掘', value: score.needsDiscovery, color: '#f0a34b' },
-  { key: 'serviceEtiquette', name: '服务礼仪', value: score.serviceEtiquette, color: '#6b9de8' },
-  { key: 'medicalCompliance', name: '医疗合规', value: score.medicalCompliance, color: '#8b75c9' }
+  { key: 'empathy', name: '同理心', value: score.empathy, color: '#1F3864' },
+  { key: 'knowledgeAccuracy', name: '知识准确性', value: score.knowledgeAccuracy, color: '#2E6CA4' },
+  { key: 'needsDiscovery', name: '需求挖掘', value: score.needsDiscovery, color: '#3E8E9E' },
+  { key: 'serviceEtiquette', name: '服务礼仪', value: score.serviceEtiquette, color: '#52a67a' },
+  { key: 'medicalCompliance', name: '医疗合规', value: score.medicalCompliance, color: '#C9A227' }
 ].filter(item => item.value !== null && item.value !== undefined && Number.isFinite(Number(item.value)))
   .map(item => Object.assign({}, item, { score: Number(item.value) }));
 
 Page({
   data: {
     sessions: [],
+    loading: true,
     expandedId: '',
     expandedEvaluationId: '',
     historyMode: 'customer_service',
@@ -21,13 +24,22 @@ Page({
     ],
     scenarioFilters: [{ id: '', name: '全部场景' }],
     selectedStatus: 'all',
-    selectedScenarioId: ''
+    selectedScenarioId: '',
+    roleBlocked: false
   },
 
   onShow() {
+    const user = api.getCurrentUser();
+    if (user && user.role === 'admin') {
+      this.setData({ roleBlocked: true });
+      return;
+    }
+    this.setData({ roleBlocked: false });
     this.loadScenarioFilters();
     this.loadSessions();
   },
+
+  goAdminDashboard() { wx.switchTab({ url: '/pages/admin/admin' }); },
 
   loadScenarioFilters() {
     api.getScenarios().then(data => {
@@ -49,6 +61,7 @@ Page({
       scenarioId: this.data.selectedScenarioId,
       limit: 50
     };
+    this.setData({ loading: true });
     const request = isRoleplay ? api.getRoleplaySessions(params) : api.getSessions(params);
     request.then(data => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
@@ -62,15 +75,17 @@ Page({
           : item.status === 'completed'
             ? (isRoleplay ? '查看复盘' : '查看报告')
             : '查看对话',
+        updatedAtText: datetime.formatDateTime(item.updatedAt),
         evaluation: !isRoleplay && item.totalScore !== null ? { totalScore: item.totalScore } : null,
         isRoleplay,
         messages: [],
         evaluationDetail: null,
         evaluationLoading: false
       }));
-      this.setData({ sessions, expandedId: '', expandedEvaluationId: '' });
+      this.setData({ sessions, loading: false, expandedId: '', expandedEvaluationId: '' });
     }).catch(error => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
+      this.setData({ loading: false });
       wx.showToast({ title: error.message || '历史记录加载失败', icon: 'none' });
     });
   },
@@ -93,6 +108,15 @@ Page({
     this.setData({ selectedScenarioId }, () => this.loadSessions());
   },
 
+  // 点击历史卡 → 进入详情页（对话/摘要/雷达图在详情页内加载）
+  openDetail(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    const mode = this.data.historyMode;
+    wx.navigateTo({ url: `/pages/session-detail/session-detail?sessionId=${id}&mode=${mode}` });
+  },
+
+  // 主行动按钮：根据状态续练 / 看报告或复盘 / 回看对话
   handleAction(e) {
     const session = this.data.sessions.find(item => item.id === e.currentTarget.dataset.id);
     if (!session) return;
@@ -107,6 +131,7 @@ Page({
     }
   },
 
+  // 内联展开对话详情（master 做法，与 openDetail 下钻互补）
   toggleConversation(e) {
     const id = e.currentTarget.dataset.id;
     if (this.data.expandedId === id) {

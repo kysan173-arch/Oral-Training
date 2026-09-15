@@ -1,0 +1,18 @@
+.phrase-page { padding: 24rpx 24rpx calc(60rpx + env(safe-area-inset-bottom)); }
+
+.loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
+
+.detail-hero { padding: 30rpx 28rpx; margin-bottom: 24rpx; }
+.phrase-hero-label { display: block; font-size: 22rpx; letter-spacing: 2rpx; color: var(--text-secondary); }
+.phrase-hero-title { display: block; margin-top: 10rpx; font-size: 36rpx; font-weight: 600; color: var(--color-danger); }
+.phrase-hero-desc { display: block; margin-top: 12rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
+
+.member-item { display: flex; align-items: center; padding: 22rpx; margin-bottom: 14rpx; transition: transform .15s ease; }
+.member-card-hover { transform: scale(.98); }
+.member-avatar { width: 72rpx; height: 72rpx; line-height: 72rpx; flex-shrink: 0; border-radius: 22rpx; background: var(--color-danger-light); color: var(--color-danger); font-size: 28rpx; font-weight: 600; text-align: center; }
+.member-copy { flex: 1; min-width: 0; margin-left: 18rpx; }
+.member-name-row { display: flex; align-items: center; justify-content: space-between; gap: 10rpx; }
+.member-name { font-size: 26rpx; font-weight: 600; color: var(--text-body); }
+.member-count { flex-shrink: 0; font-size: 24rpx; font-weight: 600; color: var(--color-danger); }
+.member-scene { display: block; margin-top: 6rpx; font-size: 22rpx; line-height: 1.5; color: var(--text-secondary); }
+.warning-arrow { margin-left: 8rpx; font-size: 30rpx; color: var(--text-secondary); }

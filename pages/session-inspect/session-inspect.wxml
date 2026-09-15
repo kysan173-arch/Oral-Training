@@ -1,0 +1,77 @@
+<view class="page-shell inspect-page">
+  <view class="loading-card card" wx:if="{{loading}}">
+    <text class="loading-title">正在加载抽查内容…</text>
+  </view>
+
+  <view class="loading-card card" wx:elif="{{loadError}}">
+    <text class="loading-title">{{loadError}}</text>
+    <button class="primary-button retry-button" bindtap="loadDetail">重新加载</button>
+  </view>
+
+  <block wx:elif="{{session}}">
+    <view class="detail-hero">
+      <text class="detail-kicker">质检抽查 · 仅主管可见</text>
+      <view class="detail-title-row">
+        <text class="detail-title">{{session.scenarioName || '训练记录'}}</text>
+        <text class="status {{session.status}}">{{statusText}}</text>
+      </view>
+      <view class="detail-meta">
+        <text>{{session.startedAtText}}</text>
+        <text>{{session.currentRound}} / {{session.maxRounds}} 轮</text>
+        <text wx:if="{{totalScore !== null}}">总分 {{totalScore}}</text>
+      </view>
+    </view>
+
+    <!-- 疑似敷衍提示：轻规则判定，仅作抽查引导 -->
+    <view class="suspicion-card {{suspicion.suspected ? 'warn' : ''}}" wx:if="{{suspicion && suspicion.rounds > 0}}">
+      <text class="suspicion-title">{{suspicion.suspected ? '⚠ 疑似敷衍训练' : '行为指标正常'}}</text>
+      <text class="suspicion-text" wx:if="{{suspicionText}}">{{suspicionText}}</text>
+      <text class="suspicion-text" wx:else>学员 {{suspicion.rounds}} 轮回复的平均长度与重复率在正常范围。</text>
+      <text class="suspicion-foot">判定依据：平均回复长度 / 重复率 / 回复间隔（保守阈值，需人工确认）。</text>
+    </view>
+
+    <!-- 评分摘要 -->
+    <block wx:if="{{reportSummary}}">
+      <view class="section-title-row"><text class="section-title">评分摘要</text></view>
+      <view class="summary-card card"><text>{{reportSummary}}</text></view>
+      <view class="feedback-grid">
+        <view class="feedback-card feedback-good" wx:if="{{strengths.length}}">
+          <text class="feedback-title positive">做得好的地方</text>
+          <text class="feedback-item" wx:for="{{strengths}}" wx:key="*this">• {{item}}</text>
+        </view>
+        <view class="feedback-card feedback-improve" wx:if="{{improvements.length}}">
+          <text class="feedback-title improve">下一步改进</text>
+          <text class="feedback-item" wx:for="{{improvements}}" wx:key="*this">• {{item}}</text>
+        </view>
+      </view>
+      <view class="section-title-row"><text class="section-title">五维得分</text></view>
+      <view class="dimension-card card">
+        <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
+          <view class="dimension-head">
+            <text class="dim-name">{{item.name}}</text>
+            <text class="dim-score tier-{{item.tier}}">{{item.score}}</text>
+          </view>
+          <view class="score-bar">
+            <view class="score-fill fill-{{item.tier}}" style="width: {{item.score}}%;"></view>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <!-- 完整对话（只读） -->
+    <view class="section-title-row"><text class="section-title">完整对话</text><text class="section-caption">{{messages.length}} 条消息</text></view>
+    <view class="chat-card card">
+      <view class="message-item {{item.role === 'user' || item.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{messages}}" wx:key="id">
+        <view class="message-head">
+          <view class="message-head-left">
+            <text class="message-role">{{item.role === 'user' ? '学员（客服）' : item.role === 'patient' ? 'AI 患者' : item.role === 'learner_patient' ? '学员（患者）' : 'AI 标准客服'}}</text>
+            <text class="tag emotion-tag {{item.emotionTone}}" wx:if="{{item.emotionText}}">{{item.emotionText}}</text>
+          </view>
+          <text class="message-time" wx:if="{{item.time}}">{{item.time}}</text>
+        </view>
+        <view class="message-text">{{item.content}}</view>
+      </view>
+      <view class="empty-chat" wx:if="{{messages.length === 0}}"><text>该会话暂无对话内容。</text></view>
+    </view>
+  </block>
+</view>

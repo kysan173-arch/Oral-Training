@@ -1,0 +1,66 @@
+.plan-detail-page { padding: 24rpx 24rpx calc(60rpx + env(safe-area-inset-bottom)); }
+
+.loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
+
+/* ── 计划摘要 ── */
+.detail-hero { padding: 28rpx 26rpx; margin-bottom: 24rpx; }
+.plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
+.plan-title-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; min-width: 0; }
+.plan-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
+.plan-period-tag { flex-shrink: 0; padding: 1rpx 10rpx; border-radius: 8rpx; font-size: 20rpx; color: var(--text-secondary); background: var(--color-bg); }
+.plan-status { flex-shrink: 0; padding: 2rpx 12rpx; border-radius: 10rpx; font-size: 20rpx; font-weight: 600; }
+.plan-status-pending { color: var(--color-warning); background: var(--color-warning-light); }
+.plan-status-done { color: var(--color-success); background: var(--color-success-light); }
+.plan-status-expired { color: var(--text-secondary); background: var(--color-bg); }
+.plan-requirement { display: block; margin-top: 12rpx; font-size: 22rpx; color: var(--text-secondary); }
+.detail-desc { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-body); }
+
+.detail-meta-row { display: flex; gap: 14rpx; margin-top: 22rpx; }
+.detail-meta { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 18rpx 8rpx; border-radius: 16rpx; background: var(--color-primary-pale); }
+.detail-meta-value { font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.detail-meta-label { margin-top: 4rpx; font-size: 20rpx; color: var(--text-secondary); }
+.detail-countdown { display: block; margin-top: 16rpx; font-size: 22rpx; color: var(--text-secondary); text-align: center; }
+
+/* ── 达标要求 ── */
+.rule-card { padding: 8rpx 24rpx 24rpx; margin-bottom: 24rpx; }
+.rule-row { display: flex; align-items: center; gap: 16rpx; padding: 22rpx 0; border-bottom: 1rpx solid var(--color-border); }
+.rule-row:last-of-type { border-bottom: none; }
+.rule-icon { flex-shrink: 0; width: 48rpx; height: 48rpx; line-height: 48rpx; border-radius: 50%; background: var(--color-bg); color: var(--text-muted); font-size: 26rpx; font-weight: 600; text-align: center; }
+.rule-icon.ok { background: var(--color-success-light); color: var(--color-success); }
+.rule-copy { flex: 1; min-width: 0; }
+.rule-name { display: block; font-size: 26rpx; font-weight: 600; color: var(--text-body); }
+.rule-hint { display: block; margin-top: 6rpx; font-size: 20rpx; line-height: 1.5; color: var(--text-muted); }
+.rule-value { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; }
+.rule-value-main { font-size: 28rpx; font-weight: 600; }
+.rule-value-main.ok { color: var(--color-success); }
+.rule-value-main.pending { color: var(--color-warning); }
+.rule-tag { margin-top: 6rpx; padding: 1rpx 10rpx; border-radius: 8rpx; font-size: 20rpx; font-weight: 600; }
+.rule-tag.done { color: var(--color-success); background: var(--color-success-light); }
+.rule-tag.pending { color: var(--color-warning); background: var(--color-warning-light); }
+
+.plan-progress { display: flex; align-items: center; gap: 14rpx; margin-top: 20rpx; }
+.plan-progress-bar { flex: 1; height: 14rpx; overflow: hidden; border-radius: 7rpx; background: var(--color-primary-light); }
+.plan-progress-fill { height: 100%; border-radius: 7rpx; background: var(--color-primary); transition: width .4s ease; }
+.plan-progress-fill.full { background: var(--color-success); }
+.plan-progress-text { flex-shrink: 0; font-size: 24rpx; font-weight: 600; color: var(--text-body); }
+
+/* ── 适用场景 ── */
+.scene-card { padding: 8rpx 24rpx 24rpx; }
+.scene-row { display: flex; align-items: center; gap: 16rpx; padding: 22rpx 0; border-bottom: 1rpx solid var(--color-border); }
+.scene-row:last-of-type { border-bottom: none; }
+.scene-index { flex-shrink: 0; width: 44rpx; height: 44rpx; line-height: 44rpx; border-radius: 14rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 24rpx; font-weight: 600; text-align: center; }
+.scene-copy { flex: 1; min-width: 0; }
+.scene-name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8rpx; }
+.scene-name { font-size: 26rpx; font-weight: 600; color: var(--text-body); }
+.scene-best { display: block; margin-top: 6rpx; font-size: 22rpx; color: var(--text-secondary); }
+.scene-best.untrained { color: var(--text-muted); }
+
+.scene-note { padding: 22rpx 0 8rpx; }
+.scene-note-title { display: block; font-size: 26rpx; font-weight: 600; color: var(--text-body); }
+.scene-note-text { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
+.scene-warn { display: block; margin-top: 16rpx; padding: 16rpx 20rpx; border-radius: 14rpx; background: var(--color-warning-light); font-size: 20rpx; line-height: 1.6; color: var(--color-warning); }
+.scene-foot { display: block; margin-top: 18rpx; font-size: 20rpx; line-height: 1.6; color: var(--text-muted); }
+
+/* ── 底部动作 ── */
+.detail-action { margin-top: 32rpx; padding: 26rpx 0; }
+.detail-note { display: block; margin-top: 16rpx; font-size: 20rpx; line-height: 1.6; color: var(--text-muted); text-align: center; }

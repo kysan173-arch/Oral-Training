@@ -100,15 +100,27 @@ const formatScore = value => {
   return Number.isFinite(score) ? Number(score.toFixed(1)) : '暂无评分';
 };
 
+/* 演示账号切换：换令牌与用户缓存，供 switchRole / switchLearner 共用 */
+const persistIdentity = data => {
+  if (data && data.accessToken && data.user) {
+    wx.setStorageSync(TOKEN_KEY, data.accessToken);
+    wx.setStorageSync(USER_KEY, data.user);
+  }
+  return data;
+};
+
 module.exports = {
   formatScore,
   ensureAuthenticated,
   clearAuthentication,
   getCurrentUser: () => wx.getStorageSync(USER_KEY) || null,
   getHealth: () => request('/health', { public: true, acceptUnreadyHealth: true }),
-  setDeepSeekKey: apiKey => request('/config/deepseek-key', { method: 'POST', data: { apiKey } }),
+
+  // ── 训练（学员端） ──
   getScenarios: () => request('/scenarios'),
-  createSession: scenarioId => request('/sessions', { method: 'POST', data: { scenarioId } }),
+  createSession: (scenarioId, customPatientProfile) => request('/sessions', {
+    method: 'POST', data: { scenarioId, customPatientProfile }
+  }),
   restartSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/restart`, { method: 'POST', data: {} }),
   getSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}`),
   sendMessage: (sessionId, clientMessageId, content) => request(`/sessions/${encodeURIComponent(sessionId)}/messages`, {
@@ -120,16 +132,21 @@ module.exports = {
   finishSession: (sessionId, reason = 'manual') => request(`/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
   }),
+  abandonSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/abandon`, { method: 'POST', data: {} }),
   getEvaluation: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/evaluation`),
   retryEvaluation: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/evaluation/retry`, { method: 'POST', data: {} }),
   getSessions: params => request(`/sessions?${query(params || {})}`),
+
+  // ── 患者模拟（roleplay） ──
+  // 服务目录：RAG 语料按「服务」组织；开关关闭时后端返回空列表，前端隐藏选择器。
   getServices: () => request('/services'),
   getRoleplayScenarios: serviceId => request(`/roleplay/scenarios?${query({ serviceId: serviceId || '' })}`),
-  createRoleplaySession: (scenarioId, serviceId, clientSessionId) => request('/roleplay/sessions', {
-    method: 'POST', data: { scenarioId, serviceId, clientSessionId }
+  // options: { freeDescription } 自由模拟模板描述 | { serviceId, clientSessionId } RAG 场景与幂等键
+  createRoleplaySession: (scenarioId, options = {}) => request('/roleplay/sessions', {
+    method: 'POST', data: Object.assign({ scenarioId }, options)
   }),
-  restartRoleplaySession: (sessionId, clientSessionId) => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/restart`, {
-    method: 'POST', data: { clientSessionId }
+  restartRoleplaySession: (sessionId, options = {}) => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/restart`, {
+    method: 'POST', data: Object.assign({}, options)
   }),
   getRoleplaySession: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}`),
   sendRoleplayMessage: (sessionId, clientMessageId, content) => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/messages`, {
@@ -138,9 +155,18 @@ module.exports = {
   finishRoleplaySession: (sessionId, reason = 'manual') => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: 'POST', data: { reason }
   }),
+  abandonRoleplaySession: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/abandon`, {
+    method: 'POST', data: {}
+  }),
   getRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary`),
   retryRoleplaySummary: sessionId => request(`/roleplay/sessions/${encodeURIComponent(sessionId)}/summary/retry`, { method: 'POST', data: {} }),
   getRoleplaySessions: params => request(`/roleplay/sessions?${query(params || {})}`),
+  // RAG 引用依据（患者回复所依据的语料片段）
+  getRoleplayEvidence: (sessionId, traceId) => request(
+    `/roleplay/sessions/${encodeURIComponent(sessionId)}/evidence/${encodeURIComponent(traceId)}`
+  ),
+
+  // ── 数据看板 / 学员画像 ──
   getDashboard: () => request('/dashboard/summary'),
   getLearningPhrases: params => request(`/learning/phrases?${query(params || {})}`),
   setLearningPhraseFavorite: (sessionId, phraseKey, favorite) => request(
@@ -152,17 +178,56 @@ module.exports = {
     `/learning/mistakes/${encodeURIComponent(sessionId)}/${encodeURIComponent(mistakeKey)}`,
     { method: 'PUT', data: { mastered } }
   ),
+  getMistakeRetrainContext: (sessionId, mistakeKey) => request(
+    `/learning/mistakes/${encodeURIComponent(sessionId)}/${encodeURIComponent(mistakeKey)}/context`
+  ),
+  retrainMistake: (sessionId, mistakeKey, answer) => request(
+    `/learning/mistakes/${encodeURIComponent(sessionId)}/${encodeURIComponent(mistakeKey)}/retrain`,
+    { method: 'POST', data: { answer }, timeout: MODEL_REQUEST_TIMEOUT }
+  ),
   getLearningProfile: () => request('/learning/profile'),
   getLearningMine: () => request('/learning/mine'),
   checkIn: () => request('/learning/checkins', { method: 'POST', data: {} }),
+
+  // ── 主管端 ──
   getSupervisorDashboard: params => request(`/supervisor/dashboard?${query(params || {})}`),
+  getSupervisorMembers: params => request(`/supervisor/members?${query(params || {})}`),
+  getSupervisorMember: memberId => request(`/supervisor/members/${encodeURIComponent(memberId)}`),
+  getSupervisorTrainingPlans: params => request(`/supervisor/training-plans?${query(params || {})}`),
+  getSupervisorScenarios: () => request('/supervisor/scenarios'),
+  createTrainingPlan: payload => request('/supervisor/training-plans', { method: 'POST', data: payload }),
+  getTrainingPlan: planId => request(`/supervisor/training-plans/${encodeURIComponent(planId)}`),
+  notifyTrainingPlan: planId => request(`/supervisor/training-plans/${encodeURIComponent(planId)}/notify`, {
+    method: 'POST', data: {}
+  }),
+  getLearnerTrainingPlans: () => request('/learning/training-plans'),
+  getSupervisorForbiddenPhrases: params => request(`/supervisor/reports/forbidden-phrases?${query(params || {})}`),
+  getSupervisorForbiddenPhraseMembers: (category, params) => request(
+    `/supervisor/reports/forbidden-phrases/${encodeURIComponent(category)}?${query(params || {})}`
+  ),
+  getSupervisorLeaderboard: params => request(`/supervisor/reports/leaderboard?${query(params || {})}`),
+  getTeamMembers: params => request(`/supervisor/team/members?${query(params || {})}`),
+  getTeamCandidates: params => request(`/supervisor/team/candidates?${query(params || {})}`),
+  addTeamMembers: learnerIds => request('/supervisor/team/members', { method: 'POST', data: { learnerIds } }),
+  removeTeamMember: learnerId => request(`/supervisor/team/members/${encodeURIComponent(learnerId)}/remove`, {
+    method: 'POST', data: {}
+  }),
+  // ── 场景管理 / 抽查 / 导出（主管端） ──
+  getSupervisorScenarioCatalog: () => request('/supervisor/scenarios/manage'),
+  createSupervisorScenario: payload => request('/supervisor/scenarios', { method: 'POST', data: payload }),
+  updateSupervisorScenario: (scenarioId, payload) => request(
+    `/supervisor/scenarios/${encodeURIComponent(scenarioId)}`, { method: 'PUT', data: payload }
+  ),
+  getSupervisorMemberSession: (memberId, sessionId) => request(
+    `/supervisor/members/${encodeURIComponent(memberId)}/sessions/${encodeURIComponent(sessionId)}`
+  ),
+  exportSupervisorReport: params => request(`/supervisor/reports/export?${query(params || {})}`),
+
+  // ── 知识管理后台（RAG 语料与诊所服务） ──
   getAdminServices: () => request('/admin/services'),
   createAdminService: payload => request('/admin/services', {
     method: 'POST', data: { payload }
   }),
-  getRoleplayEvidence: (sessionId, traceId) => request(
-    `/roleplay/sessions/${encodeURIComponent(sessionId)}/evidence/${encodeURIComponent(traceId)}`
-  ),
   getAdminServiceDraft: serviceId => request(`/admin/services/${encodeURIComponent(serviceId)}/draft`),
   saveAdminServiceDraft: (serviceId, draftVersion, payload) => request(
     `/admin/services/${encodeURIComponent(serviceId)}/draft`,
@@ -207,5 +272,13 @@ module.exports = {
   ),
   previewAdminKnowledge: payload => request('/admin/knowledge/preview', {
     method: 'POST', data: payload
-  })
+  }),
+
+  // ── 演示账号切换 ──
+  // 注意：调用方（index/mine）在拿到 data 后自行落盘 accessToken 与 user，
+  // switchRole 刻意不做副作用，避免与页面重复写入。
+  switchRole: role => request('/auth/switch-role', { method: 'POST', data: { role } }),
+  getDemoLearners: () => request('/demo/learners'),
+  switchLearner: userId => request('/auth/switch-learner', { method: 'POST', data: { userId } })
+    .then(persistIdentity)
 };

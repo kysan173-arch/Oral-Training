@@ -1,0 +1,52 @@
+.trend-chart-root {
+  width: 100%;
+  padding: 6rpx 0 2rpx;
+}
+.trend-canvas-wrap {
+  position: relative;
+  margin: 0 auto;
+}
+.trend-canvas {
+  display: block;
+}
+/* 图表最终由普通 image 展示；canvas 绘制完成后移到视口外继续承担重绘，
+   这样它不再是「压住自定义 tabBar 的原生层」。 */
+.trend-chart-image {
+  display: block;
+}
+.trend-canvas-offscreen {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+}
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10rpx 24rpx;
+  margin-top: 14rpx;
+}
+.trend-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.trend-legend-mark {
+  width: 18rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+  flex-shrink: 0;
+}
+.trend-legend-mark-dashed {
+  width: 20rpx;
+  height: 0;
+  border-radius: 0;
+  border-top-width: 3rpx;
+  border-top-style: dashed;
+  background: none;
+}
+.trend-legend-text {
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

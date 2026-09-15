@@ -1,17 +1,18 @@
 <view class="page-shell mistakes-page">
   <view class="page-header">
-    <text class="eyebrow">PRACTICE AGAIN</text>
     <text class="page-title">错题复练</text>
     <text class="page-intro">每一项都来自你的评分报告。复练时请优先练习建议改写中的沟通结构与合规边界。</text>
   </view>
 
-  <view class="toolbar card"><text>显示已掌握项目</text><switch checked="{{includeMastered}}" color="#667eea" bindchange="toggleMastered" /></view>
+  <view class="toolbar card"><text>显示已掌握项目</text><switch checked="{{includeMastered}}" color="#1F3864" bindchange="toggleMastered" /></view>
 
-  <view class="loading-card card" wx:if="{{loading}}"><text>正在整理需要复练的内容…</text></view>
+  <view class="mistake-skeleton" wx:if="{{loading}}">
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+    <view class="sk-card"></view>
+  </view>
   <view class="empty-card card" wx:elif="{{mistakes.length === 0}}">
-    <text class="empty-title">{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}</text>
-    <text class="empty-text">完成训练并生成报告后，系统会把需要改进的表达收录在这里。</text>
-    <button class="primary-button" bindtap="goPhrases">去话术锦囊看看</button>
+    <empty-state title="{{includeMastered ? '还没有错题记录' : '暂时没有待复练项目'}}" text="完成训练并生成报告后，系统会把需要改进的表达收录在这里。" actionText="去话术锦囊看看" bind:action="goPhrases"></empty-state>
   </view>
 
   <view class="mistake-list" wx:else>
@@ -21,7 +22,7 @@
       <view class="quote-box" wx:if="{{item.originalQuote}}"><text class="field-label">当时表达</text><text>“{{item.originalQuote}}”</text></view>
       <view class="reason-box"><text class="field-label">为什么需要调整</text><text>{{item.reason}}</text></view>
       <view class="rewrite-box"><text class="field-label">建议改写</text><text>{{item.recommendedRewrite}}</text></view>
-      <view class="mistake-actions"><text class="mastery-action" bindtap="toggleMastery" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-mistake-key="{{item.mistakeKey}}" data-mastered="{{item.mastered}}">{{savingId === item.id ? '保存中…' : item.mastered ? '恢复为待练习' : '标记已掌握'}}</text><text class="retrain-action" bindtap="retrain" data-scenario-id="{{item.scenarioId}}">用此场景复练 ›</text></view>
+      <view class="mistake-actions"><text class="mastery-action" bindtap="toggleMastery" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-mistake-key="{{item.mistakeKey}}" data-mastered="{{item.mastered}}">{{savingId === item.id ? '保存中…' : item.mastered ? '恢复为待练习' : '标记已掌握'}}</text><text class="retrain-action" bindtap="retrainRound" data-session-id="{{item.sessionId}}" data-mistake-key="{{item.mistakeKey}}">重练本回合 ›</text><text class="retrain-action" bindtap="retrain" data-scenario-id="{{item.scenarioId}}">用此场景复练 ›</text></view>
     </view>
   </view>
 

@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "违规成员明细",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

@@ -7,27 +7,40 @@
     "pages/result/result",
     "pages/roleplay-result/roleplay-result",
     "pages/report/report",
+    "pages/session-detail/session-detail",
     "pages/admin/admin",
+    "pages/member-detail/member-detail",
     "pages/mine/mine",
     "pages/phrases/phrases",
     "pages/mistakes/mistakes",
+    "pages/mistake-retrain/mistake-retrain",
     "pages/profile/profile",
+    "pages/admin-training-plan-create/admin-training-plan-create",
+    "pages/admin-training-plan-detail/admin-training-plan-detail",
+    "pages/admin-phrase-members/admin-phrase-members",
+    "pages/training-plans/training-plans",
+    "pages/training-plan-detail/training-plan-detail",
+    "pages/admin-training/admin-training",
+    "pages/team-members/team-members",
+    "pages/admin-scenarios/admin-scenarios",
+    "pages/session-inspect/session-inspect",
     "pages/knowledge-admin/knowledge-admin",
     "pages/service-editor/service-editor",
     "pages/knowledge-editor/knowledge-editor"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#667eea",
+    "navigationBarBackgroundColor": "#FFFFFF",
     "navigationBarTitleText": "口腔客服智能陪练",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#f5f5f5",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F9FC",
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#007aff",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "custom": true,
+    "color": "#A1A1AA",
+    "selectedColor": "#1F3864",
+    "backgroundColor": "#EEF2F8",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/home/home",
@@ -36,22 +49,22 @@
         "selectedIconPath": "static/image/tabbar/home_selected.png"
       },
       {
+        "pagePath": "pages/admin-training/admin-training",
+        "text": "培训",
+        "iconPath": "static/image/tabbar/training.png",
+        "selectedIconPath": "static/image/tabbar/training_selected.png"
+      },
+      {
         "pagePath": "pages/index/index",
         "text": "训练",
         "iconPath": "static/image/tabbar/training.png",
         "selectedIconPath": "static/image/tabbar/training_selected.png"
       },
       {
-        "pagePath": "pages/report/report",
-        "text": "历史",
-        "iconPath": "static/image/tabbar/report.png",
-        "selectedIconPath": "static/image/tabbar/report_selected.png"
-      },
-      {
         "pagePath": "pages/admin/admin",
         "text": "数据",
-        "iconPath": "static/image/tabbar/mine.png",
-        "selectedIconPath": "static/image/tabbar/mine_selected.png"
+        "iconPath": "static/image/tabbar/report.png",
+        "selectedIconPath": "static/image/tabbar/report_selected.png"
       },
       {
         "pagePath": "pages/mine/mine",

@@ -1,0 +1,122 @@
+<view class="page-shell plan-detail-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在加载计划明细…</text></view>
+
+  <empty-state
+    wx:elif="{{loadError}}"
+    icon="!"
+    title="计划明细加载失败"
+    text="{{loadErrorMsg}}"
+    actionText="重试"
+    bind:action="retry"
+  ></empty-state>
+
+  <empty-state
+    wx:elif="{{missing}}"
+    icon="计"
+    title="计划不存在或已被删除"
+    text="该计划可能已被主管撤回，返回列表可以查看你当前的培训计划。"
+    actionText="返回我的计划"
+    bind:action="goPlans"
+  ></empty-state>
+
+  <block wx:elif="{{plan}}">
+    <!-- 计划摘要：要求、说明、三个关键数字 -->
+    <view class="detail-hero card">
+      <view class="plan-head">
+        <view class="plan-title-wrap">
+          <text class="plan-title">{{plan.title}}</text>
+          <text class="plan-period-tag">{{plan.periodText}}</text>
+        </view>
+        <text class="plan-status plan-status-{{plan.statusKey}}">{{plan.statusText}}</text>
+      </view>
+      <text class="plan-requirement">{{plan.requirementText}}</text>
+      <text class="detail-desc" wx:if="{{plan.description}}">{{plan.description}}</text>
+      <view class="detail-meta-row">
+        <view class="detail-meta">
+          <text class="detail-meta-value">{{plan.progressText}}</text>
+          <text class="detail-meta-label">完成次数</text>
+        </view>
+        <view class="detail-meta">
+          <text class="detail-meta-value">{{plan.avgScoreText}}</text>
+          <text class="detail-meta-label">我的均分</text>
+        </view>
+        <view class="detail-meta">
+          <text class="detail-meta-value">{{plan.dueText}}</text>
+          <text class="detail-meta-label">截止时间</text>
+        </view>
+      </view>
+      <text class="detail-countdown" wx:if="{{plan.countdownText}}">{{plan.countdownText}}</text>
+    </view>
+
+    <!-- 达标判定：把两个条件各自是否满足摊开，而不是只给一个总分 -->
+    <view class="section-title-row">
+      <text class="section-title">达标要求</text>
+      <text class="section-caption">{{plan.ruleSummary}}</text>
+    </view>
+
+    <view class="rule-card card">
+      <view class="rule-row">
+        <view class="rule-icon {{plan.countDone ? 'ok' : ''}}">{{plan.countDone ? '✓' : '·'}}</view>
+        <view class="rule-copy">
+          <text class="rule-name">完成训练次数</text>
+          <text class="rule-hint">计划期内、命中适用场景的已完成训练</text>
+        </view>
+        <view class="rule-value">
+          <text class="rule-value-main {{plan.countDone ? 'ok' : 'pending'}}">{{plan.countText}}</text>
+          <text class="rule-tag {{plan.countDone ? 'done' : 'pending'}}">{{plan.countDone ? '已达标' : '未达标'}}</text>
+        </view>
+      </view>
+
+      <view class="rule-row">
+        <view class="rule-icon {{plan.scoreDone ? 'ok' : ''}}">{{plan.scoreDone ? '✓' : '·'}}</view>
+        <view class="rule-copy">
+          <text class="rule-name">平均得分</text>
+          <text class="rule-hint">取计划期内上述训练的平均分</text>
+        </view>
+        <view class="rule-value">
+          <text class="rule-value-main {{plan.scoreDone ? 'ok' : 'pending'}}">{{plan.scoreText}}</text>
+          <text class="rule-tag {{plan.scoreDone ? 'done' : 'pending'}}">{{plan.scoreDone ? '已达标' : '未达标'}}</text>
+        </view>
+      </view>
+
+      <view class="plan-progress">
+        <view class="plan-progress-bar">
+          <view class="plan-progress-fill {{plan.progressPercent >= 100 ? 'full' : ''}}" style="width:{{plan.progressPercent}}%;"></view>
+        </view>
+        <text class="plan-progress-text">{{plan.progressPercent}}%</text>
+      </view>
+    </view>
+
+    <!-- 适用场景 -->
+    <view class="section-title-row">
+      <text class="section-title">适用场景</text>
+      <text class="section-caption">{{scenarioCaption}}</text>
+    </view>
+
+    <view class="scene-card card">
+      <view class="scene-note" wx:if="{{allScenarios}}">
+        <text class="scene-note-title">不限定场景</text>
+        <text class="scene-note-text">该计划未指定场景，完成任意场景的训练都会计入进度。</text>
+      </view>
+
+      <block wx:else>
+        <text class="scene-warn" wx:if="{{catalogFailed}}">场景名称加载失败，下面显示的是场景编号，重新进入本页可再次尝试。</text>
+        <view class="scene-row" wx:for="{{scenarios}}" wx:key="id">
+          <view class="scene-index">{{index + 1}}</view>
+          <view class="scene-copy">
+            <view class="scene-name-row">
+              <text class="scene-name">{{item.name}}</text>
+              <text class="tag tag-neutral" wx:if="{{item.categoryLabel}}">{{item.categoryLabel}}</text>
+              <text class="tag tag-primary" wx:if="{{item.difficultyLabel}}">{{item.difficultyLabel}}</text>
+            </view>
+            <text class="scene-best {{item.trained ? '' : 'untrained'}}">我的最佳分 {{item.bestScoreText}}</text>
+          </view>
+        </view>
+        <text class="scene-foot">「我的最佳分」为历史最好成绩，仅供参考；上方次数与均分只统计计划期内命中这些场景的训练。</text>
+      </block>
+    </view>
+
+    <view class="primary-button detail-action" bindtap="goTraining">去训练中心完成计划</view>
+    <text class="detail-note">进度按你完成的训练自动统计，无需手动打卡。</text>
+  </block>
+</view>

@@ -20,9 +20,17 @@
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\009_legacy_report_totals.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\010_knowledge_catalog.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\011_roleplay_rag_mvp.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\012_custom_patient_profile.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\013_recommendation_scenario.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\014_training_plans.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\015_supervisor_team.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\016_message_emotion.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\017_hint_per_round.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\018_scenario_reaction_rules.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\019_roleplay_free_template.sql
    ```
 
-   `003` 会完整归档历史重复轮次后建立唯一索引，回填回复状态，并为已有 `generating` 记录补任务。`004` 保留所有旧记录并归属到 `demo-user-001`。`005` 按“最新回复 + 其之前最近一次输入”修复被拆开的历史问答，并补建完成会话缺失的报告或任务；被替换的消息、报告和任务状态都会归档。迁移本身不会调用模型，执行 `005` 至 `011` 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务、知识、不可变版本、发布审计及独立草稿生成队列；`011` 增加角色互换 RAG 快照、证据 trace 和消息引用。
+   `003` 会完整归档历史重复轮次后建立唯一索引，回填回复状态，并为已有 `generating` 记录补任务。`004` 保留所有旧记录并归属到 `demo-user-001`。`005` 按“最新回复 + 其之前最近一次输入”修复被拆开的历史问答，并补建完成会话缺失的报告或任务；被替换的消息、报告和任务状态都会归档。迁移本身不会调用模型，执行 `005` 至 `019` 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务、知识、不可变版本、发布审计及独立草稿生成队列；`011` 增加角色互换 RAG 快照、证据 trace 和消息引用。`012` 至 `019` 依次为自定义患者画像、推荐场景、培训计划与指派、主管团队归属、消息情绪、轮次内提示唯一键、场景反应规则与自由模拟模板。
 
 3. 构建并启动：
 
@@ -97,7 +105,7 @@ ctest --test-dir build-msvc -C Release --output-on-failure
 ```
 
 在同一测试库中，设置 `ORAL_TRAINING_TEST_DATABASE_URL` 后运行
-`build-msvc\Release\database_feature_test.exe`，可验证提示、签到、收藏、主管聚合看板。
+`build-msvc\Release\database_feature_test.exe`，可验证提示、签到、收藏、主管聚合看板与成员摘要。
 
 并发测试会进行一次受控患者模型调用并在测试后删除精确会话：
 

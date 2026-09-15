@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "计划明细",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

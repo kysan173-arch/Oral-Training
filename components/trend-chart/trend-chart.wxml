@@ -1,0 +1,15 @@
+<view class="trend-chart-root" bindtap="onTap">
+  <view class="trend-canvas-wrap" style="width: {{canvasWidth}}px; height: {{height}}px;">
+    <!-- canvas 是原生组件，层级永远高于自定义 tabBar（z-index 无效），所以绘制完成后
+         导出为图片、由普通 image 承载展示，canvas 移出视口继续承担后续重绘。 -->
+    <image wx:if="{{chartImage}}" class="trend-chart-image" src="{{chartImage}}" style="width: {{canvasWidth}}px; height: {{height}}px;" mode="scaleToFill" binderror="onImageError"></image>
+    <canvas type="2d" class="trend-canvas {{chartImage ? 'trend-canvas-offscreen' : ''}}" style="width: {{canvasWidth}}px; height: {{height}}px;"></canvas>
+  </view>
+  <view class="trend-legend" wx:if="{{legend.length}}">
+    <view class="trend-legend-item" wx:for="{{legend}}" wx:key="name">
+      <view wx:if="{{item.dashed}}" class="trend-legend-mark trend-legend-mark-dashed" style="border-top-color: {{item.color}};"></view>
+      <view wx:else class="trend-legend-mark" style="background: {{item.color}};"></view>
+      <text class="trend-legend-text">{{item.name}}</text>
+    </view>
+  </view>
+</view>

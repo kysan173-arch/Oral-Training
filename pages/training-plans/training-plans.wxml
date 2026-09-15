@@ -1,0 +1,37 @@
+<view class="page-shell my-plan-page">
+  <view class="my-plan-hero card">
+    <text class="my-plan-eyebrow">培训计划</text>
+    <text class="my-plan-title" wx:if="{{pendingCount > 0}}">你有 {{pendingCount}} 个计划待完成</text>
+    <text class="my-plan-title" wx:elif="{{total > 0}}">全部计划已达标</text>
+    <text class="my-plan-title" wx:else>暂无进行中的计划</text>
+    <text class="my-plan-desc">计划由主管发布，进度按你完成的训练自动统计，无需手动打卡。</text>
+  </view>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在加载计划…</text></view>
+
+  <block wx:else>
+    <view class="my-plan-card card my-plan-{{item.status}}" wx:for="{{plans}}" wx:key="id" bindtap="openPlan" data-id="{{item.id}}" hover-class="my-plan-card-hover">
+      <view class="plan-head">
+        <view class="plan-title-wrap">
+          <text class="plan-title">{{item.title}}</text>
+          <text class="plan-period-tag">{{item.periodText}}</text>
+        </view>
+        <text class="plan-status plan-status-{{item.status}}">{{item.statusText}}</text>
+      </view>
+      <text class="plan-requirement">{{item.requirementText}}</text>
+      <text class="plan-desc" wx:if="{{item.description}}">{{item.description}}</text>
+      <view class="plan-progress">
+        <view class="plan-progress-bar"><view class="plan-progress-fill {{item.progressPercent >= 100 ? 'full' : ''}}" style="width:{{item.progressPercent}}%;"></view></view>
+        <text class="plan-progress-text">{{item.progressText}}</text>
+      </view>
+      <view class="plan-foot">
+        <text class="plan-foot-item">我的均分 {{item.avgScoreText}}</text>
+        <text class="plan-foot-dot">·</text>
+        <text class="plan-foot-item">截止 {{item.dueText}}</text>
+        <text class="plan-more">查看明细 ›</text>
+      </view>
+    </view>
+
+    <empty-state wx:if="{{plans.length === 0}}" title="还没有培训计划" text="主管发布计划后，会在这里看到你的进度与要求。" actionText="去训练中心" bind:action="goTraining"></empty-state>
+  </block>
+</view>

@@ -1,0 +1,51 @@
+.plan-detail-page { padding: 24rpx 24rpx calc(60rpx + env(safe-area-inset-bottom)); }
+
+.loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
+
+/* ── 计划摘要 ── */
+.detail-hero { padding: 28rpx 26rpx; margin-bottom: 24rpx; }
+.plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
+.plan-title-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; min-width: 0; }
+.plan-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
+.plan-period-tag { flex-shrink: 0; padding: 1rpx 10rpx; border-radius: 8rpx; font-size: 20rpx; color: var(--text-secondary); background: var(--color-bg); }
+.plan-status { flex-shrink: 0; padding: 2rpx 12rpx; border-radius: 10rpx; font-size: 20rpx; font-weight: 600; }
+.plan-status-active { color: var(--color-primary); background: var(--color-primary-light); }
+.plan-status-expired { color: var(--text-secondary); background: var(--color-bg); }
+.plan-requirement { display: block; margin-top: 12rpx; font-size: 22rpx; color: var(--text-secondary); }
+.detail-desc { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-body); }
+
+.plan-progress { display: flex; align-items: center; gap: 14rpx; margin-top: 18rpx; }
+.plan-progress-bar { flex: 1; height: 14rpx; overflow: hidden; border-radius: 7rpx; background: var(--color-primary-light); }
+.plan-progress-fill { height: 100%; border-radius: 7rpx; background: var(--color-primary); transition: width .4s ease; }
+.plan-progress-fill.full { background: var(--color-success); }
+.plan-progress-text { flex-shrink: 0; font-size: 24rpx; font-weight: 600; color: var(--text-body); }
+
+.detail-meta-row { display: flex; gap: 14rpx; margin-top: 22rpx; }
+.detail-meta { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 18rpx 8rpx; border-radius: 16rpx; background: var(--color-primary-pale); }
+.detail-meta-value { font-size: 30rpx; font-weight: 600; color: var(--text-strong); }
+.detail-meta-label { margin-top: 4rpx; font-size: 20rpx; color: var(--text-secondary); }
+
+.detail-copy-btn { margin-top: 24rpx; padding: 22rpx 0; border-radius: 40rpx; color: #fff; background: var(--color-primary); font-size: 28rpx; font-weight: 600; text-align: center; }
+.detail-copy-btn.disabled { opacity: .6; }
+/* 重发按钮与复制按钮做次级区分：同形不同色，主行动仍让给催办名单 */
+.detail-republish-btn { margin-top: 16rpx; background: transparent; color: var(--color-primary); border: 1rpx solid var(--color-primary); }
+.detail-copy-note { display: block; margin-top: 12rpx; font-size: 20rpx; line-height: 1.6; color: var(--text-muted); text-align: center; }
+
+/* ── 成员进度 ── */
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 4rpx 20rpx; }
+.section-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
+.section-title::before { content: ''; display: inline-block; width: 8rpx; height: 30rpx; margin-right: 12rpx; border-radius: 4rpx; background: var(--color-primary); vertical-align: -4rpx; }
+.section-caption { color: var(--text-secondary); font-size: 22rpx; }
+
+.assignment-card { display: flex; align-items: center; padding: 22rpx; margin-bottom: 14rpx; transition: transform .15s ease; }
+.member-card-hover { transform: scale(.98); }
+.assignment-avatar { width: 72rpx; height: 72rpx; line-height: 72rpx; flex-shrink: 0; border-radius: 22rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 28rpx; font-weight: 600; text-align: center; }
+.assignment-avatar.done { background: var(--color-success-light); color: var(--color-success); }
+.assignment-copy { flex: 1; min-width: 0; margin-left: 18rpx; }
+.assignment-name-row { display: flex; align-items: center; gap: 10rpx; }
+.assignment-name { font-size: 26rpx; font-weight: 600; color: var(--text-body); }
+.assignment-tag { padding: 1rpx 10rpx; border-radius: 8rpx; font-size: 20rpx; font-weight: 600; }
+.assignment-tag.done { color: var(--color-success); background: var(--color-success-light); }
+.assignment-tag.pending { color: var(--color-warning); background: var(--color-warning-light); }
+.assignment-meta { display: block; margin-top: 4rpx; font-size: 22rpx; color: var(--text-secondary); }
+.warning-arrow { margin-left: 8rpx; font-size: 30rpx; color: var(--text-secondary); }

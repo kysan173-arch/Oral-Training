@@ -47,6 +47,15 @@ try {
   Invoke-Psql $emptySchema (Join-Path $migrations '008_supervisor_growth.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '009_legacy_report_totals.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '010_knowledge_catalog.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '011_roleplay_rag_mvp.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '012_custom_patient_profile.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '013_recommendation_scenario.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '014_training_plans.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '015_supervisor_team.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '016_message_emotion.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '017_hint_per_round.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '018_scenario_reaction_rules.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '019_roleplay_free_template.sql') ''
   Invoke-Psql $emptySchema '' @'
 DO $$ BEGIN
   IF to_regclass('message_repair_archive') IS NULL OR to_regclass('ai_jobs') IS NULL OR
@@ -55,11 +64,39 @@ DO $$ BEGIN
      to_regclass('generation_state_repair_archive') IS NULL OR
      to_regclass('learner_mistake_progress') IS NULL OR to_regclass('session_hints') IS NULL OR
      to_regclass('learner_checkins') IS NULL OR to_regclass('learner_phrase_favorites') IS NULL OR
+     to_regclass('training_plans') IS NULL OR to_regclass('training_assignments') IS NULL OR
+     to_regclass('supervisor_team_members') IS NULL OR
      to_regclass('clinic_services') IS NULL OR to_regclass('service_revisions') IS NULL OR
      to_regclass('knowledge_entries') IS NULL OR to_regclass('knowledge_revisions') IS NULL OR
      to_regclass('knowledge_chunks') IS NULL OR to_regclass('knowledge_admin_jobs') IS NULL OR
      to_regclass('knowledge_audit_events') IS NULL THEN
     RAISE EXCEPTION 'empty database migration did not create required tables';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'messages' AND column_name = 'emotion'
+  ) THEN
+    RAISE EXCEPTION 'message emotion column was not created';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'session_hints' AND column_name = 'round' AND is_nullable = 'NO'
+  ) THEN
+    RAISE EXCEPTION 'session_hints.round was not created as NOT NULL';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'session_hints_session_id_round_key' AND conrelid = 'session_hints'::regclass
+  ) THEN
+    RAISE EXCEPTION 'session_hints lost its per-round uniqueness key';
+  END IF;
+  -- hint_number 必须已经放开 1..3：提示序号是全场第几条，与轮次无关，
+  -- 旧的上限会让第 4 轮之后的轮次唯一键永远插不进去。
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'session_hints_hint_number_check' AND conrelid = 'session_hints'::regclass
+  ) THEN
+    RAISE EXCEPTION 'session_hints still caps hint_number at 3';
   END IF;
 END $$;
 '@
@@ -71,11 +108,17 @@ END $$;
   Invoke-Psql $historySchema (Join-Path $migrations '007_training_experience.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '008_supervisor_growth.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '010_knowledge_catalog.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '012_custom_patient_profile.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '013_recommendation_scenario.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '014_training_plans.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '015_supervisor_team.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '016_message_emotion.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '017_hint_per_round.sql') ''
   Invoke-Psql $historySchema '' @'
 INSERT INTO learner_mistake_progress(user_id, session_id, mistake_key, mastered_at)
 VALUES ('demo-user-001', 'test-max-rounds', 'fixture-mistake', NOW());
-INSERT INTO session_hints(id, session_id, hint_number, content)
-VALUES ('fixture-hint', 'test-max-rounds', 1, 'Confirm the concern before explaining the clinical assessment boundary.');
+INSERT INTO session_hints(id, session_id, hint_number, round, content)
+VALUES ('fixture-hint', 'test-max-rounds', 1, 1, 'Confirm the concern before explaining the clinical assessment boundary.');
 INSERT INTO learner_checkins(user_id, checkin_date, points)
 VALUES ('demo-user-001', DATE '2026-01-02', 10);
 INSERT INTO learner_phrase_favorites(user_id, session_id, phrase_key)
@@ -155,6 +198,13 @@ DO $$ BEGIN
 END $$;
 '@
 
+  # Legacy rows written before 017 have no round.  They must be bound to a real
+  # round of their own session, not silently dropped or duplicated -- and the
+  # (session_id, round) key has to survive the backfill.
+  Invoke-Psql $historySchema '' @'
+INSERT INTO session_hints(id, session_id, hint_number, content)
+VALUES ('fixture-legacy-hint', 'test-max-rounds', 1, 'Legacy hint without a round column value.');
+'@
   Invoke-Psql $historySchema (Join-Path $migrations '003_reliability.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '004_identity.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '005_pair_and_state_repair.sql') ''
@@ -198,6 +248,90 @@ DO $$ BEGIN
     WHERE user_id = 'demo-user-001' AND session_id = 'test-max-rounds' AND phrase_key = 'fixture-phrase'
   ) THEN
     RAISE EXCEPTION 'phrase favorite was not preserved on migration rerun';
+  END IF;
+END $$;
+'@
+  Invoke-Psql $historySchema (Join-Path $migrations '006_learner_insights.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '007_training_experience.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '008_supervisor_growth.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '012_custom_patient_profile.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '013_recommendation_scenario.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '014_training_plans.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '015_supervisor_team.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '016_message_emotion.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '017_hint_per_round.sql') ''
+  Invoke-Psql $historySchema '' @'
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM learner_mistake_progress
+    WHERE user_id = 'demo-user-001' AND session_id = 'test-max-rounds'
+      AND mistake_key = 'fixture-mistake' AND mastered_at IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'learner insight progress was not preserved on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM session_hints
+    WHERE id = 'fixture-hint' AND session_id = 'test-max-rounds'
+      AND hint_number = 1 AND round = 1
+  ) THEN
+    RAISE EXCEPTION 'training hint was not preserved on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM session_hints
+    WHERE id = 'fixture-legacy-hint' AND session_id = 'test-max-rounds' AND round IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'legacy hint was not backfilled with a round';
+  END IF;
+  IF (SELECT COUNT(*) FROM session_hints WHERE session_id = 'test-max-rounds') <> 2 THEN
+    RAISE EXCEPTION 'hint backfill changed the number of stored hints';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'session_hints_session_id_round_key' AND conrelid = 'session_hints'::regclass
+  ) THEN
+    RAISE EXCEPTION 'per-round hint uniqueness key was lost on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM learner_checkins
+    WHERE user_id = 'demo-user-001' AND checkin_date = DATE '2026-01-02' AND points = 10
+  ) THEN
+    RAISE EXCEPTION 'daily check-in was not preserved on migration rerun';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM learner_phrase_favorites
+    WHERE user_id = 'demo-user-001' AND session_id = 'test-max-rounds' AND phrase_key = 'fixture-phrase'
+  ) THEN
+    RAISE EXCEPTION 'phrase favorite was not preserved on migration rerun';
+  END IF;
+END $$;
+'@
+
+  # 015 的存量回填必须只发生在首次安装：这里先造出「恰好一个在职主管 + 一个在职学员」
+  # 的场景，再重跑迁移。若 first_install 守卫失效，学员会被重新塞回主管名下，
+  # 主管手动移出的成员就会被静默复活。
+  Invoke-Psql $historySchema '' @'
+INSERT INTO users(id, display_name, role, status, is_demo)
+VALUES ('reliability-supervisor', 'Reliability Supervisor', 'admin', 'active', TRUE),
+       ('reliability-learner', 'Reliability Learner', 'learner', 'active', TRUE)
+ON CONFLICT (id) DO NOTHING;
+'@
+  Invoke-Psql $historySchema (Join-Path $migrations '015_supervisor_team.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '016_message_emotion.sql') ''
+  Invoke-Psql $historySchema (Join-Path $migrations '017_hint_per_round.sql') ''
+  Invoke-Psql $historySchema '' @'
+DO $$ BEGIN
+  IF to_regclass('supervisor_team_members') IS NULL THEN
+    RAISE EXCEPTION 'supervisor team table vanished on migration rerun';
+  END IF;
+  IF (SELECT COUNT(*) FROM supervisor_team_members) <> 0 THEN
+    RAISE EXCEPTION 'migration rerun resurrected team membership a supervisor had removed';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE table_name = 'supervisor_team_members' AND constraint_type = 'PRIMARY KEY'
+      AND constraint_name = 'supervisor_team_members_pkey'
+  ) THEN
+    RAISE EXCEPTION 'supervisor team table lost its learner_id primary key';
   END IF;
 END $$;
 '@

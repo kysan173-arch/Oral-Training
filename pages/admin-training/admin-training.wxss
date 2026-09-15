@@ -1,0 +1,55 @@
+/* 培训运营独立页（原 pages/admin 第三模块）。
+   wxss 为页面级作用域，这里自带全部所需样式；
+   全局 app.wxss 已提供的 .page-shell / .card / .section-title* 不重复定义。 */
+
+.training-page { padding: 24rpx 24rpx 0; padding-bottom: calc(150rpx + env(safe-area-inset-bottom)); }
+
+/* ── 头部 Banner（与数据页同一套克制白底样式） ── */
+.data-hero { position: relative; padding: 32rpx 30rpx 24rpx; margin-bottom: 24rpx; border-radius: 24rpx; color: var(--text-strong); background: #fff; border: 1rpx solid var(--color-border); }
+.hero-content { position: relative; z-index: 1; }
+.hero-eyebrow { display: block; font-size: 22rpx; letter-spacing: 2rpx; opacity: .8; color: var(--text-secondary); }
+.hero-title { display: block; margin-top: 12rpx; font-size: 40rpx; font-weight: 600; color: var(--text-strong); }
+.hero-desc { display: block; margin-top: 10rpx; font-size: 24rpx; line-height: 1.55; opacity: .78; color: var(--text-secondary); }
+
+/* ── 标题：与数据页一致的主色竖条 ── */
+.section-title-row { margin: 0 4rpx 20rpx; }
+.section-title::before { content: ''; display: inline-block; width: 8rpx; height: 30rpx; margin-right: 12rpx; border-radius: 4rpx; background: var(--color-primary); vertical-align: -4rpx; }
+
+/* ── 状态筛选（页面级，原定义在 admin.wxss） ── */
+.filter-chip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; margin-top: 16rpx; }
+.filter-chip { padding: 8rpx 18rpx; border-radius: 18rpx; font-size: 22rpx; color: var(--color-primary); background: var(--color-primary-light); }
+.filter-chip.selected { color: #fff; background: var(--color-primary); font-weight: 600; }
+
+/* ── 工具栏 ── */
+.plan-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 18rpx; }
+.plan-status-row { flex: 1; margin-top: 0; }
+.plan-create-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 30rpx; color: #fff; background: var(--color-primary); font-size: 24rpx; font-weight: 600; }
+.plan-note { display: block; margin: 6rpx 8rpx 0; font-size: 20rpx; line-height: 1.6; color: var(--text-muted); }
+
+/* ── 培训计划卡 ── */
+.plan-card { padding: 24rpx; margin-bottom: 16rpx; transition: transform .15s ease; }
+.plan-card-hover { transform: scale(.98); box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, .04); }
+.plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
+.plan-title-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; min-width: 0; }
+.plan-title { font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.plan-period-tag { flex-shrink: 0; padding: 1rpx 10rpx; border-radius: 8rpx; font-size: 20rpx; color: var(--text-secondary); background: var(--color-bg); }
+.plan-status { flex-shrink: 0; padding: 2rpx 12rpx; border-radius: 10rpx; font-size: 20rpx; font-weight: 600; }
+.plan-status-active { color: var(--color-primary); background: var(--color-primary-light); }
+.plan-status-expired { color: var(--text-secondary); background: var(--color-bg); }
+.plan-requirement { display: block; margin-top: 10rpx; font-size: 22rpx; color: var(--text-secondary); }
+.plan-progress { display: flex; align-items: center; gap: 14rpx; margin-top: 16rpx; }
+.plan-progress-bar { flex: 1; height: 12rpx; overflow: hidden; border-radius: 7rpx; background: var(--color-primary-light); }
+.plan-progress-fill { height: 100%; border-radius: 7rpx; background: var(--color-primary); transition: width .4s ease; }
+.plan-progress-fill.full { background: var(--color-success); }
+.plan-progress-text { flex-shrink: 0; font-size: 22rpx; font-weight: 600; color: var(--text-body); }
+.plan-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8rpx; margin-top: 16rpx; padding-top: 16rpx; border-top: 1rpx solid var(--color-border); }
+.plan-foot-item { font-size: 22rpx; color: var(--text-secondary); }
+.plan-foot-dot { color: var(--text-muted); }
+.plan-copy { margin-left: auto; padding: 8rpx 18rpx; border-radius: 24rpx; font-size: 22rpx; color: var(--color-primary); background: var(--color-primary-light); }
+
+/* ── 通用 ── */
+.loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
+
+.plan-toolbar-actions { display: flex; align-items: center; gap: 14rpx; flex-shrink: 0; }
+.plan-export-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 30rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 24rpx; font-weight: 600; }
+.plan-export-btn.disabled { opacity: 0.5; }

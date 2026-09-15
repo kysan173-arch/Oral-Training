@@ -1,5 +1,9 @@
 const api = require('../../utils/api.js');
+const datetime = require('../../utils/datetime.js');
 const { resultStateAction } = require('../../utils/result-state.js');
+
+/* 分数分档：颜色只跟随分数（≥80 良好绿 / 60–79 中间蓝 / <60 待提升橙） */
+const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
 
 const scoreFrom = value => {
   if (value === null || value === undefined || value === '') return null;
@@ -7,14 +11,13 @@ const scoreFrom = value => {
   return Number.isFinite(score) ? Math.min(100, Math.max(0, score)) : null;
 };
 
-const dimensionsFrom = (score = {}) => [
-  { key: 'empathy', name: '情绪识别与同理心', value: score.empathy, color: '#667eea' },
-  { key: 'knowledgeAccuracy', name: '口腔知识准确性', value: score.knowledgeAccuracy, color: '#52a67a' },
-  { key: 'needsDiscovery', name: '需求挖掘', value: score.needsDiscovery, color: '#f0a34b' },
-  { key: 'serviceEtiquette', name: '服务礼仪', value: score.serviceEtiquette, color: '#6b9de8' },
-  { key: 'medicalCompliance', name: '医疗合规', value: score.medicalCompliance, color: '#8b75c9' }
-].map(item => Object.assign({}, item, { score: scoreFrom(item.value) }))
-  .filter(item => item.score !== null);
+const dimensionsFrom = score => [
+  { key: 'empathy', name: '情绪识别与同理心', score: score.empathy },
+  { key: 'knowledgeAccuracy', name: '口腔知识准确性', score: score.knowledgeAccuracy },
+  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery },
+  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette },
+  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance }
+].map(item => Object.assign(item, { tier: scoreTier(item.score) }));
 
 const totalScoreFrom = (evaluation, sessionTotalScore) => {
   if (evaluation.totalScore !== undefined && evaluation.totalScore !== null) {
@@ -32,12 +35,13 @@ const totalScoreFrom = (evaluation, sessionTotalScore) => {
     + scoreFrom(score.serviceEtiquette) * 0.10);
 };
 
+/* 总分环档位色（与全局语义色 token 一致）；score 为 null 时走 unscored 档 */
 const levelFrom = score => {
-  if (score === null) return { key: 'unscored', name: '暂不形成综合分', note: '知识依据不足，可继续查看其余维度点评' };
-  if (score >= 90) return { key: 'excellent', name: '表现出色', note: '沟通与合规边界掌握较好' };
-  if (score >= 80) return { key: 'good', name: '表现良好', note: '继续用具体场景巩固表达' };
-  if (score >= 60) return { key: 'qualified', name: '达到练习目标', note: '可优先复练薄弱维度' };
-  return { key: 'practice', name: '继续复练', note: '建议先查看错题与推荐表达' };
+  if (score === null) return { key: 'unscored', name: '暂不形成综合分', note: '知识依据不足，可继续查看其余维度点评', scoreColor: '#1F3864' };
+  if (score >= 90) return { key: 'excellent', name: '表现出色', note: '沟通与合规边界掌握较好', scoreColor: '#2E8B6C' };
+  if (score >= 80) return { key: 'good', name: '表现良好', note: '继续用具体场景巩固表达', scoreColor: '#2E8B6C' };
+  if (score >= 60) return { key: 'qualified', name: '达到练习目标', note: '可优先复练薄弱维度', scoreColor: '#B97A1E' };
+  return { key: 'practice', name: '继续复练', note: '建议先查看错题与推荐表达', scoreColor: '#C2554A' };
 };
 
 const normalizeEvaluation = (evaluation, sessionTotalScore) => {
@@ -65,6 +69,10 @@ const normalizeEvaluation = (evaluation, sessionTotalScore) => {
   });
 };
 
+/* WXML 不能对数据路径调用函数（依赖追踪失效且不报错），
+   折叠时要显示的条目在 JS 里预算成字段。 */
+const foldList = (list, expanded) => (expanded ? (list || []) : (list || []).slice(0, 1));
+
 Page({
   data: {
     session: null,
@@ -73,10 +81,16 @@ Page({
     dimensions: [],
     level: null,
     nextScenario: null,
+    scorePercent: 0,
+    scoreText: '—',
     loading: true,
     loadingText: '正在生成训练报告…',
     retryable: false,
-    timedOut: false
+    timedOut: false,
+    violationsExpanded: false,
+    roundCommentsExpanded: false,
+    visibleViolations: [],
+    visibleRoundComments: []
   },
 
   sessionId: '',
@@ -99,13 +113,18 @@ Page({
   onUnload() { if (this.pollTimer) clearTimeout(this.pollTimer); },
 
   loadInitialData() {
+    if (!this.sessionId) return;
     Promise.all([api.getSession(this.sessionId), api.getScenarios()]).then(([detail, scenarioData]) => {
       const scenarios = scenarioData.items || [];
       const scenarioIndex = scenarios.findIndex(item => item.id === detail.session.scenarioId);
       const scenario = scenarioIndex >= 0 ? scenarios[scenarioIndex] : { name: detail.session.scenarioName };
       const nextScenario = scenarioIndex >= 0 && scenarios.length > 1
         ? scenarios[(scenarioIndex + 1) % scenarios.length] : null;
-      this.setData({ session: detail.session, scenario, nextScenario });
+      /* 起止时间在 JS 预算成展示文本，WXML 里不调用函数 */
+      const sessionView = Object.assign({}, detail.session, {
+        rangeText: datetime.formatRange(detail.session.startedAt, detail.session.finishedAt)
+      });
+      this.setData({ session: sessionView, scenario, nextScenario });
       this.networkRetryIndex = 0;
       this.pollReport();
     }).catch(error => this.handleNetworkError(error, () => this.loadInitialData()));
@@ -118,8 +137,21 @@ Page({
       const action = resultStateAction(report.status, this.data.session.status);
       if (action === 'ready' && report.evaluation) {
         const evaluation = normalizeEvaluation(report.evaluation, this.data.session.totalScore);
-        this.setData({ evaluation, dimensions: dimensionsFrom(evaluation.dimensionScores), loading: false,
-          level: levelFrom(evaluation.totalScore), retryable: false, timedOut: false });
+        const hasTotalScore = evaluation.totalScore !== null;
+        const scorePercent = hasTotalScore ? Math.max(0, Math.min(100, evaluation.totalScore)) : 0;
+        const scoreText = hasTotalScore ? String(evaluation.totalScore) : '—';
+        this.setData({
+          evaluation,
+          dimensions: dimensionsFrom(evaluation.dimensionScores),
+          loading: false,
+          level: levelFrom(evaluation.totalScore),
+          retryable: false,
+          timedOut: false,
+          scorePercent,
+          scoreText,
+          visibleViolations: foldList(evaluation.violations, this.data.violationsExpanded),
+          visibleRoundComments: foldList(evaluation.roundComments, this.data.roundCommentsExpanded)
+        });
         return;
       }
       if (action === 'failed') {
@@ -249,9 +281,27 @@ Page({
   restartTraining() { wx.switchTab({ url: '/pages/index/index' }); },
   viewScenes() { wx.switchTab({ url: '/pages/index/index' }); },
   viewHistory() { wx.switchTab({ url: '/pages/report/report' }); },
-  viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
   viewMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
+  viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
   viewProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+
+  toggleViolations() {
+    const violationsExpanded = !this.data.violationsExpanded;
+    const evaluation = this.data.evaluation;
+    this.setData({
+      violationsExpanded,
+      visibleViolations: foldList(evaluation && evaluation.violations, violationsExpanded)
+    });
+  },
+
+  toggleRoundComments() {
+    const roundCommentsExpanded = !this.data.roundCommentsExpanded;
+    const evaluation = this.data.evaluation;
+    this.setData({
+      roundCommentsExpanded,
+      visibleRoundComments: foldList(evaluation && evaluation.roundComments, roundCommentsExpanded)
+    });
+  },
 
   startNextScenario() {
     const scenario = this.data.nextScenario;

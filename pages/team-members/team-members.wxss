@@ -1,0 +1,134 @@
+/* ── 我的团队 ─────────────────────────────────────────────
+   复用 admin-training-plan-create 的成员选择语汇（member-search / member-list /
+   member-chip），保证「选学员」这件事在两个页面里长得一样。 */
+
+.team-page {
+  padding: 24rpx 28rpx 60rpx;
+}
+
+/* ── 骨架屏（与 mine 页同一种观感） ── */
+.skeleton-block { padding: 0 4rpx; }
+.skeleton-row,
+.skeleton-row-short {
+  height: 48rpx;
+  margin-top: 18rpx;
+  border-radius: 12rpx;
+  background: linear-gradient(90deg, #e8eaf0 25%, #dfe1ea 50%, #e8eaf0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s infinite;
+}
+.skeleton-row-short { width: 60%; margin-top: 22rpx; }
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── 加载失败 ── */
+.load-failed { padding: 40rpx 30rpx; text-align: center; }
+.load-failed-title { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.load-failed-text { display: block; margin-top: 12rpx; font-size: 23rpx; line-height: 1.6; color: var(--text-muted); }
+.load-failed-action {
+  display: inline-block;
+  margin-top: 22rpx;
+  padding: 12rpx 32rpx;
+  border-radius: 28rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+
+/* ── 团队成员列表 ── */
+.team-card { padding: 8rpx 26rpx; }
+.team-row { padding: 22rpx 0; border-bottom: 1rpx solid var(--color-border); }
+.team-row:last-child { border-bottom: none; }
+.team-row-main { display: flex; align-items: center; }
+.team-avatar {
+  width: 68rpx;
+  height: 68rpx;
+  flex-shrink: 0;
+  margin-right: 20rpx;
+  border-radius: 50%;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 28rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.team-copy { flex: 1; min-width: 0; }
+.team-name { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.team-meta { display: block; margin-top: 6rpx; font-size: 22rpx; color: var(--text-secondary); }
+.team-meta-sub { color: var(--text-muted); }
+.team-arrow { margin-left: 12rpx; font-size: 30rpx; color: var(--text-disabled); }
+
+/* 移出是危险动作：只用文字 + 短按反馈，不做成抢眼的大按钮 */
+.team-remove {
+  align-self: flex-start;
+  margin-top: 14rpx;
+  padding: 8rpx 24rpx;
+  border-radius: 24rpx;
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+  font-size: 22rpx;
+}
+.team-remove.disabled { background: var(--color-bg); color: var(--text-muted); }
+
+.team-truncate { display: block; padding: 16rpx 0 20rpx; font-size: 21rpx; line-height: 1.6; color: var(--text-muted); }
+
+/* ── 空状态 ── */
+.team-empty { padding: 40rpx 30rpx; text-align: center; }
+.team-empty-title { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.team-empty-text { display: block; margin-top: 12rpx; font-size: 23rpx; line-height: 1.7; color: var(--text-muted); }
+
+/* ── 可添加学员（与计划发布页同款交互） ── */
+.member-search {
+  margin-top: 22rpx;
+  padding: 14rpx 20rpx;
+  border-radius: 12rpx;
+  background: var(--color-primary-pale);
+  font-size: 24rpx;
+  color: var(--text-strong);
+}
+.form-placeholder { color: var(--text-muted); }
+.member-list { margin-top: 18rpx; }
+.member-list-inner { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.member-chip {
+  flex: 0 0 auto;
+  padding: 12rpx 22rpx;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+.member-chip.selected { color: #fff; background: var(--color-primary); font-weight: 600; }
+
+.candidate-state { padding: 30rpx 0; font-size: 24rpx; color: var(--text-secondary); text-align: center; }
+.candidate-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 20rpx; }
+.candidate-hint { font-size: 23rpx; color: var(--text-secondary); }
+.candidate-actions { display: flex; gap: 28rpx; }
+.candidate-action { font-size: 23rpx; color: var(--color-primary); }
+
+.add-bar { margin-top: 22rpx; }
+.add-btn {
+  padding: 22rpx 0;
+  border-radius: 44rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 27rpx;
+  font-weight: 600;
+  text-align: center;
+}
+.add-btn.disabled { background: #E8E9F0; color: var(--text-muted); font-weight: 400; }
+
+.candidate-scope { display: block; margin-top: 16rpx; font-size: 21rpx; line-height: 1.6; color: var(--text-muted); }
+
+.page-note {
+  display: block;
+  margin-top: 28rpx;
+  padding: 0 6rpx;
+  font-size: 21rpx;
+  line-height: 1.7;
+  color: var(--text-muted);
+}

@@ -1,10 +1,41 @@
 .radar-chart {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   margin: 0 auto;
 }
 
 .radar-canvas {
   display: block;
+}
+
+/* 多系列对比时的图例；只渲染有 compare 数据的场景，向后兼容 */
+.radar-legend {
+  display: flex;
+  justify-content: center;
+  gap: 28rpx;
+  margin-top: 12rpx;
+}
+.radar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.radar-legend-mark {
+  width: 20rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+  flex-shrink: 0;
+}
+.radar-legend-mark-dashed {
+  width: 22rpx;
+  height: 0;
+  border-radius: 0;
+  border-top-width: 3rpx;
+  border-top-style: dashed;
+  background: none;
+}
+.radar-legend-text {
+  font-size: 22rpx;
+  color: var(--text-secondary);
 }

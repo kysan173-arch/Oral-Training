@@ -1,0 +1,35 @@
+.my-plan-page { padding: 24rpx 24rpx calc(60rpx + env(safe-area-inset-bottom)); }
+
+.loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
+
+.my-plan-hero { padding: 32rpx 30rpx; margin-bottom: 24rpx; }
+.my-plan-eyebrow { display: block; font-size: 22rpx; letter-spacing: 2rpx; color: var(--text-secondary); }
+.my-plan-title { display: block; margin-top: 12rpx; font-size: 38rpx; font-weight: 600; color: var(--text-strong); }
+.my-plan-desc { display: block; margin-top: 12rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
+
+.my-plan-card { padding: 24rpx; margin-bottom: 16rpx; transition: transform .15s ease; }
+.my-plan-card-hover { transform: scale(.98); }
+.my-plan-card.my-plan-done { border-color: var(--color-success); }
+.my-plan-card.my-plan-expired { opacity: .72; }
+
+.plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
+.plan-title-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; min-width: 0; }
+.plan-title { font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.plan-period-tag { flex-shrink: 0; padding: 1rpx 10rpx; border-radius: 8rpx; font-size: 20rpx; color: var(--text-secondary); background: var(--color-bg); }
+.plan-status { flex-shrink: 0; padding: 2rpx 12rpx; border-radius: 10rpx; font-size: 20rpx; font-weight: 600; }
+.plan-status-pending { color: var(--color-warning); background: var(--color-warning-light); }
+.plan-status-done { color: var(--color-success); background: var(--color-success-light); }
+.plan-status-expired { color: var(--text-secondary); background: var(--color-bg); }
+.plan-requirement { display: block; margin-top: 10rpx; font-size: 22rpx; color: var(--text-secondary); }
+.plan-desc { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-body); }
+
+.plan-progress { display: flex; align-items: center; gap: 14rpx; margin-top: 16rpx; }
+.plan-progress-bar { flex: 1; height: 12rpx; overflow: hidden; border-radius: 7rpx; background: var(--color-primary-light); }
+.plan-progress-fill { height: 100%; border-radius: 7rpx; background: var(--color-primary); transition: width .4s ease; }
+.plan-progress-fill.full { background: var(--color-success); }
+.plan-progress-text { flex-shrink: 0; font-size: 22rpx; font-weight: 600; color: var(--text-body); }
+
+.plan-foot { display: flex; align-items: center; gap: 8rpx; margin-top: 14rpx; padding-top: 14rpx; border-top: 1rpx solid var(--color-border); }
+.plan-foot-item { font-size: 22rpx; color: var(--text-secondary); }
+.plan-foot-dot { color: var(--text-muted); }
+.plan-more { margin-left: auto; font-size: 22rpx; font-weight: 600; color: var(--color-primary); }

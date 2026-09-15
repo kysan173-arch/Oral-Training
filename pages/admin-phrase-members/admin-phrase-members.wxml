@@ -1,0 +1,25 @@
+<view class="page-shell phrase-page">
+  <view class="detail-hero card">
+    <text class="phrase-hero-label">违规类型</text>
+    <text class="phrase-hero-title">{{categoryLabel}}</text>
+    <text class="phrase-hero-desc">{{rangeLabel}}内共有 {{total}} 名成员出现该类表达。点击成员可查看其学习详情。</text>
+  </view>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在加载成员明细…</text></view>
+
+  <block wx:else>
+    <view class="member-item card" wx:for="{{members}}" wx:key="learnerId" bindtap="openMember" data-id="{{item.learnerId}}" hover-class="member-card-hover">
+      <view class="member-avatar">{{item.initial}}</view>
+      <view class="member-copy">
+        <view class="member-name-row">
+          <text class="member-name">{{item.displayName}}</text>
+          <text class="member-count">{{item.count}} 次</text>
+        </view>
+        <text class="member-scene">涉及场景：{{item.scenarioText}}</text>
+      </view>
+      <text class="warning-arrow">›</text>
+    </view>
+
+    <empty-state wx:if="{{members.length === 0}}" title="本期没有成员涉及" text="换个时间周期或场景分类看看。"></empty-state>
+  </block>
+</view>

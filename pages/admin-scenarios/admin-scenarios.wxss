@@ -1,0 +1,135 @@
+.scenario-page { padding: 24rpx 28rpx 60rpx; }
+
+/* ── 加载态 ── */
+.skeleton-block { padding: 30rpx 0; }
+.skeleton-row,
+.skeleton-row-short {
+  height: 32rpx; border-radius: 8rpx;
+  background: var(--color-border);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+.skeleton-row { margin-top: 22rpx; }
+.skeleton-row-short { width: 60%; margin-top: 22rpx; }
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.load-failed { padding: 40rpx 30rpx; text-align: center; }
+.load-failed-title { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.load-failed-action { display: block; margin-top: 16rpx; font-size: 26rpx; color: var(--color-primary); }
+
+/* ── 页头（列表 / 表单共用） ── */
+.list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 22rpx;
+}
+.list-head-copy { flex: 1; min-width: 0; }
+.list-title { display: block; font-size: 34rpx; font-weight: 600; color: var(--text-strong); }
+.list-caption { display: block; margin-top: 6rpx; font-size: 23rpx; color: var(--text-muted); }
+.list-create-btn {
+  flex-shrink: 0; padding: 14rpx 28rpx; border-radius: 999rpx;
+  background: var(--color-primary); color: #fff; font-size: 25rpx; font-weight: 600;
+}
+.list-back-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 999rpx; font-size: 24rpx; color: var(--color-primary); background: var(--color-primary-light); }
+
+/* ── 列表卡片 ── */
+.scenario-card { padding: 26rpx 28rpx; margin-bottom: 20rpx; }
+.scenario-card-hover { opacity: 0.85; }
+.scenario-head { display: flex; align-items: center; justify-content: space-between; }
+.scenario-name { font-size: 30rpx; font-weight: 600; color: var(--text-strong); }
+.scenario-status { flex-shrink: 0; margin-left: 16rpx; padding: 4rpx 16rpx; border-radius: 999rpx; font-size: 21rpx; }
+.scenario-status.active { background: var(--color-success-light); color: var(--color-success); }
+.scenario-status.offline { background: rgba(0, 0, 0, 0.05); color: var(--text-muted); }
+.scenario-chips { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
+.scenario-chip {
+  padding: 4rpx 16rpx; border-radius: 8rpx; font-size: 21rpx;
+  background: rgba(0, 0, 0, 0.04); color: var(--text-muted);
+}
+.scenario-chip.chip-category { background: var(--color-primary-light); color: var(--color-primary); }
+.scenario-summary { display: block; margin-top: 14rpx; font-size: 25rpx; line-height: 1.6; color: var(--text-body); }
+.scenario-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 18rpx; padding-top: 16rpx; border-top: 1rpx solid var(--color-border);
+}
+.scenario-id { font-size: 20rpx; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scenario-actions { display: flex; gap: 16rpx; flex-shrink: 0; }
+.scenario-btn {
+  padding: 10rpx 28rpx; border-radius: 999rpx; font-size: 24rpx;
+  background: rgba(0, 0, 0, 0.05); color: var(--text-body);
+}
+.scenario-btn.primary { background: var(--color-primary); color: #fff; }
+.scenario-btn.warn { background: rgba(0, 0, 0, 0.05); color: var(--text-muted); }
+
+/* ── 表单：分节卡片 ── */
+.form-section { padding: 10rpx 28rpx; margin-bottom: 22rpx; }
+.form-section-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 20rpx 0 6rpx;
+}
+.form-section-title { font-size: 27rpx; font-weight: 600; color: var(--text-strong); }
+.form-section-hint { font-size: 21rpx; color: var(--text-muted); }
+
+.form-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18rpx 0; border-bottom: 1rpx solid var(--color-border);
+}
+.form-section > .form-row:last-child,
+.form-section > .form-col:last-child { border-bottom: 0; }
+.form-col { padding: 18rpx 0; border-bottom: 1rpx solid var(--color-border); }
+.form-label { flex-shrink: 0; font-size: 25rpx; color: var(--text-body); }
+.form-col .form-label { display: block; }
+.form-required { margin-left: 4rpx; color: #d5453c; }
+.form-optional { font-size: 21rpx; color: var(--text-muted); }
+.form-label-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.form-label-hint { flex-shrink: 0; margin-left: 16rpx; font-size: 21rpx; color: var(--text-muted); }
+.form-label-col { flex: 1; min-width: 0; margin-right: 24rpx; }
+.form-label-col .form-label { flex-shrink: unset; }
+.form-helper { display: block; margin-top: 6rpx; font-size: 21rpx; line-height: 1.5; color: var(--text-muted); }
+.form-helper-warn { color: #d5453c; }
+.form-helper-example { margin-top: 12rpx; }
+
+.form-input, .form-picker {
+  flex: 1; margin-left: 24rpx; padding: 12rpx 20rpx; box-sizing: border-box;
+  border-radius: 12rpx; background: var(--color-bg);
+  font-size: 25rpx; color: var(--text-strong); text-align: right;
+}
+.form-row .form-label-col + .form-input,
+.form-row .form-label-col + .form-picker { flex: 0 0 300rpx; margin-left: 0; }
+.form-row .form-label-col + .form-input-wide { flex: 1 1 auto; margin-left: 0; }
+.form-input-narrow { flex: 0 0 160rpx; margin-left: 0; }
+.form-textarea {
+  width: 100%; min-height: 120rpx; padding: 16rpx 20rpx; box-sizing: border-box;
+  border-radius: 12rpx; background: var(--color-bg);
+  font-size: 25rpx; line-height: 1.6; color: var(--text-strong);
+}
+.form-textarea-tall { min-height: 200rpx; }
+
+/* ── 隐藏顾虑逐条添加 ── */
+.chip-item {
+  display: flex; align-items: center;
+  padding: 14rpx 18rpx; margin-bottom: 12rpx;
+  border-radius: 12rpx; background: var(--color-bg);
+}
+.chip-index {
+  flex-shrink: 0; width: 36rpx; height: 36rpx; margin-right: 16rpx;
+  border-radius: 50%; background: var(--color-primary-light); color: var(--color-primary);
+  font-size: 20rpx; text-align: center; line-height: 36rpx;
+}
+.chip-text { flex: 1; min-width: 0; font-size: 24rpx; line-height: 1.5; color: var(--text-body); }
+.chip-remove { flex-shrink: 0; margin-left: 16rpx; padding: 6rpx 12rpx; font-size: 22rpx; color: #d5453c; }
+.chip-add-row { display: flex; align-items: center; gap: 14rpx; }
+.chip-input { flex: 1; margin-left: 0; text-align: left; }
+.chip-add-btn {
+  flex-shrink: 0; padding: 12rpx 28rpx; border-radius: 12rpx;
+  background: var(--color-primary-light); color: var(--color-primary);
+  font-size: 24rpx; font-weight: 600;
+}
+
+/* ── 底部操作 ── */
+.form-footer { display: flex; gap: 20rpx; margin-top: 30rpx; }
+.form-cancel { flex: 1; }
+.form-submit { flex: 2; margin-top: 0; }

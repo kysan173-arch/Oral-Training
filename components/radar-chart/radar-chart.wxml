@@ -1,3 +1,10 @@
-<view class="radar-chart" style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;">
+<view class="radar-chart">
   <canvas type="2d" class="radar-canvas" style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;"></canvas>
+  <view class="radar-legend" wx:if="{{legend.length}}">
+    <view class="radar-legend-item" wx:for="{{legend}}" wx:key="key">
+      <view wx:if="{{item.dashed}}" class="radar-legend-mark radar-legend-mark-dashed" style="border-top-color: {{item.color}};"></view>
+      <view wx:else class="radar-legend-mark" style="background: {{item.color}};"></view>
+      <text class="radar-legend-text">{{item.text}}</text>
+    </view>
+  </view>
 </view>

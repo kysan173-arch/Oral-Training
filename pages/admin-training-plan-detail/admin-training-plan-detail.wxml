@@ -1,0 +1,49 @@
+<view class="page-shell plan-detail-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在加载计划详情…</text></view>
+
+  <block wx:elif="{{plan}}">
+    <view class="detail-hero card">
+      <view class="plan-head">
+        <view class="plan-title-wrap">
+          <text class="plan-title">{{plan.title}}</text>
+          <text class="plan-period-tag">{{plan.periodText}}</text>
+        </view>
+        <text class="plan-status plan-status-{{plan.statusKey}}">{{plan.statusText}}</text>
+      </view>
+      <text class="plan-requirement">{{plan.requirementText}}</text>
+      <text class="detail-desc" wx:if="{{plan.description}}">{{plan.description}}</text>
+      <view class="plan-progress">
+        <view class="plan-progress-bar"><view class="plan-progress-fill {{progressPercent >= 100 ? 'full' : ''}}" style="width:{{progressPercent}}%;"></view></view>
+        <text class="plan-progress-text">{{progressPercent}}%</text>
+      </view>
+      <view class="detail-meta-row">
+        <view class="detail-meta"><text class="detail-meta-value">{{doneCount}}</text><text class="detail-meta-label">已达标</text></view>
+        <view class="detail-meta"><text class="detail-meta-value">{{pendingCount}}</text><text class="detail-meta-label">未达标</text></view>
+        <view class="detail-meta"><text class="detail-meta-value">{{plan.dueText}}</text><text class="detail-meta-label">截止时间</text></view>
+      </view>
+      <view class="detail-copy-btn {{copying ? 'disabled' : ''}}" bindtap="copyPending">{{copying ? '整理中…' : '复制未达标名单'}}</view>
+      <!-- 到期计划无法催办也不能编辑，唯一出路是带着原内容重发一份 -->
+      <view class="detail-copy-btn detail-republish-btn" wx:if="{{plan.statusKey === 'expired'}}" bindtap="republishPlan">重发新计划</view>
+      <text class="detail-copy-note">当前没有订阅消息通道，复制后请通过既有渠道通知成员。</text>
+    </view>
+
+    <view class="section-title-row"><text class="section-title">成员进度</text><text class="section-caption">共 {{assignments.length}} 人</text></view>
+
+    <view class="assignment-card card" wx:for="{{assignments}}" wx:key="learnerId" bindtap="openMember" data-id="{{item.learnerId}}" hover-class="member-card-hover">
+      <view class="assignment-avatar {{item.done ? 'done' : ''}}">{{item.initial}}</view>
+      <view class="assignment-copy">
+        <view class="assignment-name-row">
+          <text class="assignment-name">{{item.displayName}}</text>
+          <text class="assignment-tag {{item.done ? 'done' : 'pending'}}">{{item.done ? '已达标' : '未达标'}}</text>
+        </view>
+        <text class="assignment-meta">完成 {{item.progressText}} 次 · 平均 {{item.avgScoreText}} 分</text>
+        <text class="assignment-meta">{{item.lastText}}</text>
+      </view>
+      <text class="warning-arrow">›</text>
+    </view>
+
+    <empty-state wx:if="{{assignments.length === 0}}" title="暂无成员进度" text="发布计划后，覆盖的学员会出现在这里。"></empty-state>
+  </block>
+
+  <view class="loading-card card" wx:else><text>计划不存在或已被删除。</text></view>
+</view>

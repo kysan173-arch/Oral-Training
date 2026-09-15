@@ -1,0 +1,62 @@
+<view class="page-shell member-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在读取成员学习摘要…</text></view>
+  <block wx:elif="{{detail}}">
+    <view class="member-hero card"><view class="hero-avatar">{{detail.member.initial}}</view><view class="hero-copy"><text class="hero-name">{{detail.member.displayName}}</text><text class="hero-meta">加入于 {{detail.member.joinedAt}}</text><text class="hero-note">默认仅展示聚合指标与摘要；完整对话只在下方「训练记录抽查」显式进入时可见。</text></view></view>
+    <view class="stat-grid"><view class="stat-card card"><text>{{detail.completedSessions}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{detail.averageScoreText}}</text><text>平均得分</text></view><view class="stat-card card"><text>{{detail.passRateText}}%</text><text>练习达标率</text></view></view>
+
+    <!-- 2.2 五维雷达图，叠加团队均线 -->
+    <view class="section-heading"><text>五维能力</text><text>虚线为团队均值</text></view>
+    <view class="dimensions-card card">
+      <radar-chart
+        dimensions="{{dimensions}}"
+        compare="{{teamAverages}}"
+        primary-label="{{detail.member.displayName}}"
+        compare-label="团队平均"
+        canvas-width="280"
+        canvas-height="240">
+      </radar-chart>
+    </view>
+
+    <!-- 2.2 能力成长曲线：近 30 天（实际取后端已完成的最近 12 次） -->
+    <view class="section-heading"><text>能力成长曲线</text><text>五维得分随时间变化</text></view>
+    <view class="chart-card card">
+      <trend-chart wx:if="{{growthLabels.length > 1}}" labels="{{growthLabels}}" series="{{growthSeries}}" height="{{200}}"></trend-chart>
+      <empty-state wx:else title="暂未形成成长曲线" text="该成员至少完成 2 次训练后，会在这里看到五维得分随时间的变化。"></empty-state>
+    </view>
+
+    <!-- 2.3 薄弱项预警（个人级，后端已聚合） -->
+    <view class="section-heading"><text>建议关注</text><text>基于相对薄弱维度</text></view>
+    <view class="weakness-card card {{item.severity}}" wx:for="{{detail.weaknesses}}" wx:key="key"><view><text class="weakness-name">{{item.name}}</text><text class="weakness-score">{{item.scoreText}} 分</text></view><text class="weakness-text">{{item.suggestion}}</text></view>
+
+    <!-- 2.2 历史训练记录：支持按场景筛选 -->
+    <view class="section-heading"><text>最近成长记录</text><text>{{filteredTrend.length}} / {{detail.trend.length}} 次</text></view>
+    <view class="filter-chip-row card-filter" wx:if="{{scenarioFilters.length > 1}}">
+      <text class="filter-chip {{selectedScenarioId === item.id ? 'selected' : ''}}" wx:for="{{scenarioFilters}}" wx:key="id" bindtap="selectScenarioFilter" data-id="{{item.id}}">{{item.name}}</text>
+    </view>
+    <view class="timeline-card card" wx:if="{{filteredTrend.length}}">
+      <view wx:for="{{filteredTrend}}" wx:key="sessionId" class="timeline-row">
+        <view>
+          <text class="timeline-name">{{item.scenarioName}}</text>
+          <text class="timeline-date">{{item.date}}</text>
+        </view>
+        <text class="timeline-score">{{item.scoreText}}</text>
+      </view>
+    </view>
+    <view class="empty-card card" wx:elif="{{detail.trend.length}}"><text>当前筛选下没有记录。</text></view>
+    <view class="empty-card card" wx:else><text>该成员还没有已完成的训练报告。</text></view>
+
+    <!-- 训练记录抽查（主管质检通道，只读） -->
+    <view class="section-heading"><text>训练记录抽查</text><text>含进行中会话</text></view>
+    <view class="inspect-card card" wx:if="{{inspectItems.length}}">
+      <view class="inspect-row" wx:for="{{inspectItems}}" wx:key="id" bindtap="openInspect" data-id="{{item.id}}">
+        <view class="inspect-copy">
+          <text class="inspect-name">{{item.scenarioName}}</text>
+          <text class="inspect-meta">{{item.statusText}} · {{item.roundText}} · {{item.updatedAtText}}</text>
+        </view>
+        <text class="inspect-score">{{item.scoreText}}</text>
+        <text class="inspect-arrow">›</text>
+      </view>
+    </view>
+    <view class="empty-card card" wx:else><text>该成员还没有训练会话。</text></view>
+  </block>
+</view>

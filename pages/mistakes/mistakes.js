@@ -36,6 +36,14 @@ Page({
       .finally(() => this.setData({ savingId: '' }));
   },
 
+  retrainRound(e) {
+    const { sessionId, mistakeKey } = e.currentTarget.dataset;
+    if (!sessionId || !mistakeKey) return;
+    wx.navigateTo({
+      url: `/pages/mistake-retrain/mistake-retrain?sessionId=${encodeURIComponent(sessionId)}&mistakeKey=${encodeURIComponent(mistakeKey)}`
+    });
+  },
+
   retrain(e) {
     const scenarioId = e.currentTarget.dataset.scenarioId;
     if (!scenarioId) return;

@@ -19,6 +19,6 @@
     "ignoreDevUnusedFiles": true,
     "useIsolateContext": true
   },
-  "libVersion": "3.16.1",
+  "libVersion": "3.16.0",
   "condition": {}
 }

@@ -1,0 +1,130 @@
+<view class="page-shell plan-form-page">
+  <view class="form-card card">
+    <view class="form-row">
+      <text class="form-label">计划名称</text>
+      <input class="form-input" placeholder="例如：本周价格异议专项复练" placeholder-class="form-placeholder" maxlength="100" value="{{title}}" bindinput="onTitleInput"></input>
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">周期</text>
+      <view class="segment-row">
+        <text class="segment {{period === item.id ? 'selected' : ''}}" wx:for="{{periodOptions}}" wx:key="id" bindtap="selectPeriod" data-id="{{item.id}}">{{item.name}}</text>
+      </view>
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">截止时间</text>
+      <view class="picker-row">
+        <picker mode="date" value="{{dueDate}}" start="{{minDate}}" bindchange="onDueDateChange">
+          <view class="picker-box">{{dueDate || '选择日期'}}</view>
+        </picker>
+        <picker mode="time" value="{{dueTime}}" bindchange="onDueTimeChange">
+          <view class="picker-box">{{dueTime}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">最低训练次数</text>
+      <view class="stepper">
+        <text class="stepper-btn {{requiredCount <= 1 ? 'disabled' : ''}}" bindtap="stepCount" data-delta="-1">−</text>
+        <text class="stepper-value">{{requiredCount}}</text>
+        <text class="stepper-btn {{requiredCount >= 20 ? 'disabled' : ''}}" bindtap="stepCount" data-delta="1">＋</text>
+      </view>
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">最低平均分 · {{requiredPassRate}}</text>
+      <slider class="form-slider" min="0" max="100" step="5" value="{{requiredPassRate}}" activeColor="#1F3864" block-size="20" bindchange="onPassRateChange"></slider>
+    </view>
+
+    <view class="form-row form-row-last">
+      <text class="form-label">计划说明（选填）</text>
+      <textarea class="form-textarea" placeholder="补充说明训练重点或安排，最多 500 字" placeholder-class="form-placeholder" maxlength="500" value="{{description}}" bindinput="onDescriptionInput"></textarea>
+    </view>
+  </view>
+
+  <view class="section-title-row plan-scene-title">
+    <text class="section-title">发布对象</text>
+    <text class="section-caption" wx:if="{{targetMode === 'all'}}">全部团队成员</text>
+    <text class="section-caption" wx:else>已选 {{selectedMemberCount}} 人</text>
+  </view>
+  <view class="target-select card">
+    <view class="segment-row">
+      <text class="segment {{targetMode === 'all' ? 'selected' : ''}}" bindtap="selectTargetMode" data-mode="all">全团队成员</text>
+      <text class="segment {{targetMode === 'custom' ? 'selected' : ''}}" bindtap="selectTargetMode" data-mode="custom">指定学员</text>
+    </view>
+
+    <block wx:if="{{targetMode === 'custom'}}">
+      <view class="scene-state" wx:if="{{memberLoading}}"><text>正在加载学员…</text></view>
+
+      <view class="scene-state scene-state-failed" wx:elif="{{memberLoadFailed}}">
+        <text class="scene-state-title">学员列表加载失败</text>
+        <text class="scene-state-text">当前无法指定学员，可改用「全团队成员」发布，或重新加载。</text>
+        <text class="scene-state-action" bindtap="loadMembers">重新加载</text>
+      </view>
+
+      <block wx:else>
+        <input class="member-search" placeholder="搜索学员姓名" placeholder-class="form-placeholder" value="{{memberKeyword}}" bindinput="onMemberSearch"></input>
+
+        <scroll-view class="member-list" scroll-y style="height: {{filteredCount > 20 ? '380rpx' : 'auto'}};" wx:if="{{filteredCount}}">
+          <view class="member-list-inner">
+            <text class="member-chip {{item.selected ? 'selected' : ''}}" wx:for="{{filteredMembers}}" wx:key="id" bindtap="toggleMember" data-id="{{item.id}}">{{item.displayName}}</text>
+          </view>
+        </scroll-view>
+        <view class="scene-state" wx:else><text>{{memberKeyword ? '没有匹配的学员' : '暂无可选学员'}}</text></view>
+
+        <view class="scene-select-foot">
+          <text class="scene-select-hint">已选 {{selectedMemberCount}} 人</text>
+          <view class="member-foot-actions">
+            <text class="scene-select-clear" wx:if="{{filteredCount}}" bindtap="toggleAllMembers">{{visibleAllSelected ? '取消全选' : '全选'}}</text>
+            <text class="scene-select-clear" wx:if="{{selectedMemberCount}}" bindtap="clearMembers">清空</text>
+          </view>
+        </view>
+
+        <text class="scene-select-scope" wx:if="{{totalTeamMembers > members.length}}">当前最多列出 {{members.length}} 名成员（共 {{totalTeamMembers}} 名），需要覆盖全部时请改用「全团队成员」。</text>
+      </block>
+    </block>
+
+    <text class="scene-select-scope" wx:else>发布后覆盖全部团队成员，进度按截止时间自动统计。</text>
+  </view>
+
+  <view class="section-title-row plan-scene-title">
+    <text class="section-title">适用场景</text>
+    <text class="section-caption">不选则统计全部场景</text>
+  </view>
+  <view class="scene-select card">
+    <view class="scene-state" wx:if="{{sceneLoading}}"><text>正在加载场景…</text></view>
+
+    <view class="scene-state scene-state-failed" wx:elif="{{sceneLoadFailed}}">
+      <text class="scene-state-title">场景列表加载失败</text>
+      <text class="scene-state-text">当前无法限定适用场景，发布后将统计全部场景。</text>
+      <text class="scene-state-action" bindtap="loadScenarios">重新加载</text>
+    </view>
+
+    <block wx:else>
+      <view class="scene-group" wx:for="{{categories}}" wx:key="key">
+        <view class="scene-group-head">
+          <view class="scene-group-text">
+            <text class="scene-group-name">{{item.name}}</text>
+            <text class="scene-group-desc">{{item.description}}</text>
+          </view>
+          <text class="scene-group-toggle" bindtap="toggleCategoryGroup" data-key="{{item.key}}">{{item.allSelected ? '取消本类' : '全选本类'}}</text>
+        </view>
+        <view class="scene-chip-row">
+          <text class="scene-chip {{scene.selected ? 'selected' : ''}}" wx:for="{{item.scenes}}" wx:for-item="scene" wx:key="id" bindtap="toggleScene" data-id="{{scene.id}}">{{scene.name}}<text class="scene-chip-level">{{scene.difficultyLabel}}</text></text>
+        </view>
+      </view>
+      <view class="scene-select-foot">
+        <text class="scene-select-hint">已选 {{selectedCount}} 个场景{{selectedCount === 0 ? '（全部）' : ''}}</text>
+        <text class="scene-select-clear" wx:if="{{selectedCount}}" bindtap="clearScenes">清空</text>
+      </view>
+      <text class="scene-select-scope">进度仅统计「客服训练」的完成次数与均分，不含「患者模拟」。</text>
+    </block>
+  </view>
+
+  <view class="submit-bar">
+    <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="submit">{{submitting ? '发布中…' : '发布计划'}}</view>
+    <text class="submit-note">已选 {{targetMode === 'all' ? '全团队成员' : selectedMemberCount + ' 名学员'}} · 进度按截止时间自动统计。</text>
+  </view>
+</view>

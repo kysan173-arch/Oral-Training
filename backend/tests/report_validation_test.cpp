@@ -134,12 +134,81 @@ int main() {
     return 1;
   }
 
+  // 五维契约必须显式失败：任何偏差都不能再被静默兜底成 0 分。
+  const auto expect_score_invalid = [&](const json& candidate, const std::string& label) {
+    try {
+      (void)normalizeReport(candidate, messages);
+    } catch (const ApiError& error) {
+      if (error.code != "MODEL_SCORE_INVALID") throw;
+      return true;
+    }
+    std::cerr << "invalid dimension contract was accepted: " << label << '\n';
+    return false;
+  };
+
+  auto missing_dimensions = safe_report;
+  missing_dimensions.erase("dimensionScores");
+  if (!expect_score_invalid(missing_dimensions, "dimensionScores absent")) return 1;
+
+  auto empty_dimensions = safe_report;
+  empty_dimensions["dimensionScores"] = json::object();
+  if (!expect_score_invalid(empty_dimensions, "dimensionScores empty")) return 1;
+
+  auto snake_case_dimensions = safe_report;
+  snake_case_dimensions["dimensionScores"] = {
+      {"knowledge_accuracy", 80}, {"medical_compliance", 90}, {"empathy", 75},
+      {"needs_discovery", 70}, {"service_etiquette", 85}};
+  if (!expect_score_invalid(snake_case_dimensions, "snake_case keys")) return 1;
+
+  auto unit_scale_dimensions = safe_report;
+  unit_scale_dimensions["dimensionScores"] = {
+      {"knowledgeAccuracy", 0.8}, {"medicalCompliance", 0.9}, {"empathy", 0.75},
+      {"needsDiscovery", 0.7}, {"serviceEtiquette", 0.85}};
+  if (!expect_score_invalid(unit_scale_dimensions, "0-1 scale")) return 1;
+
+  auto zeroed_dimensions = safe_report;
+  zeroed_dimensions["dimensionScores"] = {
+      {"knowledgeAccuracy", 0}, {"medicalCompliance", 0}, {"empathy", 0},
+      {"needsDiscovery", 0}, {"serviceEtiquette", 0}};
+  if (!expect_score_invalid(zeroed_dimensions, "all dimensions zero")) return 1;
+
+  auto out_of_range_dimensions = safe_report;
+  out_of_range_dimensions["dimensionScores"]["knowledgeAccuracy"] = 120;
+  if (!expect_score_invalid(out_of_range_dimensions, "out of range")) return 1;
+
+  auto string_dimensions = safe_report;
+  string_dimensions["dimensionScores"]["empathy"] = "75";
+  if (!expect_score_invalid(string_dimensions, "non numeric value")) return 1;
+
+  auto rounded_dimensions = safe_report;
+  rounded_dimensions["dimensionScores"]["empathy"] = 79.6;
+  const auto normalized_rounded = normalizeReport(rounded_dimensions, messages);
+  if (normalized_rounded["dimensionScores"]["empathy"] != 80) {
+    std::cerr << "dimension score was not rounded to the nearest integer\n";
+    return 1;
+  }
+
+  if (normalized["recommendedPhrases"].size() != 1 ||
+      normalized["recommendedPhrases"][0]["patientSays"] != messages[0]["content"] ||
+      normalized["recommendedPhrases"][0]["csReply"] !=
+          normalized["roundComments"][0]["recommendedRewrite"]) {
+    std::cerr << "report-derived phrase insight was not grounded correctly\n";
+    return 1;
+  }
+  if (normalized["learningMistakes"].size() != 1 ||
+      normalized["learningMistakes"][0]["kind"] != "improvement" ||
+      normalized["learningMistakes"][0]["originalQuote"] != messages[1]["content"]) {
+    std::cerr << "report-derived learning mistake was not created correctly\n";
+    return 1;
+  }
+
   const auto expect_invalid_report = [](const json& report, const json& history) {
     try {
       (void)normalizeReport(report, history);
       return false;
     } catch (const ApiError& error) {
-      return error.code == "MODEL_INVALID_RESPONSE";
+      return error.code == "MODEL_INVALID_RESPONSE" ||
+             error.code == "MODEL_SCORE_INVALID";
     }
   };
   auto missing_dimension_report = safe_report;

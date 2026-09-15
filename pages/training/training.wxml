@@ -4,18 +4,31 @@
     <view class="round-counter"><text class="round-value">{{currentRound}}</text><text class="round-total">/ {{maxRounds}}轮</text></view>
   </view>
   <view class="profile-strip">
-    <text class="strip-label">公开画像</text>
-    <text class="strip-text">{{scenario.patientAge}} · {{scenario.patientConcern}} · {{scenario.patientEmotion}}</text>
+    <view class="strip-label-group">
+      <text class="strip-label">患者画像</text>
+    </view>
+    <text class="strip-text">{{scenario.patientAge}}{{scenario.patientGender ? ' · ' + scenario.patientGender : ''}}{{scenario.patientEmotion ? ' · ' + scenario.patientEmotion : ''}} · {{scenario.patientConcern}}</text>
+    <text class="strip-trust tag {{trustTone}}">信任 · {{trustText}}</text>
   </view>
 
   <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
-    <view class="chat-intro">本次训练最多10轮。辅助内容只提供沟通框架与合规边界，不替代医生进行诊断或方案判断。</view>
+    <view class="chat-intro">本次训练最多{{maxRounds}}轮，含 {{hintLimit}} 次提示（每轮限 1 次）。辅助内容只提供沟通框架与合规边界，不替代医生进行诊断或方案判断。</view>
     <view class="message-item {{item.role === 'user' ? 'user-message' : 'patient-message'}}" wx:for="{{messages}}" wx:key="id">
-      <view class="message-avatar">{{item.role === 'user' ? '我' : '患'}}</view>
+      <view class="message-avatar {{item.role === 'user' ? 'avatar-user' : 'avatar-patient'}}">{{item.role === 'user' ? '客' : '患'}}</view>
       <view class="message-body">
-        <text class="message-role">{{item.role === 'user' ? '客服' : '患者'}} · {{item.time}}</text>
+        <view class="message-meta">
+          <text class="message-role">{{item.role === 'user' ? '客服' : '患者'}}{{item.time ? ' · ' + item.time : ''}}</text>
+          <text class="tag emotion-tag {{item.emotionTone}}" wx:if="{{item.emotionText}}">{{item.emotionText}}</text>
+        </view>
         <view class="message-bubble"><text>{{item.content}}</text></view>
       </view>
+    </view>
+    <view class="send-fail" wx:if="{{failedMessage}}">
+      <view class="fail-inner">
+        <text class="fail-text">{{failedMessage.reason}}</text>
+        <text class="fail-retry" bindtap="retryFailed">重试</text>
+      </view>
+      <text class="fail-content">原消息：{{failedMessage.content}}</text>
     </view>
     <view class="typing" wx:if="{{sending}}"><view class="typing-dot"></view><text>患者正在输入…</text></view>
     <view id="message-bottom"></view>
@@ -23,16 +36,30 @@
 
   <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
   <view class="assist-panel">
-    <view class="assist-head"><text class="assist-title">训练辅助</text><text wx:if="{{requestingHint}}" class="hint-action">提示生成中…</text><text wx:elif="{{hintRemaining > 0}}" class="hint-action" bindtap="requestHint">获取提示（剩余 {{hintRemaining}} 次）</text><text wx:else class="hint-action disabled">本次提示已用完</text></view>
-    <scroll-view class="quick-scroll" scroll-x="true" enable-flex="true"><view class="quick-row"><text wx:for="{{quickPhrases}}" wx:key="*this" class="quick-chip" bindtap="useQuickPhrase" data-phrase="{{item}}">{{item}}</text></view></scroll-view>
-    <view class="hint-list" wx:if="{{hints.length}}"><view class="hint-card" wx:for="{{hints}}" wx:key="number"><text class="hint-label">提示 {{item.number}}</text><text class="hint-content">{{item.content}}</text></view></view>
+    <view class="assist-guide" wx:if="{{showAssistGuide}}"><text>首次训练已为你展开辅助面板：对话卡住时可点「获取提示」，共 {{hintLimit}} 次、每轮限 1 次。</text></view>
+    <view class="assist-head" bindtap="toggleAssist">
+      <text class="assist-title">训练辅助</text>
+      <text class="assist-toggle">{{assistExpanded ? '收起 ▴' : '展开 ▾'}}</text>
+      <text wx:if="{{requestingHint}}" class="hint-action">提示生成中…</text>
+      <text wx:elif="{{hintRemaining <= 0}}" class="hint-action disabled">本次提示已用完</text>
+      <text wx:elif="{{hintRemainingThisRound <= 0}}" class="hint-action disabled">本轮已提示 · 共剩 {{hintRemaining}} 次</text>
+      <text wx:else class="hint-action" catchtap="requestHint">获取提示（本轮可用 · 共剩 {{hintRemaining}} 次）</text>
+    </view>
+    <block wx:if="{{assistExpanded}}">
+      <scroll-view class="quick-scroll" scroll-x="true" enable-flex="true"><view class="quick-row"><text wx:for="{{quickPhrases}}" wx:key="*this" class="quick-chip" bindtap="useQuickPhrase" data-phrase="{{item}}">{{item}}</text></view></scroll-view>
+      <view class="hint-list" wx:if="{{hints.length}}"><view class="hint-card" wx:for="{{hints}}" wx:key="number"><text class="hint-label">提示 {{item.number}}{{item.roundText ? ' · ' + item.roundText : ''}}</text><text class="hint-content">{{item.content}}</text></view></view>
+    </block>
   </view>
   <view class="input-area">
-    <input class="input-field" maxlength="1000" placeholder="输入你的回复…" value="{{inputValue}}" bindinput="onInputChange" bindconfirm="sendMessage" confirm-type="send" disabled="{{sending || finishing || pendingClientMessageId}}" />
+    <view class="input-wrap">
+      <textarea class="input-field input-textarea" auto-height maxlength="1000" placeholder="输入你的回复…" value="{{inputValue}}" bindinput="onInputChange" disabled="{{sending || finishing || pendingClientMessageId}}" adjust-position cursor-spacing="16" show-confirm-bar="{{false}}" />
+      <text class="char-count">{{inputValue.length}}/1000</text>
+    </view>
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>
   </view>
   <view class="training-footer">
     <text class="leave-link" bindtap="leaveTraining">暂存并退出</text>
-    <view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishTraining" aria-role="button">{{finishing ? '生成报告中…' : '结束训练'}}</view>
+    <button class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishTraining" aria-role="button" disabled="{{sending || finishing || currentRound < 1}}">{{finishing ? '生成报告中…' : '结束训练'}}</button>
+    <text class="abandon-link" bindtap="abandonTraining">强制结束</text>
   </view>
 </view>

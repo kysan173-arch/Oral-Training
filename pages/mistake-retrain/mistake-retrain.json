@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "重练本回合",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

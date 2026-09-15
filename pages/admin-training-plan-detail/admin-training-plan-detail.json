@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "培训计划详情",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

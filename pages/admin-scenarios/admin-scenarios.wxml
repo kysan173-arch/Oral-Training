@@ -1,0 +1,247 @@
+<view class="page-shell scenario-page">
+  <!-- ══ 列表模式 ══ -->
+  <block wx:if="{{mode === 'list'}}">
+    <view class="skeleton-block" wx:if="{{loading}}">
+      <view class="skeleton-row-short"></view>
+      <view class="skeleton-row"></view>
+      <view class="skeleton-row"></view>
+      <view class="skeleton-row-short"></view>
+    </view>
+
+    <view class="load-failed card" wx:elif="{{loadError}}">
+      <text class="load-failed-title">场景目录加载失败</text>
+      <text class="load-failed-action" bindtap="retryLoad">重新加载</text>
+    </view>
+
+    <block wx:else>
+      <view class="list-head">
+        <view class="list-head-copy">
+          <text class="list-title">训练场景</text>
+          <text class="list-caption">共 {{items.length}} 个 · 按序号排列 · 含已下线</text>
+        </view>
+        <view class="list-create-btn" bindtap="startCreate">＋ 新建场景</view>
+      </view>
+
+      <empty-state
+        wx:if="{{items.length === 0}}"
+        title="还没有训练场景"
+        text="点击「新建场景」创建第一个训练场景。"
+        actionText="新建场景"
+        bind:action="startCreate"
+      ></empty-state>
+
+      <view class="card scenario-card" wx:for="{{items}}" wx:key="id" hover-class="scenario-card-hover">
+        <view class="scenario-head">
+          <text class="scenario-name">{{item.name}}</text>
+          <text class="scenario-status {{item.statusClass}}">{{item.statusText}}</text>
+        </view>
+        <view class="scenario-chips">
+          <text class="scenario-chip chip-category">{{item.categoryText}}</text>
+          <text class="scenario-chip">{{item.difficultyText}}</text>
+          <text class="scenario-chip">{{item.maxRounds}} 轮</text>
+          <text class="scenario-chip">序号 {{item.sortOrder}}</text>
+        </view>
+        <text class="scenario-summary">{{item.summary}}</text>
+        <view class="scenario-foot">
+          <text class="scenario-id">{{item.id}}</text>
+          <view class="scenario-actions">
+            <text class="scenario-btn" data-id="{{item.id}}" bindtap="startEdit">编辑</text>
+            <text
+              class="scenario-btn {{item.isActive ? 'warn' : 'primary'}}"
+              data-id="{{item.id}}"
+              data-active="{{item.isActive}}"
+              bindtap="toggleActive"
+            >{{item.isActive ? '下线' : '上架'}}</text>
+          </view>
+        </view>
+      </view>
+    </block>
+  </block>
+
+  <!-- ══ 新建 / 编辑模式 ══ -->
+  <block wx:else>
+    <view class="list-head">
+      <view class="list-head-copy">
+        <text class="list-title">{{editingId === null ? '新建场景' : '编辑场景'}}</text>
+        <text class="list-caption" wx:if="{{editingId !== null}}">{{editingId}}</text>
+      </view>
+      <view class="list-back-btn" bindtap="backToList">返回列表</view>
+    </view>
+
+    <!-- 基础信息 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">基础信息</text>
+        <text class="form-section-hint">学员端会看到这里的内容</text>
+      </view>
+      <view class="form-row" wx:if="{{editingId === null}}">
+        <view class="form-label-col">
+          <text class="form-label">场景标识<text class="form-optional">（选填）</text></text>
+          <text class="form-helper">留空自动生成，无需填写；自定义仅限小写字母、数字、连字符，创建后不可修改。</text>
+        </view>
+        <input class="form-input" placeholder="留空自动生成" value="{{form.id}}" bindinput="onFieldInput" data-field="id" />
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">场景名称<text class="form-required">*</text></text>
+          <text class="form-helper">2-30 个字，示例：儿童牙科恐惧安抚</text>
+        </view>
+        <input class="form-input form-input-wide" maxlength="30" placeholder="输入场景名称" value="{{form.name}}" bindinput="onFieldInput" data-field="name" />
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">简介<text class="form-required">*</text></text>
+          <text class="form-helper">2-60 个字，一句话说明训练目标</text>
+        </view>
+        <input class="form-input form-input-wide" maxlength="60" placeholder="输入简介" value="{{form.summary}}" bindinput="onFieldInput" data-field="summary" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">分类</text>
+        <picker range="{{categoryNames}}" value="{{categoryIndex}}" bindchange="onCategoryChange">
+          <view class="form-picker">{{categoryNames[categoryIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">难度</text>
+        <picker range="{{difficultyNames}}" value="{{difficultyIndex}}" bindchange="onDifficultyChange">
+          <view class="form-picker">{{difficultyNames[difficultyIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">训练重点<text class="form-required">*</text></text>
+          <text class="form-label-hint">每行一项，1-6 项，每项 ≤20 字</text>
+        </view>
+        <textarea class="form-textarea" auto-height placeholder="每行一项" value="{{form.focusText}}" bindinput="onFieldInput" data-field="focusText" />
+      </view>
+    </view>
+
+    <!-- 初始患者画像 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">初始患者画像</text>
+        <text class="form-section-hint">训练开始时 AI 患者的基础设定</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">年龄<text class="form-required">*</text></text>
+        <input class="form-input" type="number" placeholder="1-120" value="{{form.patientAge}}" bindinput="onFieldInput" data-field="patientAge" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">性别</text>
+        <picker range="{{genderNames}}" value="{{genderIndex}}" bindchange="onGenderChange">
+          <view class="form-picker">{{genderNames[genderIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">描述<text class="form-required">*</text></text>
+        </view>
+        <input class="form-input form-input-wide" maxlength="60" placeholder="如：缺失一颗后牙，平静但谨慎" value="{{form.patientDescription}}" bindinput="onFieldInput" data-field="patientDescription" />
+      </view>
+    </view>
+
+    <!-- 隐藏剧本 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">隐藏剧本</text>
+        <text class="form-section-hint">只有 AI 患者知道，训练中逐步透露</text>
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">患者开场白<text class="form-required">*</text></text>
+          <text class="form-label-hint">5-200 字</text>
+        </view>
+        <textarea class="form-textarea" auto-height maxlength="200" placeholder="患者坐下来说的第一句原话" value="{{form.opening}}" bindinput="onFieldInput" data-field="opening" />
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">隐藏顾虑<text class="form-required">*</text></text>
+          <text class="form-label-hint">逐条添加，最多 5 条，每条 ≤60 字</text>
+        </view>
+        <view class="chip-item" wx:for="{{form.hiddenItems}}" wx:key="*this">
+          <text class="chip-index">{{index + 1}}</text>
+          <text class="chip-text">{{item}}</text>
+          <text class="chip-remove" data-index="{{index}}" bindtap="removeHiddenItem">删除</text>
+        </view>
+        <view class="chip-add-row" wx:if="{{form.hiddenItems.length < 5}}">
+          <input class="form-input chip-input" maxlength="60" confirm-type="done"
+            placeholder="输入一条隐藏顾虑"
+            value="{{form.hiddenInput}}" bindinput="onFieldInput" data-field="hiddenInput"
+            bindconfirm="addHiddenItem" />
+          <text class="chip-add-btn" bindtap="addHiddenItem">添加</text>
+        </view>
+        <text class="form-helper" wx:else>已达 5 条上限，可先删除再添加。</text>
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">初始情绪</text>
+          <text class="form-helper">开场时患者的外显情绪</text>
+        </view>
+        <picker range="{{emotionNames}}" value="{{emotionIndex}}" bindchange="onEmotionChange">
+          <view class="form-picker">{{emotionNames[emotionIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">情绪强度</text>
+          <text class="form-helper">-2（很强）到 2（缓和），0 为平稳</text>
+        </view>
+        <input class="form-input form-input-narrow" type="number" value="{{form.emotionLevel}}" bindinput="onEmotionLevelInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">初始信任度</text>
+          <text class="form-helper">0（完全不信任）到 100（信任）</text>
+        </view>
+        <input class="form-input form-input-narrow" type="number" value="{{form.trustLevel}}" bindinput="onTrustLevelInput" />
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">患者行为规则<text class="form-required">*</text></text>
+          <text class="form-label-hint">5-400 字</text>
+        </view>
+        <textarea class="form-textarea form-textarea-tall" auto-height maxlength="400"
+          placeholder="按「若客服……应……」的格式逐条写"
+          value="{{form.instructions}}" bindinput="onFieldInput" data-field="instructions" />
+        <text class="form-helper form-helper-example">示例：若客服的回答只有一两个字或与我的问题无关，应表达困惑并追问自己的核心诉求；若客服保证绝对安全或直接下结论，应表示怀疑并要求面诊检查。</text>
+      </view>
+    </view>
+
+    <!-- 发布设置 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">发布设置</text>
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">训练轮数</text>
+          <text class="form-helper">1-10 轮</text>
+        </view>
+        <input class="form-input form-input-narrow" type="number" value="{{form.maxRounds}}" bindinput="onFieldInput" data-field="maxRounds" />
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">排序号<text class="form-required">*</text></text>
+          <text class="form-helper">1-999，控制学员端展示顺序，需全表唯一</text>
+          <text class="form-helper" wx:if="{{sortFreeText}}">{{sortFreeText}}</text>
+          <text class="form-helper form-helper-warn" wx:if="{{sortConflictText}}">{{sortConflictText}}</text>
+        </view>
+        <input class="form-input form-input-narrow" type="number" placeholder="全表唯一" value="{{form.sortOrder}}" bindinput="onFieldInput" data-field="sortOrder" />
+      </view>
+      <view class="form-row">
+        <view class="form-label-col">
+          <text class="form-label">创建后立即上架</text>
+          <text class="form-helper">关闭则先保存为已下线，稍后可再上架</text>
+        </view>
+        <switch checked="{{form.isActive}}" bindchange="onActiveChange" />
+      </view>
+    </view>
+
+    <view class="form-footer">
+      <button class="btn btn-secondary form-cancel" bindtap="backToList" disabled="{{submitting}}">取消</button>
+      <button class="btn btn-primary form-submit" bindtap="submitForm" disabled="{{submitting}}">
+        {{submitting ? '保存中…' : (editingId === null ? '创建场景' : '保存修改')}}
+      </button>
+    </view>
+  </block>
+</view>

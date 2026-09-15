@@ -1,0 +1,61 @@
+<view class="page-shell training-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在汇总培训计划…</text></view>
+
+  <block wx:elif="{{isAdmin}}">
+    <!-- 头部 Banner：与数据页保持同一套克制白底样式 -->
+    <view class="data-hero">
+      <view class="hero-content">
+        <text class="hero-eyebrow">主管培训运营</text>
+        <text class="hero-title">培训计划管理</text>
+        <text class="hero-desc">发布训练计划并跟踪完成进度；进度按截止时间实时统计，无需学员手动打卡，不含原始对话内容。计划内分数为 AI 辅助评估，建议作为训练参考，不作为考核依据。</text>
+      </view>
+    </view>
+
+    <view class="section-title-row">
+      <text class="section-title">培训计划</text>
+      <text class="section-caption">进度按截止时间实时统计</text>
+    </view>
+
+    <view class="plan-toolbar">
+      <view class="filter-chip-row plan-status-row">
+        <text class="filter-chip {{planStatus === item.id ? 'selected' : ''}}" wx:for="{{planStatusFilters}}" wx:key="id" bindtap="selectPlanStatus" data-id="{{item.id}}">{{item.name}}</text>
+      </view>
+      <view class="plan-toolbar-actions">
+        <view class="plan-export-btn {{exporting ? 'disabled' : ''}}" bindtap="exportPlanMembersCsv">{{exporting ? '导出中…' : '导出 CSV'}}</view>
+        <view class="plan-create-btn" bindtap="openPlanCreate">＋ 发布计划</view>
+      </view>
+    </view>
+
+    <!-- 仅在首次加载（还没数据）时占位，刷新时保留旧列表，避免来回切 Tab 闪空 -->
+    <view class="loading-card card" wx:if="{{trainingLoading && !plans.length}}"><text>正在加载培训计划…</text></view>
+
+    <block wx:elif="{{plans.length}}">
+      <view class="plan-card card" wx:for="{{plans}}" wx:key="id" bindtap="openPlanDetail" data-id="{{item.id}}" hover-class="plan-card-hover">
+        <view class="plan-head">
+          <view class="plan-title-wrap">
+            <text class="plan-title">{{item.title}}</text>
+            <text class="plan-period-tag">{{item.periodText}}</text>
+          </view>
+          <text class="plan-status plan-status-{{item.statusKey}}">{{item.statusText}}</text>
+        </view>
+        <text class="plan-requirement">{{item.requirementText}}</text>
+        <view class="plan-progress">
+          <view class="plan-progress-bar"><view class="plan-progress-fill {{item.progressPercent >= 100 ? 'full' : ''}}" style="width:{{item.progressPercent}}%;"></view></view>
+          <text class="plan-progress-text">达标 {{item.progressText}} 人</text>
+        </view>
+        <view class="plan-foot">
+          <text class="plan-foot-item">团队均分 {{item.avgScoreText}}</text>
+          <text class="plan-foot-dot">·</text>
+          <text class="plan-foot-item">截止 {{item.dueText}}</text>
+          <text class="plan-copy" catchtap="copyPlanMembers" data-id="{{item.id}}">复制未完成名单</text>
+        </view>
+      </view>
+    </block>
+
+    <empty-state wx:elif="{{plansFailed}}" title="培训计划加载失败" text="网络波动导致列表没能取回，计划数据都保存在服务器上、不受影响。点击重新加载即可。" actionText="重新加载" bind:action="retryTrainingPlans"></empty-state>
+    <empty-state wx:else title="还没有培训计划" text="发布一个计划，设定最低训练次数与平均分要求，进度会按截止时间自动统计。" actionText="发布第一个计划" bind:action="openPlanCreate"></empty-state>
+    <text class="plan-note" wx:if="{{plans.length}}">提醒依赖主管自行触达：点击「复制未完成名单」获取待办学员，再通过既有渠道通知；「导出 CSV」包含全部计划的学员进度明细，可转发到电脑端做离线分析。</text>
+  </block>
+
+  <empty-state wx:else title="培训计划面向主管开放" text="当前是学员身份。主管分配给你的计划，可在「训练」页顶部的计划入口查看进度。" actionText="返回首页" bind:action="goHome"></empty-state>
+</view>

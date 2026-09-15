@@ -1,0 +1,33 @@
+.tab-bar {
+  display: flex;
+  align-items: center;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #fff;
+  border-top: 1rpx solid var(--color-border, var(--color-border));
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, .03);
+}
+
+.tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14rpx 0 10rpx;
+}
+
+.tab-icon {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.tab-text {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #A1A1AA;
+}
+
+.tab-item.selected .tab-text {
+  color: var(--color-primary);
+  font-weight: 600;
+}
