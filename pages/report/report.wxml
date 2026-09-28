@@ -10,6 +10,7 @@
   <view class="history-mode-switch"><view class="history-mode {{historyMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="customer_service">客服训练</view><view class="history-mode {{historyMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="patient_simulation">患者模拟</view></view>
   <view class="history-filter-card">
     <view class="status-filter-row"><text wx:for="{{statusFilters}}" wx:key="id" class="status-filter {{selectedStatus === item.id ? 'selected' : ''}}" bindtap="selectStatus" data-id="{{item.id}}">{{item.name}}</text></view>
+    <view class="filter-divider"></view>
     <scroll-view class="scenario-filter-scroll" scroll-x="true" enable-flex="true"><view class="scenario-filter-row"><text wx:for="{{scenarioFilters}}" wx:key="id" class="scenario-filter {{selectedScenarioId === item.id ? 'selected' : ''}}" bindtap="selectScenario" data-id="{{item.id}}">{{item.name}}</text></view></scroll-view>
   </view>
   <view class="history-tip"><text>状态说明：</text><text>{{historyMode === 'patient_simulation' ? '进行中可续练，已完成可查看学习复盘，已放弃记录仅用于回看。' : '进行中可续练，已完成可查看报告，已放弃记录仅用于回看。'}}</text></view>
