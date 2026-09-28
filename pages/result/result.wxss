@@ -21,7 +21,9 @@
 /* 免责提示条（中性弱化，不占用警示语义） */
 .notice-box { display: flex; align-items: flex-start; margin: 22rpx 24rpx 30rpx; padding: 20rpx; border-radius: 16rpx; color: var(--text-secondary); background: var(--color-primary-pale); font-size: 22rpx; line-height: 1.55; }
 .notice-icon { width: 30rpx; height: 30rpx; line-height: 30rpx; flex-shrink: 0; margin-right: 12rpx; border-radius: 50%; text-align: center; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; font-weight: 600; }
-.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 28rpx 14rpx; }
+/* 同 roleplay-result：28rpx 会与 app.wxss 同名类的 padding: 0 4rpx 叠加成 32rpx，
+   与卡片 24rpx 对不齐。两个报告页必须一起改，否则刚统一的规范又分叉。 */
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 24rpx 14rpx; padding: 0; }
 .section-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
 .section-caption { color: var(--text-secondary); font-size: 22rpx; }
 .dimensions-card, .violation-card, .round-card, .phrase-card, .empty-card { padding: 26rpx; margin: 0 24rpx 26rpx; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
