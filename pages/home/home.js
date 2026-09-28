@@ -150,7 +150,7 @@ Page({
       }
       this.loadHomeContent();
     }).catch(() => {
-      wx.showToast({ title: '登录状态获取失败，请检查网络', icon: 'none' });
+      api.showCenterNotice({ title: '登录失败，请检查网络', duration: 2000 });
     });
   },
 
@@ -361,7 +361,7 @@ Page({
     }).catch(error => {
       wx.hideLoading();
       release();
-      wx.showToast({ title: error.message || '进入训练失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '进入训练失败' });
       setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 800);
     });
   },
@@ -407,6 +407,6 @@ Page({
   viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
 
   showRequestError(error) {
-    wx.showToast({ title: error.message || '后端服务不可用', icon: 'none' });
+    api.showCenterNotice({ title: error.message || '后端服务不可用' });
   }
 });

@@ -21,6 +21,7 @@
         <text class="filter-chip {{planStatus === item.id ? 'selected' : ''}}" wx:for="{{planStatusFilters}}" wx:key="id" bindtap="selectPlanStatus" data-id="{{item.id}}">{{item.name}}</text>
       </view>
       <view class="plan-toolbar-actions">
+        <view class="plan-ai-btn" bindtap="openAiPlans">AI 建议</view>
         <view class="plan-export-btn {{exporting ? 'disabled' : ''}}" bindtap="exportPlanMembersCsv">{{exporting ? '导出中…' : '导出 CSV'}}</view>
         <view class="plan-create-btn" bindtap="openPlanCreate">＋ 发布计划</view>
       </view>

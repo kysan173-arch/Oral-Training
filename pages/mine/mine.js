@@ -87,7 +87,7 @@ Page({
       });
     }).catch(error => {
       this.setData({ loading: false, loadError: true, loadErrorMsg: error.message || '管理数据加载失败' });
-      wx.showToast({ title: error.message || '管理数据加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '管理数据加载失败' });
     });
   },
 
@@ -99,7 +99,7 @@ Page({
       this.setData({ demoUsers: data.items || [], currentUserId: user ? user.id : '' });
     }).catch(error => {
       this.setData({ showDemoPicker: false });
-      wx.showToast({ title: error.message || '加载演示账号失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '加载演示账号失败' });
     });
   },
 
@@ -115,20 +115,20 @@ Page({
     }
     wx.showLoading({ title: '切换中…', mask: true });
     api.switchLearner(userId).then(() => {
-      wx.hideLoading();
+      const role = api.getCurrentUser() ? api.getCurrentUser().role : 'learner';
       this.setData({ showDemoPicker: false });
-      wx.showToast({ title: '已切换账号', icon: 'success', duration: 1500 });
+      wx.showLoading({ title: '已切换账号，即将刷新', mask: true });
       setTimeout(() => {
-        const role = api.getCurrentUser() ? api.getCurrentUser().role : 'learner';
+        wx.hideLoading();
         /* 切到的可能还是「我的」页本身，onShow 未必重跑，先本地刷一次导航 */
         if (typeof this.getTabBar === 'function' && this.getTabBar()) {
           this.getTabBar().applyRoleList();
         }
         wx.switchTab({ url: role === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
-      }, 1600);
+      }, 1200);
     }).catch(error => {
       wx.hideLoading();
-      wx.showToast({ title: error.message || '切换失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '切换失败' });
     });
   },
 
@@ -176,7 +176,7 @@ Page({
         return;
       }
       this.setData({ loading: false, loadError: true, loadErrorMsg: error.message || '成长数据加载失败' });
-      wx.showToast({ title: error.message || '成长数据加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '成长数据加载失败' });
     });
   },
 
@@ -197,24 +197,29 @@ Page({
       this.loadMine();
     }).catch(error => {
       this.setData({ checkingIn: false });
-      wx.showToast({ title: error.message || '签到失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '签到失败' });
     });
   },
 
   switchRole() {
     if (this.data.switchingRole) return;
     const targetRole = this.data.currentRole === 'admin' ? 'learner' : 'admin';
+    const targetLabel = targetRole === 'admin' ? '主管' : '学员';
     wx.showModal({
       title: '切换身份',
-      content: `确定要切换为「${targetRole === 'admin' ? '主管' : '学员'}」身份吗？`,
+      content: `确定要切换为「${targetLabel}」身份吗？`,
       success: res => {
         if (!res.confirm) return;
         this.setData({ switchingRole: true });
         api.switchRole(targetRole).then(data => {
           wx.setStorageSync('oralTrainingAccessToken', data.accessToken);
           wx.setStorageSync('oralTrainingUser', data.user);
-          wx.showToast({ title: '已切换，即将刷新', icon: 'success', duration: 1500 });
+          /* 用 showLoading 而非 showToast：toast 的 title 一行只放得下约 7 个汉字，
+             这句「已切换为学员，即将刷新」会被截断 —— 就是「提示显示不全」的成因。
+             showLoading 官方未设宽度上限，且能带 mask 一直挂到我们主动 hideLoading。 */
+          wx.showLoading({ title: `已切换为${targetLabel}，即将刷新`, mask: true });
           setTimeout(() => {
+            wx.hideLoading();
             this.setData({ switchingRole: false });
             /* 目标页可能就是当前页（切回学员时落回「我的」），那一步不一定重跑 onShow，
                所以在这里先把底部导航刷成新身份那套。 */
@@ -222,10 +227,10 @@ Page({
               this.getTabBar().applyRoleList();
             }
             wx.switchTab({ url: targetRole === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
-          }, 1600);
+          }, 1200);
         }).catch(error => {
           this.setData({ switchingRole: false });
-          wx.showToast({ title: error.message || '切换失败', icon: 'none' });
+          api.showCenterNotice({ title: error.message || '切换失败' });
         });
       }
     });

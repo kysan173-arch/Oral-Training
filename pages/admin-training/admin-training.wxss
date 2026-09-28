@@ -53,3 +53,5 @@
 .plan-toolbar-actions { display: flex; align-items: center; gap: 14rpx; flex-shrink: 0; }
 .plan-export-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 30rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 24rpx; font-weight: 600; }
 .plan-export-btn.disabled { opacity: 0.5; }
+/* 「AI 建议」用描边而非实心：它是次级入口，不能跟「＋ 发布计划」抢主行动位 */
+.plan-ai-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 30rpx; border: 1rpx solid var(--color-primary); color: var(--color-primary); background: transparent; font-size: 24rpx; font-weight: 600; }

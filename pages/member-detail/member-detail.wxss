@@ -9,9 +9,16 @@
 .hero-note { margin-top: 9rpx; color: var(--text-muted); font-size: 22rpx; line-height: 1.45; }
 .stat-grid { display: flex; gap: 14rpx; margin-bottom: 28rpx; }
 .stat-card { flex: 1; padding: 21rpx 7rpx; text-align: center; }
+/* 四卡布局：分档均分多了一列，字号略收保持单行 */
+.stat-grid-4 .stat-card text:first-child { font-size: 28rpx; }
 .stat-card text { display: block; }
 .stat-card text:first-child { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
 .stat-card text:last-child { margin-top: 6rpx; color: var(--text-secondary); font-size: 22rpx; }
+
+/* 进阶挑战率（P1-1） */
+.tier-strip { padding: 22rpx 26rpx; margin-bottom: 28rpx; }
+.tier-strip-title { display: block; color: var(--text-strong); font-size: 26rpx; font-weight: 600; }
+.tier-strip-sub { display: block; margin-top: 8rpx; color: var(--text-secondary); font-size: 22rpx; line-height: 1.6; }
 .section-heading { display: flex; justify-content: space-between; margin: 0 5rpx 14rpx; }
 .section-heading text:first-child { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
 .section-heading text:last-child { color: var(--text-muted); font-size: 22rpx; }
@@ -35,6 +42,8 @@
 .timeline-row:last-child { border-bottom: 0; }
 .timeline-name, .timeline-date { display: block; }
 .timeline-name { color: var(--text-body); font-size: 26rpx; }
+/* 时间线里的进阶标记：只在「含进阶档」筛选下可见 */
+.timeline-adv-tag { margin-left: 10rpx; padding: 2rpx 10rpx; border-radius: 8rpx; color: #B97A1E; background: rgba(185, 122, 30, 0.12); font-size: 20rpx; }
 .timeline-date { margin-top: 5rpx; color: var(--text-muted); font-size: 22rpx; }
 .timeline-score { color: var(--text-strong); font-size: 26rpx; font-weight: 600; }
 

@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "按模板新建",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

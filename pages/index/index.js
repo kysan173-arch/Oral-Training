@@ -44,9 +44,34 @@ const PROFILE_DESC_PRESETS = {
     '想做矫正，但纠结隐形牙套和传统托槽选哪个',
     '上班要见客户，担心戴牙套影响形象',
     '想做矫正，但预算有限，也怕影响平时吃饭'
+  ],
+  'complaint-about-doctor': [
+    '对上次接诊的医生很不满意，想找你们要个说法',
+    '一直为上个月那次看牙的体验生气，想投诉',
+    '因为医生沟通态度的问题，正考虑换一家机构'
+  ],
+  'refund-demand': [
+    '觉得上次治疗花的钱不值这个效果，想要求退费',
+    '做完项目后觉得没达到预期，想找你们要个说法',
+    '为退费的事跟你们沟通了好几次都没结果'
+  ],
+  'treatment-expectation-gap': [
+    '做完项目发现效果和当初说的差很远',
+    '觉得自己被当初的宣传误导了',
+    '对治疗效果很失望，想问清楚到底怎么回事'
+  ],
+  'waiting-too-long': [
+    '每次来店里都要等很久，实在受不了了',
+    '来就诊等的时间太长，想问能不能安排快一点',
+    '为等候太久的事很生气，想找人处理'
+  ],
+  'guarantee-demand': [
+    '担心花了钱治不好，想让你们给个保证',
+    '为要不要做这个治疗犹豫，怕钱白花',
+    '想做治疗但心里没底，想先问清楚效果'
   ]
 };
-const PROFILE_EMOTION_PRESETS = ['焦虑', '担心', '紧张', '犹豫', '害怕', '不满'];
+const PROFILE_EMOTION_PRESETS = ['焦虑', '担心', '紧张', '犹豫', '害怕', '不满', '愤怒'];
 const PROFILE_GENDER_OPTIONS = ['男', '女'];
 const EMPTY_PROFILE_DRAFT = { age: '', gender: '', description: '', emotion: '' };
 const DESC_MAX_LENGTH = 60;
@@ -202,7 +227,12 @@ Page({
           suggestedQuestions: item.suggestedQuestions || [],
           /* WXML 里不能对数据路径调用 Page 方法（依赖追踪失效且不报错），
              所以「是否已填画像」在这里预算成布尔字段。 */
-          hasProfile: this.hasProfileInput(item.id)
+          hasProfile: this.hasProfileInput(item.id),
+          /* 难度档位（迁移 026）：只有场景真的定义了 advanced 档才给挑战入口。
+             有进行中会话时也不给——同场景进行中会话有唯一约束，点了必然 409，
+             那属于「必然失败的入口」，不该摆出来。 */
+          advancedTier: (item.difficultyTiers && item.difficultyTiers.advanced) || null,
+          canChallenge: !!(item.difficultyTiers && item.difficultyTiers.advanced) && !item.activeSession
         });
       });
 
@@ -219,7 +249,7 @@ Page({
     }).catch(error => {
       if (requestVersion !== this.scenarioRequestVersion || requestedMode !== this.data.trainingMode) return;
       this.setData({ scenariosFailed: true, scenarios: [], categories: [] });
-      wx.showToast({ title: error.message || '场景加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '场景加载失败' });
     });
   },
 
@@ -335,7 +365,7 @@ Page({
   startFreeRoleplay() {
     const description = this.data.freeDescription.trim();
     if (!description) {
-      wx.showToast({ title: '请先描述你想模拟的场景', icon: 'none' });
+      wx.showToast({ title: '请先描述场景', icon: 'none' });
       return;
     }
     // 固定用隐藏模板场景建会话，描述随会话入库并注入模型 prompt，
@@ -346,7 +376,7 @@ Page({
       this.goRoleplay(data.session.id, description);
     }).catch(error => {
       wx.hideLoading();
-      wx.showToast({ title: error.message || '创建模拟会话失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '创建模拟会话失败' });
     });
   },
 
@@ -389,6 +419,42 @@ Page({
     } else {
       this.openProfileModal(id);
     }
+  },
+
+  /* 挑战进阶档：用场景的档位定义覆盖患者初始状态（信任度更低、开场情绪更强）。
+     先弹确认而不是直接开始——必须让学员知道**这档成绩不计入培训计划达标**，
+     否则他会以为挑战进阶档也在推进计划，练完发现计划没动会莫名其妙。 */
+  challengeAdvanced(e) {
+    const id = e.currentTarget.dataset.id;
+    const scenario = this.data.scenarios.find(item => item.id === id);
+    if (!scenario) return;
+    if (scenario.activeSession) {
+      api.showCenterNotice({ title: '该场景已有进行中的训练，完成或放弃它才能挑战进阶档' });
+      return;
+    }
+    const tier = scenario.advancedTier || {};
+    wx.showModal({
+      title: '挑战进阶档',
+      content: (tier.summary ? `${tier.summary}。` : '') +
+        '进阶档成绩只计入成长趋势，不计入主管培训计划的达标判定。',
+      confirmText: '挑战',
+      success: res => {
+        if (!res.confirm) return;
+        /* 沿用已填过的画像：后端优先级是「场景 → 档位 → 自定义画像」，
+           学员显式填过的内容仍会覆盖档位。没填过就用档位默认，不弹画像层——
+           想加压的学员通常不想再填一遍。 */
+        const source = this.data.customProfiles[id] || {};
+        const profileData = {};
+        ['age', 'gender', 'description', 'emotion'].forEach(field => {
+          const value = source[field] ? String(source[field]).trim() : '';
+          if (value) profileData[field] = value;
+        });
+        api.createSession(id, profileData, 'advanced').then(data => {
+          wx.setStorageSync(`customProfile_${data.session.id}`, JSON.stringify(profileData));
+          this.goTraining(data.session.id);
+        }).catch(error => api.showCenterNotice({ title: error.message || '创建进阶档训练失败' }));
+      }
+    });
   },
 
   openProfileModal(id) {
@@ -435,7 +501,7 @@ Page({
       const sessionId = data.session.id;
       wx.setStorageSync(`customProfile_${sessionId}`, JSON.stringify(profileData));
       this.goTraining(sessionId);
-    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message }));
   },
 
   /* 弹层确认：草稿写回 customProfiles 后按内容分流。
@@ -447,7 +513,7 @@ Page({
     if (draft.age) {
       const age = parseInt(draft.age, 10);
       if (isNaN(age) || age < 1 || age > 120) {
-        wx.showToast({ title: '年龄需在 1-120 之间', icon: 'none' });
+        api.showCenterNotice({ title: '年龄需在 1-120 之间' });
         return;
       }
     }
@@ -472,7 +538,7 @@ Page({
     this.setData({ profileModalVisible: false });
     api.createSession(id, {}).then(data => {
       this.goTraining(data.session.id);
-    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message }));
   },
 
   // 是否已填写画像（年龄/性别/描述/情绪任一非空）
@@ -507,7 +573,7 @@ Page({
     const payload = serviceId ? { serviceId, clientSessionId } : {};
     api.createRoleplaySession(scenario.id, payload)
       .then(data => this.goRoleplay(data.session.id, prompt))
-      .catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+      .catch(error => api.showCenterNotice({ title: error.message }));
   },
 
   restartTraining(e) {
@@ -527,7 +593,7 @@ Page({
         request.then(data => {
           if (isRoleplay) this.goRoleplay(data.session.id, '');
           else this.goTraining(data.session.id);
-        }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+        }).catch(error => api.showCenterNotice({ title: error.message }));
       }
     });
   },
@@ -557,10 +623,10 @@ Page({
       success: result => {
         if (!result.confirm) return;
         api.abandonRoleplaySession(sessionId).then(() => {
-          wx.showToast({ title: '已放弃，可重新开始', icon: 'success' });
+          api.showCenterNotice({ title: '已放弃该场模拟' });
           this.setData({ activeFreeSession: null });
         }).catch(error => {
-          wx.showToast({ title: error.message || '放弃失败', icon: 'none' });
+          api.showCenterNotice({ title: error.message || '放弃失败' });
           this.checkActiveFreeSession();
         });
       }
@@ -569,25 +635,29 @@ Page({
 
   switchRole() {
     const targetRole = this.data.currentRole === 'admin' ? 'learner' : 'admin';
+    const targetLabel = targetRole === 'admin' ? '主管' : '学员';
     wx.showModal({
       title: '切换身份',
-      content: `确定要切换为「${targetRole === 'admin' ? '主管' : '学员'}」身份吗？`,
+      content: `确定要切换为「${targetLabel}」身份吗？`,
       success: res => {
         if (!res.confirm) return;
         api.switchRole(targetRole).then(data => {
           wx.setStorageSync('oralTrainingAccessToken', data.accessToken);
           wx.setStorageSync('oralTrainingUser', data.user);
-          wx.showToast({ title: '已切换，即将刷新', icon: 'success', duration: 1500 });
+          /* 同 mine.switchRole：showToast 屏中央放不下这句长文案会被裁字，
+             改用 showLoading 挂到主动 hideLoading 为止 */
+          wx.showLoading({ title: `已切换为${targetLabel}，即将刷新`, mask: true });
           setTimeout(() => {
+            wx.hideLoading();
             /* 切回学员时落点可能是「我的」等已存在的 tab 页，onShow 未必重跑，
                先本地把底部导航刷成新身份那套 */
             if (typeof this.getTabBar === 'function' && this.getTabBar()) {
               this.getTabBar().applyRoleList();
             }
             wx.switchTab({ url: targetRole === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
-          }, 1600);
+          }, 1200);
         }).catch(error => {
-          wx.showToast({ title: error.message || '切换失败', icon: 'none' });
+          api.showCenterNotice({ title: error.message || '切换失败' });
         });
       }
     });

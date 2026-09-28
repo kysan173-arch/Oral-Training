@@ -275,7 +275,7 @@ Page({
       this.networkRetryIndex = 0;
       this.setData({ retryable: false, timedOut: false, loadingText: '正在重新生成报告…' });
       this.pollReport();
-    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message }));
   },
 
   restartTraining() { wx.switchTab({ url: '/pages/index/index' }); },
@@ -312,6 +312,6 @@ Page({
     }
     api.createSession(scenario.id).then(data => {
       wx.redirectTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
-    }).catch(error => wx.showToast({ title: error.message || '创建下一场训练失败', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '创建下一场训练失败' }));
   }
 });

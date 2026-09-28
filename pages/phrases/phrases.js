@@ -70,14 +70,14 @@ Page({
     }).catch(error => {
       if (requestVersion !== this.phraseRequestVersion) return;
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '话术加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '话术加载失败' });
     });
   },
 
   copyPhrase(e) {
     const phrase = e.currentTarget.dataset.phrase;
     if (!phrase) return;
-    wx.setClipboardData({ data: phrase, success: () => wx.showToast({ title: '已复制话术', icon: 'success' }) });
+    wx.setClipboardData({ data: phrase, success: () => api.showCenterNotice({ title: '已复制话术' }) });
   },
 
   selectPhraseView(e) {
@@ -100,7 +100,7 @@ Page({
       wx.showToast({ title: favorite ? '已收藏话术' : '已取消收藏', icon: 'success' });
     }).catch(error => {
       this.setData({ favoriteBusyId: '' });
-      wx.showToast({ title: error.message || '收藏操作失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '收藏操作失败' });
     });
   },
 
@@ -118,6 +118,6 @@ Page({
       if (data && data.session) {
         wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
       }
-    }).catch(error => wx.showToast({ title: error.message || '创建训练失败', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '创建训练失败' }));
   }
 });

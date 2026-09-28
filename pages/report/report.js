@@ -86,7 +86,7 @@ Page({
     }).catch(error => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '历史记录加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '历史记录加载失败' });
     });
   },
 
@@ -155,7 +155,7 @@ Page({
       this.setData({ sessions, expandedId: id });
     }).catch(error => {
       if (requestVersion !== this.conversationRequestVersion || requestedMode !== this.data.historyMode) return;
-      wx.showToast({ title: error.message, icon: 'none' });
+      api.showCenterNotice({ title: error.message });
     });
   },
 
@@ -189,7 +189,7 @@ Page({
       const nextSessions = this.data.sessions.map(item => item.id === id
         ? Object.assign({}, item, { evaluationLoading: false }) : item);
       this.setData({ sessions: nextSessions, expandedEvaluationId: '' });
-      wx.showToast({ title: error.message || '报告加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '报告加载失败' });
     });
   }
 });

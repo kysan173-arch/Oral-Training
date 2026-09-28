@@ -13,6 +13,7 @@
 .plan-status-done { color: var(--color-success); background: var(--color-success-light); }
 .plan-status-expired { color: var(--text-secondary); background: var(--color-bg); }
 .plan-requirement { display: block; margin-top: 12rpx; font-size: 22rpx; color: var(--text-secondary); }
+.plan-focus { display: block; margin-top: 8rpx; font-size: 22rpx; color: var(--color-primary); }
 .detail-desc { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-body); }
 
 .detail-meta-row { display: flex; gap: 14rpx; margin-top: 22rpx; }

@@ -100,6 +100,42 @@ const formatScore = value => {
   return Number.isFinite(score) ? Number(score.toFixed(1)) : '暂无评分';
 };
 
+/* ── 浮层文案：toast 不适合承载长句 ──
+   wx.showToast 的 title 有硬性宽度上限，超出部分直接截断（就是「提示显示不全」）：
+     · icon 为 success / error / loading → 只有一行，约 7 个汉字
+     · icon: 'none'                      → 可折两行，约 14 个汉字（官方文档原话）
+   两行已经是很紧的余量，而且长句折行后断句难看；所以超过 TOAST_MAX_WIDTH
+   就不用 toast。
+
+   长文案走 showModal 而不是 showLoading —— 这是踩过坑才定下来的：
+   showLoading 是**阻断态**，且与 showToast 共用同一个居中浮层。若用它承载
+   「至少完成 1 轮对话」这类提示，一旦之后有人再叠一条 toast，loading 就会被顶掉；
+   更糟的是 mask:true 会吃掉点击，用户又没有任何关闭它的手段（提示没有回调），
+   表现就是「卡住、没反应」。showModal 自带「知道了」按钮，永远关得掉。 */
+const TOAST_MAX_WIDTH = 13;
+const TOAST_MAX_WIDTH_WITH_ICON = 8;
+
+const textWidth = text => [...String(text === null || text === undefined ? '' : text)]
+  .reduce((sum, char) => sum + (/[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/.test(char) ? 2 : 1), 0);
+
+/* 自适应：短文案走 toast（有图标、自动消失），长文案升级为「知道了」弹窗。
+   返回 true 表示是 toast（会自己消失），false 表示弹了 modal（需用户确认）。 */
+const showCenterNotice = (options = {}) => {
+  const { title = '', icon = 'none', mask = true, duration = 1800 } = options;
+  const limit = icon === 'none' ? TOAST_MAX_WIDTH : TOAST_MAX_WIDTH_WITH_ICON;
+  if (textWidth(title) <= limit) {
+    wx.showToast({ title, icon, duration });
+    return true;
+  }
+  wx.showModal({ title: '提示', content: title, showCancel: false, confirmText: '知道了' });
+  return false;
+};
+
+/* 长提示专用：挂住直到调用方 hideLoading，适合「已切为…，即将跳转」这类场景 */
+const showNotice = (title, options = {}) => wx.showLoading({ title, mask: options.mask !== false });
+
+const hideNotice = () => wx.hideLoading();
+
 /* 演示账号切换：换令牌与用户缓存，供 switchRole / switchLearner 共用 */
 const persistIdentity = data => {
   if (data && data.accessToken && data.user) {
@@ -111,6 +147,10 @@ const persistIdentity = data => {
 
 module.exports = {
   formatScore,
+  showCenterNotice,
+  showNotice,
+  hideNotice,
+  textWidth,
   ensureAuthenticated,
   clearAuthentication,
   getCurrentUser: () => wx.getStorageSync(USER_KEY) || null,
@@ -118,8 +158,11 @@ module.exports = {
 
   // ── 训练（学员端） ──
   getScenarios: () => request('/scenarios'),
-  createSession: (scenarioId, customPatientProfile) => request('/sessions', {
-    method: 'POST', data: { scenarioId, customPatientProfile }
+  /* tier 选填：'advanced' 时按场景的难度档位覆盖患者初始状态（迁移 026）。
+     不传就**不要塞空串**——后端把「缺省」当 standard，空串反而会被判成非法值。 */
+  createSession: (scenarioId, customPatientProfile, tier) => request('/sessions', {
+    method: 'POST',
+    data: tier ? { scenarioId, customPatientProfile, tier } : { scenarioId, customPatientProfile }
   }),
   restartSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/restart`, { method: 'POST', data: {} }),
   getSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}`),
@@ -195,12 +238,32 @@ module.exports = {
   getSupervisorMember: memberId => request(`/supervisor/members/${encodeURIComponent(memberId)}`),
   getSupervisorTrainingPlans: params => request(`/supervisor/training-plans?${query(params || {})}`),
   getSupervisorScenarios: () => request('/supervisor/scenarios'),
+  /* 计划目标维度目录（五维 key + 中文名）。中文名的唯一来源在后端
+     planDimensions()，前端不另建映射副本。 */
+  getPlanDimensions: () => request('/supervisor/plan-dimensions'),
   createTrainingPlan: payload => request('/supervisor/training-plans', { method: 'POST', data: payload }),
   getTrainingPlan: planId => request(`/supervisor/training-plans/${encodeURIComponent(planId)}`),
   notifyTrainingPlan: planId => request(`/supervisor/training-plans/${encodeURIComponent(planId)}/notify`, {
     method: 'POST', data: {}
   }),
+  // ── AI 训练建议（迁移 021：模型按薄弱项出草稿，主管审核后才指派） ──
+  suggestTrainingPlans: payload => request('/supervisor/training-plans/suggest', {
+    method: 'POST', data: payload || {}
+  }),
+  getTrainingPlanDrafts: () => request('/supervisor/training-plan-drafts'),
+  publishTrainingPlan: (planId, payload) => request(
+    `/supervisor/training-plans/${encodeURIComponent(planId)}/publish`,
+    { method: 'POST', data: payload || {} }
+  ),
+  dismissTrainingPlan: planId => request(
+    `/supervisor/training-plans/${encodeURIComponent(planId)}/dismiss`, { method: 'POST', data: {} }
+  ),
   getLearnerTrainingPlans: () => request('/learning/training-plans'),
+  /* 弱项 → 复练场景候选。dimension 是五维 key（空值由后端 400 拒绝，
+     前端不要传空串——那会把「调用方写错了」掩盖成「暂无推荐」）。 */
+  getRetrainCandidates: dimension => request(
+    `/learning/retrain-candidates?dimension=${encodeURIComponent(dimension)}`
+  ),
   getSupervisorForbiddenPhrases: params => request(`/supervisor/reports/forbidden-phrases?${query(params || {})}`),
   getSupervisorForbiddenPhraseMembers: (category, params) => request(
     `/supervisor/reports/forbidden-phrases/${encodeURIComponent(category)}?${query(params || {})}`
@@ -217,6 +280,19 @@ module.exports = {
   createSupervisorScenario: payload => request('/supervisor/scenarios', { method: 'POST', data: payload }),
   updateSupervisorScenario: (scenarioId, payload) => request(
     `/supervisor/scenarios/${encodeURIComponent(scenarioId)}`, { method: 'PUT', data: payload }
+  ),
+  /* AI 生成场景骨架（迁移 030）。走的是与知识库同一套生成队列：
+     提交时带幂等键（防连点重复建任务），随后轮询任务状态，
+     成功后拿 result.scenarioId 进入编辑器补机构红线。 */
+  createScenarioAiDraft: payload => request('/supervisor/scenarios/ai-draft', {
+    method: 'POST', data: payload, header: { 'Idempotency-Key': payload.idempotencyKey }
+  }),
+  getScenarioAiDraft: jobId => request(
+    `/supervisor/scenarios/ai-draft/${encodeURIComponent(jobId)}`
+  ),
+  retryScenarioAiDraft: jobId => request(
+    `/supervisor/scenarios/ai-draft/${encodeURIComponent(jobId)}/retry`,
+    { method: 'POST', data: {} }
   ),
   getSupervisorMemberSession: (memberId, sessionId) => request(
     `/supervisor/members/${encodeURIComponent(memberId)}/sessions/${encodeURIComponent(sessionId)}`

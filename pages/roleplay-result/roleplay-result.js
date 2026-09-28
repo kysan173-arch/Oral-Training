@@ -179,7 +179,7 @@ Page({
       this.networkRetryIndex = 0;
       this.setData({ retryable: false, timedOut: false, loadingText: '正在重新生成学习复盘…' });
       this.pollSummary();
-    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message }));
   },
 
   viewScenes() { wx.switchTab({ url: '/pages/index/index' }); },

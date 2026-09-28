@@ -78,7 +78,8 @@ Page({
     assistExpanded: false,
     customProfile: null,
     trustText: '中性',
-    trustTone: 'tag-neutral'
+    trustTone: 'tag-neutral',
+    exitSheetVisible: false
   },
 
   sessionId: '',
@@ -148,7 +149,12 @@ Page({
         hintRemaining: detail.hintRemaining === undefined ? 3 : detail.hintRemaining,
         hintRemainingThisRound: detail.hintRemainingThisRound === undefined
           ? 1 : detail.hintRemainingThisRound,
-        finishing: detail.session.status === 'completed'
+        finishing: detail.session.status === 'completed',
+        /* 档位必须在训练中可见（D1 的核心论据）：否则学员打完进阶档看到低分，
+           会归因成「我退步了」，而这正是要避免的那种情绪。
+           「不计入计划达标」也要写在这里——学员有权知道挑战不会拖累自己的计划。 */
+        tierText: detail.session.difficultyTier === 'advanced'
+          ? '进阶档 · 成绩不计入培训计划达标' : ''
       }, trustBadge(detail.patientState)), () => {
         this.scrollToBottom();
         if (pendingMessage && pendingMessage.replyStatus === 'generating') {
@@ -217,7 +223,7 @@ Page({
       this.setData({ requestingHint: false });
       const limited = error.code === 'HINT_LIMIT_REACHED' || error.code === 'HINT_ROUND_LIMIT_REACHED';
       if (limited) this.loadSession();
-      wx.showToast({ title: error.message || '训练提示获取失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '训练提示获取失败' });
     });
   },
 
@@ -309,7 +315,7 @@ Page({
       if (Date.now() - startedAt >= 30000) {
         // 超时不是失败：模型可能仍在生成，原消息保留，学员可稍后回来或再点发送续查
         this.setData({ sending: false, pendingClientMessageId: clientMessageId, inputValue: content });
-        wx.showToast({ title: '回复仍在生成，原消息已保留，可稍后回来查看', icon: 'none' });
+        api.showCenterNotice({ title: '回复仍在生成，原消息已保留，可稍后回来查看' });
         return;
       }
       this.pendingPollTimer = setTimeout(
@@ -317,7 +323,7 @@ Page({
     }).catch(() => {
       if (Date.now() - startedAt >= 30000) {
         this.setData({ sending: false, pendingClientMessageId: clientMessageId, inputValue: content });
-        wx.showToast({ title: '网络异常，进度已保存，原消息已保留', icon: 'none' });
+        api.showCenterNotice({ title: '网络异常，进度已保存，原消息已保留' });
         return;
       }
       this.pendingPollTimer = setTimeout(
@@ -325,21 +331,58 @@ Page({
     });
   },
 
-  finishTraining() {
-    if (this.data.currentRound < 1) {
-      wx.showToast({ title: '至少完成1轮对话后才能评分', icon: 'none' });
-      return;
-    }
+  exitTraining() {
     if (this.data.sending) {
-      wx.showToast({ title: '患者正在回复，请稍候', icon: 'none' });
+      api.showCenterNotice({ title: '患者回复中，请稍候' });
       return;
     }
     if (this.data.pendingClientMessageId) {
-      wx.showToast({ title: '请先重试尚未生成回复的原消息', icon: 'none' });
+      api.showCenterNotice({ title: '请先重试未回复的原消息' });
       return;
     }
     if (this.data.finishing) {
-      wx.showToast({ title: '正在生成报告，请稍候', icon: 'none' });
+      api.showCenterNotice({ title: '报告生成中，请稍候' });
+      return;
+    }
+    /* 一轮都没完成时，后端必然以 MIN_ROUNDS_NOT_REACHED 拒绝评分，
+       所以这里不给「结束并生成报告」——避免点了必然失败、还会卡住的入口。
+       剩下的两档都保留：「暂存并退出」留进度；「强制结束」作废本次训练。
+       把限制写进面板本身（微信操作面板不支持禁用单项），而不是让用户点了才知道。 */
+    const hasRounds = this.data.currentRound >= 1;
+    const items = hasRounds
+      ? ['结束并生成报告', '暂存并退出', '强制结束（不生成报告）']
+      : ['暂存并退出（本轮不足，报告需完成 1 轮后生成）', '强制结束（不生成报告）'];
+    wx.showActionSheet({
+      itemList: items,
+      success: result => {
+        const label = items[result.tapIndex];
+        if (label.indexOf('结束并生成报告') === 0) this.finishTraining();
+        else if (label.indexOf('暂存并退出') === 0) this.leaveTraining();
+        else if (label.indexOf('强制结束') === 0) this.abandonTraining();
+      },
+      fail: error => {
+        // 用户点空白处/返回键取消是正常交互，不提示
+        if (error && /cancel/i.test(error.errMsg || '')) return;
+        api.showCenterNotice({ title: '面板打开失败，请重试' });
+      }
+    });
+  },
+
+  finishTraining() {
+    if (this.data.currentRound < 1) {
+      api.showCenterNotice({ title: '至少完成 1 轮对话' });
+      return;
+    }
+    if (this.data.sending) {
+      api.showCenterNotice({ title: '患者回复中，请稍候' });
+      return;
+    }
+    if (this.data.pendingClientMessageId) {
+      api.showCenterNotice({ title: '请先重试未回复的原消息' });
+      return;
+    }
+    if (this.data.finishing) {
+      api.showCenterNotice({ title: '报告生成中，请稍候' });
       return;
     }
     wx.showModal({
@@ -347,7 +390,7 @@ Page({
       content: '结束后将根据完整对话生成训练报告，结束后不能继续发送消息。',
       confirmText: '结束评分',
       success: result => { if (result.confirm) this.completeTraining(); },
-      fail: () => wx.showToast({ title: '确认框打开失败，请重试', icon: 'none' })
+      fail: () => api.showCenterNotice({ title: '弹窗打开失败，请重试' })
     });
   },
 
@@ -358,14 +401,16 @@ Page({
       wx.removeStorageSync(`customProfile_${this.sessionId}`);
       wx.redirectTo({ url: `/pages/result/result?sessionId=${this.sessionId}` });
     }).catch(error => {
+      /* 同 roleplay：失败必须复位 finishing，否则按钮停在「生成报告中…」不再响应，
+         用户看到的就是「卡住且没有任何回复」。后端拒绝时要给出可见原因。 */
       this.setData({ finishing: false });
-      wx.showToast({ title: error.message || '结束训练失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '结束训练失败' });
     });
   },
 
   abandonTraining() {
     if (this.data.sending || this.data.finishing) {
-      wx.showToast({ title: '正在生成回复，请稍候', icon: 'none' });
+      api.showCenterNotice({ title: '回复生成中，请稍候' });
       return;
     }
     wx.showModal({
@@ -379,11 +424,11 @@ Page({
         api.abandonSession(this.sessionId).then(() => {
           wx.hideLoading();
           wx.removeStorageSync(`customProfile_${this.sessionId}`);
-          wx.showToast({ title: '已强制结束', icon: 'success' });
+          api.showCenterNotice({ title: '已强制结束' });
           setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 800);
         }).catch(error => {
           wx.hideLoading();
-          wx.showToast({ title: error.message || '强制结束失败', icon: 'none' });
+          api.showCenterNotice({ title: error.message || '强制结束失败' });
         });
       }
     });

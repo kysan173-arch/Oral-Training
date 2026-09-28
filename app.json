@@ -26,7 +26,10 @@
     "pages/session-inspect/session-inspect",
     "pages/knowledge-admin/knowledge-admin",
     "pages/service-editor/service-editor",
-    "pages/knowledge-editor/knowledge-editor"
+    "pages/knowledge-editor/knowledge-editor",
+    "pages/admin-ai-plans/admin-ai-plans",
+    "pages/retrain-candidates/retrain-candidates",
+    "pages/scenario-templates/scenario-templates"
   ],
   "window": {
     "navigationBarBackgroundColor": "#FFFFFF",

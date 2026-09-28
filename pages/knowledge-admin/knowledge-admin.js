@@ -25,13 +25,13 @@ Page({
       const user = api.getCurrentUser();
       if (!user || user.role !== 'admin') {
         this.setData({ loading: false });
-        wx.showToast({ title: '仅管理员可访问', icon: 'none' });
+        api.showCenterNotice({ title: '仅管理员可访问' });
         return;
       }
       this.loadAll();
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '登录状态获取失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '登录状态获取失败' });
     });
   },
 
@@ -65,7 +65,7 @@ Page({
       });
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '管理数据加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '管理数据加载失败' });
     });
   },
 
@@ -79,8 +79,8 @@ Page({
   },
   retryJob(event) {
     api.retryKnowledgeGenerationJob(event.currentTarget.dataset.id).then(() => {
-      wx.showToast({ title: '已重新排队', icon: 'success' });
+      api.showCenterNotice({ title: '已重新排队' });
       this.loadAll();
-    }).catch(error => wx.showToast({ title: error.message || '重试失败', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '重试失败' }));
   }
 });

@@ -137,7 +137,7 @@
             <text class="member-level">{{item.levelText}}</text>
             <text class="member-warn-tag" wx:if="{{item.needCoaching}}">待辅导</text>
           </view>
-          <text class="member-meta-line1">累计训练 {{item.totalSessions}} 次 · 平均 {{item.averageScoreText}} 分</text>
+          <text class="member-meta-line1">累计训练 {{item.totalSessions}} 次 · {{item.scoreLine}}</text>
           <text class="member-meta">{{item.latestText}}</text>
         </view>
         <view class="member-side"><text>{{item.passRateText}}%</text><text>详情 ›</text></view>

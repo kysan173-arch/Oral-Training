@@ -16,7 +16,7 @@ Page({
       this.setData({ mistakes: data.items || [], loading: false });
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '错题加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '错题加载失败' });
     });
   },
 
@@ -32,7 +32,7 @@ Page({
     api.setLearningMistakeMastery(sessionId, mistakeKey, !isMastered).then(() => {
       wx.showToast({ title: isMastered ? '已恢复为待练习' : '已标记掌握', icon: 'success' });
       this.loadMistakes();
-    }).catch(error => wx.showToast({ title: error.message || '状态更新失败', icon: 'none' }))
+    }).catch(error => api.showCenterNotice({ title: error.message || '状态更新失败' }))
       .finally(() => this.setData({ savingId: '' }));
   },
 
@@ -58,7 +58,7 @@ Page({
       if (data && data.session) {
         wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
       }
-    }).catch(error => wx.showToast({ title: error.message || '创建复练失败', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '创建复练失败' }));
   },
 
   goPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },

@@ -111,7 +111,7 @@ Page({
       }
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '服务草稿加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '服务草稿加载失败' });
     });
   },
 
@@ -194,7 +194,7 @@ Page({
         draftVersion: result.draftVersion,
         form: Object.assign({}, this.data.form, result.payload || payload)
       });
-      if (!silent) wx.showToast({ title: '草稿已保存', icon: 'success' });
+      if (!silent) api.showCenterNotice({ title: '草稿已保存' });
       return result;
     }).catch(error => {
       this.setData({ saving: false });
@@ -206,7 +206,7 @@ Page({
           success: result => { if (result.confirm) this.loadDraft(); }
         });
       } else {
-        wx.showToast({ title: error.message || '保存失败', icon: 'none' });
+        api.showCenterNotice({ title: error.message || '保存失败' });
       }
       throw error;
     });
@@ -252,7 +252,7 @@ Page({
       this.pollTimer = setTimeout(poll, 1500);
     }).catch(error => {
       this.setData({ generating: false });
-      wx.showToast({ title: error.message || '任务状态读取失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '任务状态读取失败' });
     });
     poll();
   },
@@ -271,7 +271,7 @@ Page({
         this.saveDraft(true).then(result => api.publishAdminService(
           this.data.serviceId, result.draftVersion, requestKey('service-publish')
         )).then(() => {
-          wx.showToast({ title: '已发布新版本', icon: 'success' });
+          api.showCenterNotice({ title: '已发布新版本' });
           this.loadDraft();
         }).catch(() => {});
       }
@@ -282,7 +282,7 @@ Page({
     api.previewAdminKnowledge({
       entityType: 'service', entityId: this.data.serviceId,
       draftVersion: this.data.draftVersion
-    }).catch(error => wx.showToast({ title: error.message || '预览暂不可用', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '预览暂不可用' }));
   },
 
   archiveService() {
@@ -292,8 +292,8 @@ Page({
         if (!modal.confirm) return;
         api.archiveAdminService(this.data.serviceId).then(() => {
           this.setData({ status: 'archived' });
-          wx.showToast({ title: '服务已归档', icon: 'success' });
-        }).catch(error => wx.showToast({ title: error.message || '归档失败', icon: 'none' }));
+          api.showCenterNotice({ title: '服务已归档' });
+        }).catch(error => api.showCenterNotice({ title: error.message || '归档失败' }));
       }
     });
   }

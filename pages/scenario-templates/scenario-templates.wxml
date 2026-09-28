@@ -1,0 +1,54 @@
+<view class="page-shell tpl-page">
+  <view class="tpl-hero card">
+    <text class="tpl-hero-title">按骨架模板新建</text>
+    <text class="tpl-hero-desc">模板只含教学结构：训练重点、隐藏顾虑的形状、患者剧本骨架、维度侧重。能不能承诺、转交由谁、多久答复这类机构红线必须你自己填——模板猜不出你们的真实流程。</text>
+  </view>
+
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在加载模板…</text></view>
+
+  <view class="tpl-failed card" wx:elif="{{failed}}">
+    <text class="tpl-failed-title">模板加载失败</text>
+    <text class="tpl-failed-text">可能是网络波动，你的场景数据不受影响。</text>
+    <view class="tpl-failed-action btn btn-secondary" bindtap="retry">重新加载</view>
+  </view>
+
+  <block wx:else>
+    <view class="tpl-group" wx:for="{{groups}}" wx:key="id">
+      <view class="tpl-group-head">
+        <text class="tpl-group-name">{{item.name}}</text>
+        <text class="tpl-group-count">{{item.items.length}} 个骨架</text>
+      </view>
+      <text class="tpl-group-desc">{{item.description}}</text>
+
+      <view
+        class="tpl-card card"
+        wx:for="{{item.items}}"
+        wx:for-item="tpl"
+        wx:key="id"
+        data-id="{{tpl.id}}"
+        bindtap="pick"
+        hover-class="tpl-card-hover"
+      >
+        <view class="tpl-card-head">
+          <text class="tpl-card-name">{{tpl.name}}</text>
+          <text class="tpl-card-use">使用 ›</text>
+        </view>
+        <text class="tpl-card-summary">{{tpl.summary}}</text>
+        <view class="tpl-card-meta">
+          <text class="tag tag-neutral">{{tpl.difficultyText}}</text>
+          <text class="tag tag-primary" wx:if="{{tpl.focusText}}">{{tpl.focusText}}</text>
+        </view>
+      </view>
+    </view>
+
+    <empty-state
+      wx:if="{{groups.length === 0}}"
+      title="暂无骨架模板"
+      text="模板由迁移 025 提供。这里为空说明该环境还没有执行那条迁移。"
+      actionText="返回场景管理"
+      bind:action="goBack"
+    ></empty-state>
+
+    <text class="tpl-foot">选定后会在「训练场景管理」里打开一张预填好的表单，你在上面改，不用从空白开始。机构红线那一半仍然是空的，等你填。</text>
+  </block>
+</view>

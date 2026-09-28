@@ -170,7 +170,7 @@ Page({
       this.loadTeam();
     }).catch(error => {
       this.setData({ adding: false });
-      wx.showToast({ title: error.message || '添加成员失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '添加成员失败' });
       /* 失败常见于「这些人已被其他主管拉走」，重新拉取候选名单让列表回到真实状态。 */
       this.loadTeam();
     });
@@ -203,7 +203,7 @@ Page({
       this.loadTeam();
     }).catch(error => {
       this.setData({ removingId: '' });
-      wx.showToast({ title: error.message || `移出「${name}」失败`, icon: 'none' });
+      api.showCenterNotice({ title: error.message || `移出「${name}」失败` });
       this.loadTeam();
     });
   },

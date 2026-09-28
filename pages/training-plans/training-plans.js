@@ -39,7 +39,7 @@ Page({
       });
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '计划加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '计划加载失败' });
     });
   },
 

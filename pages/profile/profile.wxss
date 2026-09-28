@@ -87,6 +87,9 @@
 .weakness-tag { padding: 2rpx 12rpx; border-radius: 10rpx; background: var(--color-warning-light); color: var(--color-warning); font-size: 22rpx; font-weight: 600; }
 .weakness-score { margin-left: auto; color: var(--text-secondary); font-weight: 400; }
 .weakness-body { display: block; color: var(--text-secondary); font-size: 22rpx; line-height: 1.6; }
+/* 弱项卡片的唯一出路：把「读到的建议」变成「点得动的场景候选」 */
+.weakness-action { display: inline-block; margin-top: 16rpx; padding: 10rpx 22rpx; border-radius: 30rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 22rpx; font-weight: 600; }
+.weakness-action:active { opacity: .85; }
 
 /* ── 错题掌握进度 ── */
 .learning-summary { padding: 24rpx; margin-top: 6rpx; }

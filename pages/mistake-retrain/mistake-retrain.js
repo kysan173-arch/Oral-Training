@@ -54,7 +54,7 @@ Page({
       this.setData({ submitting: false, result });
     }).catch(error => {
       this.setData({ submitting: false });
-      wx.showToast({ title: error.message || '点评生成失败，请稍后重试', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '点评生成失败，请稍后重试' });
     });
   },
 
@@ -67,10 +67,10 @@ Page({
     if (this.data.marking) return;
     this.setData({ marking: true });
     api.setLearningMistakeMastery(this.sessionId, this.mistakeKey, true).then(() => {
-      wx.showToast({ title: '已标记掌握', icon: 'success' });
+      api.showCenterNotice({ title: '已标记掌握' });
       this.setData({ mastered: true });
     }).catch(error => {
-      wx.showToast({ title: error.message || '状态更新失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '状态更新失败' });
     }).finally(() => this.setData({ marking: false }));
   },
 

@@ -66,13 +66,17 @@
 
     <!-- 下一步练习重点 -->
     <view class="section-heading"><text>下一步练习重点</text></view>
+    <view class="empty-card card" wx:if="{{weaknesses.length === 0}}"><text>完成至少一次客服训练后，这里会列出优先提升的维度。</text></view>
     <view class="weakness-card card" wx:for="{{weaknesses}}" wx:key="key">
       <view class="weakness-head">
         <text class="weakness-tag">优先提升</text>
         <text>{{item.name}}</text>
-        <text class="weakness-score">{{item.score}} 分</text>
+        <text class="weakness-score">{{item.scoreText}} 分</text>
       </view>
       <text class="weakness-body">{{item.suggestion}}</text>
+      <view class="weakness-action" wx:if="{{item.canRetrain}}" bindtap="goRetrain" data-key="{{item.key}}" data-name="{{item.name}}">
+        <text>复练「{{item.name}}」相关场景 ›</text>
+      </view>
     </view>
 
     <!-- 错题掌握进度 -->

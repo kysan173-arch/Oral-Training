@@ -83,16 +83,25 @@ const normalizeSupervisorPlan = (raw, counts) => {
   const assignmentCount = Number(source.assignmentCount) || 0;
   const doneCount = Number(source.doneCount) || 0;
   const expired = !!plan.expired;
+  /* 防刷分上限：0 = 不限（迁移 023）。单独成句而不是塞进 requirementText——
+     它是补充约束，不是达标的必要条件，混在一起会让要求行过长且被误读为硬门槛。 */
+  const maxPerScenario = Math.max(0, Number(plan.maxPerScenario) || 0);
   return Object.assign({}, plan, {
     assignmentCount,
     doneCount,
+    maxPerScenario,
+    scenarioCapText: maxPerScenario > 0 ? `同一场景最多计入 ${maxPerScenario} 次` : '',
     periodText: plan.period === 'week' ? '按周' : '按月',
     dueText: formatDue(plan.dueAt),
     dueMs: datetime.toMs(plan.dueAt),
     progressPercent: assignmentCount ? Math.round(doneCount / assignmentCount * 100) : 0,
     progressText: `${doneCount}/${assignmentCount}`,
     avgScoreText: fmt1(plan.avgScore),
-    requirementText: `完成 ≥ ${plan.requiredCount} 次 · 平均 ≥ ${plan.requiredPassRate} 分`,
+    /* 计划指定了目标维度时达标只看该维度均分，写成「平均 ≥ X 分」会让主管
+       以为看的是综合分，与判定结论对不上。维度中文名由后端下发，前端不另写映射。 */
+    requirementText: plan.focusDimensionLabel
+      ? `完成 ≥ ${plan.requiredCount} 次 · ${plan.focusDimensionLabel}均分 ≥ ${plan.requiredPassRate} 分`
+      : `完成 ≥ ${plan.requiredCount} 次 · 平均 ≥ ${plan.requiredPassRate} 分`,
     statusKey: expired ? 'expired' : 'active',
     statusText: expired ? '已到期' : '进行中'
   });

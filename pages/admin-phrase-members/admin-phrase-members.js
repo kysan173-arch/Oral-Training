@@ -35,7 +35,7 @@ Page({
       });
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '成员明细加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '成员明细加载失败' });
     });
   },
 

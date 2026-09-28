@@ -12,16 +12,14 @@
       </view>
     </view>
 
+    <!-- 指标优先：先定「练到什么程度」，场景范围降级为下一步的可选约束。
+         此前把场景多选摆在显眼位置，等于引导主管去干最重的活。 -->
     <view class="form-row">
-      <text class="form-label">截止时间</text>
-      <view class="picker-row">
-        <picker mode="date" value="{{dueDate}}" start="{{minDate}}" bindchange="onDueDateChange">
-          <view class="picker-box">{{dueDate || '选择日期'}}</view>
-        </picker>
-        <picker mode="time" value="{{dueTime}}" bindchange="onDueTimeChange">
-          <view class="picker-box">{{dueTime}}</view>
-        </picker>
-      </view>
+      <text class="form-label">目标维度（选填）</text>
+      <picker mode="selector" range="{{dimensionOptions}}" range-key="name" value="{{dimensionIndex}}" bindchange="onDimensionChange">
+        <view class="picker-box">{{dimensionLabel}}</view>
+      </picker>
+      <text class="form-hint">选定后达标只看该维度的均分，用于针对学员弱项定向补强。</text>
     </view>
 
     <view class="form-row">
@@ -31,19 +29,57 @@
         <text class="stepper-value">{{requiredCount}}</text>
         <text class="stepper-btn {{requiredCount >= 20 ? 'disabled' : ''}}" bindtap="stepCount" data-delta="1">＋</text>
       </view>
+      <text class="form-hint">计划期内需完成的训练次数，范围 1–20。</text>
     </view>
 
     <view class="form-row">
-      <text class="form-label">最低平均分 · {{requiredPassRate}}</text>
+      <text class="form-label">{{passRateLabel}} · {{requiredPassRate}}</text>
       <slider class="form-slider" min="0" max="100" step="5" value="{{requiredPassRate}}" activeColor="#1F3864" block-size="20" bindchange="onPassRateChange"></slider>
+    </view>
+
+    <!-- 防刷分：不限场景时学员可以反复练最容易的那一个场景把维度分刷上去 -->
+    <view class="form-row">
+      <text class="form-label">同一场景最多计入 · {{maxPerScenarioText}}</text>
+      <view class="stepper">
+        <text class="stepper-btn {{maxPerScenario <= 0 ? 'disabled' : ''}}" bindtap="stepMaxPerScenario" data-delta="-1">−</text>
+        <text class="stepper-value">{{maxPerScenarioText}}</text>
+        <text class="stepper-btn {{maxPerScenario >= 10 ? 'disabled' : ''}}" bindtap="stepMaxPerScenario" data-delta="1">＋</text>
+      </view>
+      <text class="form-hint">{{maxPerScenarioHint}}</text>
     </view>
 
     <view class="form-row form-row-last">
       <text class="form-label">计划说明（选填）</text>
       <textarea class="form-textarea" placeholder="补充说明训练重点或安排，最多 500 字" placeholder-class="form-placeholder" maxlength="500" value="{{description}}" bindinput="onDescriptionInput"></textarea>
     </view>
+
+    <view class="form-row form-row-last">
+      <text class="form-label">截止时间</text>
+      <view class="picker-row">
+        <picker mode="date" value="{{dueDate}}" start="{{minDate}}" bindchange="onDueDateChange">
+          <view class="picker-box">{{dueDate || '选择日期'}}</view>
+        </picker>
+        <picker mode="time" value="{{dueTime}}" bindchange="onDueTimeChange">
+          <view class="picker-box">{{dueTime}}</view>
+        </picker>
+      </view>
+      <text class="form-hint">进度按 [发布时间, 截止时间] 窗口统计，到期后自动截止。</text>
+    </view>
   </view>
 
+  <!-- 编辑后发布：接收人在草稿生成时就已确定，不提供「发布对象」改选 -->
+  <block wx:if="{{publishMode}}">
+    <view class="section-title-row plan-scene-title">
+      <text class="section-title">发布对象</text>
+      <text class="section-caption">AI 建议指定</text>
+    </view>
+    <view class="target-select card">
+      <text class="scene-select-scope">本计划将发布给 {{learnerName || '该学员'}}。修改场景或达标要求不会改变接收人；如需换人或改为全团队，请「丢弃」后走「发布计划」手动建。</text>
+    </view>
+  </block>
+
+  <!-- 独立条件而非 wx:else：wx:if/wx:else 必须紧邻，中间隔注释或空行会断链 -->
+  <block wx:if="{{!publishMode}}">
   <view class="section-title-row plan-scene-title">
     <text class="section-title">发布对象</text>
     <text class="section-caption" wx:if="{{targetMode === 'all'}}">全部团队成员</text>
@@ -88,12 +124,21 @@
 
     <text class="scene-select-scope" wx:else>发布后覆盖全部团队成员，进度按截止时间自动统计。</text>
   </view>
+  </block>
 
   <view class="section-title-row plan-scene-title">
     <text class="section-title">适用场景</text>
-    <text class="section-caption">不选则统计全部场景</text>
+    <text class="section-caption">{{sceneScopeCaption}}</text>
   </view>
   <view class="scene-select card">
+    <!-- 场景范围是可选的高级约束：默认收起，把注意力留给指标。已选场景时自动展开。 -->
+    <view class="scene-advanced-head" bindtap="toggleSceneAdvanced">
+      <text class="scene-advanced-title">限定训练场景</text>
+      <text class="scene-advanced-state">{{sceneAdvancedOpen ? '收起' : '展开'}}</text>
+    </view>
+    <text class="scene-select-scope" wx:if="{{!sceneAdvancedOpen}}">{{sceneAdvancedHint}}</text>
+
+    <view class="scene-advanced-body" wx:if="{{sceneAdvancedOpen}}">
     <view class="scene-state" wx:if="{{sceneLoading}}"><text>正在加载场景…</text></view>
 
     <view class="scene-state scene-state-failed" wx:elif="{{sceneLoadFailed}}">
@@ -116,15 +161,18 @@
         </view>
       </view>
       <view class="scene-select-foot">
-        <text class="scene-select-hint">已选 {{selectedCount}} 个场景{{selectedCount === 0 ? '（全部）' : ''}}</text>
-        <text class="scene-select-clear" wx:if="{{selectedCount}}" bindtap="clearScenes">清空</text>
+        <text class="scene-select-hint">已选 {{selectedCount}} 个场景{{!publishMode && selectedCount === 0 ? '（全部）' : ''}}</text>
+        <!-- 编辑后发布不允许清空场景（后端对空数组保持原值），因此不提供「清空」 -->
+        <text class="scene-select-clear" wx:if="{{selectedCount && !publishMode}}" bindtap="clearScenes">清空</text>
       </view>
       <text class="scene-select-scope">进度仅统计「客服训练」的完成次数与均分，不含「患者模拟」。</text>
     </block>
+    </view>
   </view>
 
   <view class="submit-bar">
-    <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="submit">{{submitting ? '发布中…' : '发布计划'}}</view>
-    <text class="submit-note">已选 {{targetMode === 'all' ? '全团队成员' : selectedMemberCount + ' 名学员'}} · 进度按截止时间自动统计。</text>
+    <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="submit">{{submitting ? '发布中…' : (publishMode ? '保存并发布' : '发布计划')}}</view>
+    <text class="submit-note" wx:if="{{publishMode}}">发布给 {{learnerName || '该学员'}} · 你的修改会覆盖 AI 生成的内容。</text>
+    <text class="submit-note" wx:else>已选 {{targetMode === 'all' ? '全团队成员' : selectedMemberCount + ' 名学员'}} · 进度按截止时间自动统计。</text>
   </view>
 </view>

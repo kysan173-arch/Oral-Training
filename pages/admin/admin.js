@@ -199,7 +199,7 @@ Page({
       this.setData({ isAdmin: false }, () => this.loadPersonal());
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '登录状态获取失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '登录状态获取失败' });
     });
   },
 
@@ -218,7 +218,7 @@ Page({
     }).catch(error => {
       if (requestVersion !== this.supervisorRequestVersion || requestedRange !== this.data.timeRange) return;
       this.setData({ loading: false, supervisorFailed: true });
-      wx.showToast({ title: error.message || '主管数据加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '主管数据加载失败' });
     });
   },
 
@@ -270,9 +270,17 @@ Page({
     ];
 
     const rawMembers = (memberData.members || []).map(item => {
+      const hasAdvanced = Number(item.advancedCount) > 0;
       const member = Object.assign({}, item, {
         initial: (item.displayName || '学').slice(0, 1),
         averageScoreText: api.formatScore(item.averageScore),
+        /* 分档均分（P1-1）：混在一起的平均分会把「主动挑战更难档」读成「退步」。
+           进阶均分为 null（没练过）时显示「未挑战进阶档」，绝不能显示 0——
+           「没练过」和「练过但很差」是两种完全不同的信号。 */
+        scoreLine: hasAdvanced
+          ? `标准 ${item.standardAvgScore === null ? '—' : api.formatScore(item.standardAvgScore)} 分` +
+            ` · 进阶 ${api.formatScore(item.advancedAvgScore)} 分`
+          : `平均 ${api.formatScore(item.averageScore)} 分 · 未挑战进阶档`,
         passRateText: api.formatScore(item.passRate),
         latestText: item.lastTrainingDate ? `最近训练：${item.lastTrainingDate}` : '暂未开始训练'
       });
@@ -383,7 +391,7 @@ Page({
       this.setData({ personal, loading: false });
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '数据加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '数据加载失败' });
     });
   },
 
@@ -434,7 +442,7 @@ Page({
       });
     }).catch(error => {
       this.setData({ reportLoading: false, reportError: true });
-      wx.showToast({ title: error.message || '报表数据加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '报表数据加载失败' });
     });
   },
 
