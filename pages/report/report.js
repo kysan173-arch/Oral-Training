@@ -97,7 +97,10 @@ Page({
   switchHistoryMode(e) {
     const mode = e.currentTarget.dataset.mode;
     if (!mode || mode === this.data.historyMode) return;
-    this.setData({ historyMode: mode, sessions: [], expandedId: '', expandedEvaluationId: '' }, () => this.loadSessions());
+    /* 分类筛选只属于客服训练（患者模拟不按场景分类），所以切模式时必须清空它：
+       否则「在客服训练选了某大类 -> 切到患者模拟」会带着 category 继续请求，
+       筛选在生效、UI 上却已经看不见那个 chip，记录变少了也找不到原因。 */
+    this.setData({ historyMode: mode, selectedCategory: '', sessions: [], expandedId: '', expandedEvaluationId: '' }, () => this.loadSessions());
   },
 
   selectStatus(e) {
