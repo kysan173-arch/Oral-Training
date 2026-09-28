@@ -68,6 +68,13 @@ const normalizePlan = raw => {
   const focusLabel = plan.focusDimensionLabel || '';
   /* 防刷分上限：0 = 不限（迁移 023）。它是补充约束，不塞进 requirementText。 */
   const maxPerScenario = Math.max(0, Number(plan.maxPerScenario) || 0);
+  /* 逐次达标（迁移 031）：打开时后端判定分取窗口内最低分而非均分。
+     文案必须跟着变，否则会写成「均分 >= X」而实际按最低分判，结论对不上。 */
+  const requireEachPass = plan.requireEachPass === true;
+  /* 判定依据的措辞：打开时判的是「每次」，关闭时是「均分」 */
+  const judgeBasisLabel = focusLabel
+    ? (requireEachPass ? `${focusLabel}每次` : `${focusLabel}均分`)
+    : (requireEachPass ? '每次' : '平均');
   const status = resolveStatus(plan);
   const countDone = completedCount >= requiredCount;
   const scoreDone = judgeScore >= requiredPassRate;
@@ -86,6 +93,7 @@ const normalizePlan = raw => {
     focusDimension: plan.focusDimension || '',
     focusLabel,
     maxPerScenario,
+    requireEachPass,
     dueAt: plan.dueAt,
     dueMs: parseDueMs(plan.dueAt),
     dueText: formatDue(plan.dueAt),
@@ -99,9 +107,7 @@ const normalizePlan = raw => {
     progressText: `${completedCount}/${requiredCount} 次`,
     progressPercent: Math.max(0, Math.min(100, Math.round(completedCount / requiredCount * 100))),
     avgScoreText: fmt1(avgScore),
-    requirementText: focusLabel
-      ? `完成 ≥ ${requiredCount} 次 · ${focusLabel}均分 ≥ ${requiredPassRate} 分`
-      : `完成 ≥ ${requiredCount} 次 · 平均 ≥ ${requiredPassRate} 分`,
+    requirementText: `完成 ≥ ${requiredCount} 次 · ${judgeBasisLabel} ≥ ${requiredPassRate} 分`,
     ruleSummary: buildRuleSummary(countDone, scoreDone, Math.max(0, requiredCount - completedCount))
   };
 };

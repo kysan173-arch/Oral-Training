@@ -83,14 +83,18 @@ Page({
        （scoreBasis === 'total'）。回退本身是有意设计——缺失绝不能当 0 分；但学员必须
        知道此刻自己在被拿什么评判，否则会以为自己一直在按目标维度达标。 */
     const scoreFallback = !!focusLabel && rawPlan.scoreBasis === 'total';
-    const scoreLabel = !focusLabel || scoreFallback ? '综合均分' : `${focusLabel}均分`;
+    /* 逐次达标（迁移 031）：打开后判定取窗口内最低分，标签与说明必须跟着改，
+       否则学员会按「均分」去理解判定结论。 */
+    const eachPass = rawPlan.requireEachPass === true;
+    const basisWord = eachPass ? '最低分' : '均分';
+    const scoreLabel = !focusLabel || scoreFallback ? `综合${basisWord}` : `${focusLabel}${basisWord}`;
     /* 有目标维度时，达标只看这一维——必须写清楚，否则学员会以为靠其他维度拉高综合分也能过 */
-    const scoreName = !focusLabel || scoreFallback ? '平均得分' : `${focusLabel}得分`;
+    const scoreName = !focusLabel || scoreFallback ? (eachPass ? '最低得分' : '平均得分') : `${focusLabel}得分`;
     const scoreHint = !focusLabel
-      ? '取计划期内上述训练的综合平均分'
+      ? (eachPass ? '取计划期内上述训练的最低分（要求每次都达标）' : '取计划期内上述训练的综合平均分')
       : (scoreFallback
-          ? `计划针对「${focusLabel}」补强，但计划期内还没有该维度的有效评分，当前先按综合均分判定`
-          : `计划针对「${focusLabel}」补强，只看这一维的均分，其他维度不计入`);
+          ? `计划针对「${focusLabel}」补强，但计划期内还没有该维度的有效评分，当前先按综合${basisWord}判定`
+          : `计划针对「${focusLabel}」补强，只看这一维的${eachPass ? '最低分（每次都要达标）' : '均分'}，其他维度不计入`);
     const status = rawPlan.status || (rawPlan.done ? 'done' : rawPlan.expired ? 'expired' : 'pending');
     const countDone = completed >= required;
     const scoreDone = judgeScore >= passRate;
@@ -131,9 +135,9 @@ Page({
         scoreLabel,
         scoreName,
         scoreHint,
-        requirementText: focusLabel
-          ? `完成 ≥ ${required} 次 · ${focusLabel}均分 ≥ ${passRate} 分`
-          : `完成 ≥ ${required} 次 · 综合均分 ≥ ${passRate} 分`,
+        requirementText: `完成 ≥ ${required} 次 · ${focusLabel
+          ? (eachPass ? `${focusLabel}每次` : `${focusLabel}均分`)
+          : (eachPass ? '每次' : '综合均分')} ≥ ${passRate} 分`,
         countHint: cap > 0
           ? `计划期内、命中适用场景的已完成训练；同一场景最多计入 ${cap} 次，其余次数需练其他场景`
           : '计划期内、命中适用场景的已完成训练',

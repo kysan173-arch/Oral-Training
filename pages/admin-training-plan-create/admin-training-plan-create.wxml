@@ -48,6 +48,13 @@
       <text class="form-hint">{{maxPerScenarioHint}}</text>
     </view>
 
+    <!-- 逐次达标（迁移 031）：均分会掩盖「前 80 后 50」这类尾部风险 -->
+    <view class="form-row">
+      <text class="form-label">逐次达标</text>
+      <switch checked="{{requireEachPass}}" color="#1F3864" bindchange="onEachPassChange"></switch>
+      <text class="form-hint">{{requireEachPass ? '要求窗口内每次训练都达到达标线，一次低分不会被均分掩盖；多练不会倒扣。' : '默认按均分判定。打开后改用窗口内最低分判定，防止一次高分拉平一次低分。'}}</text>
+    </view>
+
     <view class="form-row form-row-last">
       <text class="form-label">计划说明（选填）</text>
       <textarea class="form-textarea" placeholder="补充说明训练重点或安排，最多 500 字" placeholder-class="form-placeholder" maxlength="500" value="{{description}}" bindinput="onDescriptionInput"></textarea>

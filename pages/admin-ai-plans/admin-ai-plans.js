@@ -70,9 +70,8 @@ Page({
       focusText: focusLabel ? '针对「' + focusLabel + '」' : '',
       /* 达标口径随目标维度变化：有计划维度时看的不是综合分，文案必须跟着改，
          否则主管会以为「平均分 60」仍指综合分。 */
-      requirementText: focusLabel
-        ? '完成 ' + item.requiredCount + ' 次，' + focusLabel + '均分 ≥ ' + item.requiredPassRate
-        : '完成 ' + item.requiredCount + ' 次，综合均分 ≥ ' + item.requiredPassRate,
+      requirementText: '完成 ' + item.requiredCount + ' 次，' + (focusLabel ? focusLabel : '综合')
+        + (item.requireEachPass === true ? '每次' : '均分') + ' ≥ ' + item.requiredPassRate,
       periodText: item.period === 'month' ? '按月' : '按周',
       dueText: datetime.formatDate(item.dueAt) || '待定',
       publishing: false,

@@ -123,6 +123,8 @@ Page({
     maxPerScenario: 0,
     maxPerScenarioText: scenarioCapText(0),
     maxPerScenarioHint: scenarioCapHint(0),
+    /* 逐次达标（迁移 031）：默认关闭 = 均分口径，与存量计划语义一致 */
+    requireEachPass: false,
     description: '',
     categories: [],
     selectedIds: [],
@@ -224,6 +226,8 @@ Page({
       maxPerScenario: cap,
       maxPerScenarioText: scenarioCapText(cap),
       maxPerScenarioHint: scenarioCapHint(cap),
+      /* 同样必须回填：否则重发一次会把「逐次达标」静默改回均分口径 */
+      requireEachPass: payload.requireEachPass === true,
       description: payload.description || '',
       selectedIds,
       selectedCount: selectedIds.length,
@@ -337,6 +341,11 @@ Page({
       maxPerScenarioText: scenarioCapText(next),
       maxPerScenarioHint: scenarioCapHint(next)
     });
+  },
+
+  /* 逐次达标（迁移 031）：打开后判定改取窗口内最低分 */
+  onEachPassChange(e) {
+    this.setData({ requireEachPass: !!e.detail.value });
   },
 
   toggleSceneAdvanced() {
@@ -509,6 +518,8 @@ Page({
       requiredPassRate: this.data.requiredPassRate,
       /* 0 = 不限；非 0 时同一场景最多只按该次数计入完成数（迁移 023） */
       maxPerScenario: this.data.maxPerScenario,
+      /* 逐次达标（迁移 031）：打开后按窗口内最低分判定 */
+      requireEachPass: this.data.requireEachPass,
       /* 空字符串 = 不限维度，后端按综合分判定（与历史计划语义一致） */
       focusDimension,
       description: String(this.data.description || '').trim(),

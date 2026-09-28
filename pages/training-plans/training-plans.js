@@ -28,7 +28,7 @@ Page({
           progressPercent: Math.max(0, Math.min(100, Math.round(completed / required * 100))),
           progressText: `${completed}/${required} 次`,
           avgScoreText: fmt1(item.avgScore),
-          requirementText: `完成 ≥ ${required} 次 · 平均 ≥ ${item.requiredPassRate} 分`
+          requirementText: `完成 ≥ ${required} 次 · ${item.requireEachPass === true ? '每次' : '平均'} ≥ ${item.requiredPassRate} 分`
         });
       });
       this.setData({
