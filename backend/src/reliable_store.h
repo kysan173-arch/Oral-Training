@@ -1422,10 +1422,16 @@ class ReliableDatabase {
   }
 
   json listSessions(const std::string& user_id, const std::string& status,
-                    const std::string& scenario_id, int limit) const {
+                    const std::string& scenario_id, const std::string& category,
+                    int limit) const {
     const std::vector<std::string> allowed = {"all", "in_progress", "completed", "abandoned"};
     if (std::find(allowed.begin(), allowed.end(), status) == allowed.end()) {
       throw ApiError(400, "INVALID_ARGUMENT", "status 参数无效");
+    }
+    /* 非法分类直接 400，不静默返回空列表——前端万一拼错分类名，空结果看起来就像
+       「这段时间没有训练记录」，学员会以为历史丢了，实际只是筛选值写错了。 */
+    if (!category.empty() && !isSceneCategory(category)) {
+      throw ApiError(400, "INVALID_ARGUMENT", "category 参数无效");
     }
     limit = clampInt(limit, 1, 50);
     auto connection = database_pool_->acquire();
@@ -1435,6 +1441,13 @@ class ReliableDatabase {
         tx.quote(user_id);
     if (status != "all") query += " AND status = " + tx.quote(status);
     if (!scenario_id.empty()) query += " AND scenario_id = " + tx.quote(scenario_id);
+    /* 按「训练大类」筛选：sessions 只存 scenario_id，分类挂在 scenarios 表上，
+       所以走 IN 子查询（tx.quote 参数化，不是拼字符串）。与 scenarioId 可叠加，
+       两者同时给时取交集。 */
+    if (!category.empty()) {
+      query += " AND scenario_id IN (SELECT id FROM scenarios WHERE category = " +
+          tx.quote(category) + ")";
+    }
     query += " ORDER BY updated_at DESC LIMIT " + std::to_string(limit);
     const auto rows = tx.exec(query);
     json items = json::array();
@@ -3725,6 +3738,10 @@ class ReliableDatabase {
   // 与违规类型（violationCategories）是两条正交的筛选轴，不要混用。
   // 中文名与学员端训练页（pages/index CATEGORY_CONFIG）保持同一套措辞，
   // 否则主管发布的「价格沟通」在学员端显示为「价格异议」，两边对不上。
+  /* 分类白名单放 public：学员端「按训练大类筛选历史记录」两个库都要用
+     （ReliableRoleplayDatabase 也要过滤），而它们都是 static、不依赖实例状态，
+     放宽可见性没有副作用。口径必须单点维护，别在别处再抄一份。 */
+ public:
   static const std::vector<std::pair<std::string, std::string>>& sceneCategories() {
     static const std::vector<std::pair<std::string, std::string>> categories = {
         {"consultation", "咨询解答"},
@@ -4358,10 +4375,15 @@ class ReliableRoleplayDatabase {
   }
 
   json listSessions(const std::string& user_id, const std::string& status,
-                    const std::string& scenario_id, int limit) const {
+                    const std::string& scenario_id, const std::string& category,
+                    int limit) const {
     const std::vector<std::string> allowed = {"all", "active", "in_progress", "completed", "abandoned"};
     if (std::find(allowed.begin(), allowed.end(), status) == allowed.end()) {
       throw ApiError(400, "INVALID_ARGUMENT", "status 参数无效");
+    }
+    /* 复用 ReliableDatabase 的分类白名单，不在这里另抄一份——分类口径必须单点维护。 */
+    if (!category.empty() && !ReliableDatabase::isSceneCategory(category)) {
+      throw ApiError(400, "INVALID_ARGUMENT", "category 参数无效");
     }
     limit = clampInt(limit, 1, 50);
     auto connection = database_pool_->acquire();
@@ -4379,6 +4401,12 @@ class ReliableRoleplayDatabase {
         "WHERE r.user_id = " + tx.quote(user_id);
     if (status != "all") query += " AND r.status = " + tx.quote(db_status);
     if (!scenario_id.empty()) query += " AND r.scenario_id = " + tx.quote(scenario_id);
+    /* 与客服训练同口径：分类在 scenarios 表上，走 IN 子查询。患者模拟的场景同样归入
+       这四类，所以两个 tab 的筛选行为一致，学员切模式时不会觉得筛选"失灵"。 */
+    if (!category.empty()) {
+      query += " AND r.scenario_id IN (SELECT id FROM scenarios WHERE category = " +
+          tx.quote(category) + ")";
+    }
     query += " ORDER BY r.updated_at DESC LIMIT " + std::to_string(limit);
     const auto rows = tx.exec(query);
     json items = json::array();

@@ -2626,12 +2626,14 @@ int main() {
       const auto user = identity.authorize(request, true);
       const auto* status = request.url_params.get("status");
       const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* category = request.url_params.get("category");
       const auto* limit = request.url_params.get("limit");
       int requested_limit = 50;
       if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
       return ok(service.roleplayDatabase().listSessions(
           user.id, status == nullptr ? "all" : status,
-          scenario_id == nullptr ? "" : scenario_id, requested_limit));
+          scenario_id == nullptr ? "" : scenario_id,
+          category == nullptr ? "" : category, requested_limit));
     });
   });
 
@@ -2728,11 +2730,13 @@ int main() {
       const auto user = identity.authorize(request, true);
       const auto* status = request.url_params.get("status");
       const auto* scenario_id = request.url_params.get("scenarioId");
+      const auto* category = request.url_params.get("category");
       const auto* limit = request.url_params.get("limit");
       int requested_limit = 50;
       if (limit != nullptr) try { requested_limit = std::stoi(limit); } catch (...) { throw ApiError(400, "INVALID_ARGUMENT", "limit 参数无效"); }
       return ok(service.database().listSessions(user.id, status == nullptr ? "all" : status,
-          scenario_id == nullptr ? "" : scenario_id, requested_limit));
+          scenario_id == nullptr ? "" : scenario_id,
+          category == nullptr ? "" : category, requested_limit));
     });
   });
 

@@ -98,7 +98,7 @@ Content-Type: application/json
 |---|---|---|
 | `GET` | `/scenarios` | 场景、本人最佳分、本人进行中会话、`dimensionFocus`（该场景主要练的维度，按权重降序、带中文名）与 `difficultyTiers`（可选难度档位；空对象 = 该场景没有进阶档，前端就不展示档位入口） |
 | `POST` | `/sessions` | 创建会话，body 为 `{"scenarioId":"implant-basic","customPatientProfile":{"gender":"女"},"tier":"advanced"}`；`tier` 选填，缺省 `standard` |
-| `GET` | `/sessions` | 本人历史；支持 `status`、`scenarioId`、`limit` |
+| `GET` | `/sessions` | 本人历史；支持 `status`、`scenarioId`、`category`、`limit` |
 | `GET` | `/sessions/{id}` | 会话、完整消息和待恢复输入 |
 | `POST` | `/sessions/{id}/restart` | 放弃进行中会话并创建新会话 |
 | `POST` | `/sessions/{id}/messages` | 提交客服输入并获取模拟患者回复 |
@@ -131,6 +131,24 @@ Content-Type: application/json
 - 净化后没有任何有效字段时按「未提供画像」处理，会话沿用场景默认画像（`custom_patient_profile` 存为 `{}`，`session.customPatientProfile` 回传 `{}`）。
 - 开场白在创建会话时生成一次；`POST /sessions/{id}/restart` 会沿用原会话的自定义画像重新生成开场白。
 - `GET /sessions/{id}` 的 `session.customPatientProfile` 回传净化后的画像，与提交时一致，前端可直接用于展示。
+
+### 历史记录筛选（`category`）
+
+`GET /sessions` 与 `GET /roleplay/sessions` 均支持 `category`，按**训练大类**筛选本人历史。取值与场景分类（`migrations/007` 的 CHECK 约束）一一对应：
+
+| 值 | 中文 |
+|---|---|
+| `consultation` | 咨询解答 |
+| `price_negotiation` | 价格异议 |
+| `complaint_handling` | 投诉安抚 |
+| `recommendation` | 项目推荐 |
+
+- 留空 = 不筛选，返回全部；与 `scenarioId` 可叠加，两者同时给出时取交集。
+- **非法值返回 400 `INVALID_ARGUMENT`，不静默返回空列表**——静默空结果看起来就像「这段时间没有训练记录」，学员会以为历史丢了，而实际只是筛选值写错了。
+- 分类挂在 `scenarios` 表上、会话只存 `scenario_id`，所以服务端用 `scenario_id IN (SELECT id FROM scenarios WHERE category = $1)` 实现（参数化，不是拼字符串）。
+- 两类会话共用同一套分类，学员在「客服训练 / 患者模拟」之间切换时筛选行为一致。
+- 别与话术锦囊的 `sceneCategory` 混淆：那是同一套分类在**另一个端点**（`/learning/phrases`）上的参数名，两处的取值相同但参数名不同，不要互换。
+- 分类中文名的唯一来源是 `reliable_store.h` 的 `sceneCategories()`；前端展示取自 `utils/scenario.js` 的 `CATEGORY_CONFIG`，两边必须同措辞。
 
 ### 难度档位（迁移 `026_difficulty_tiers.sql` / `027_advanced_tier_openings.sql`）
 
@@ -215,7 +233,7 @@ Content-Type: application/json
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/roleplay/scenarios` | 场景、建议问题和本人进行中会话 |
-| `POST` / `GET` | `/roleplay/sessions` | 创建或查询本人会话 |
+| `POST` / `GET` | `/roleplay/sessions` | 创建或查询本人会话；`GET` 支持 `status`、`scenarioId`、`category`、`limit` |
 | `GET` | `/roleplay/sessions/{id}` | 会话、消息及待恢复问题 |
 | `POST` | `/roleplay/sessions/{id}/restart` | 放弃并重新创建 |
 | `POST` | `/roleplay/sessions/{id}/messages` | 提交患者问题，获取标准客服答复 |
