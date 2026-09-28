@@ -67,6 +67,7 @@ try {
   Invoke-Psql $emptySchema (Join-Path $migrations '028_scenario_variants.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '029_scenario_variants_bulk.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '030_scenario_ai_draft.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '031_plan_each_pass.sql') ''
   Invoke-Psql $emptySchema '' @'
 DO $$ BEGIN
   IF to_regclass('message_repair_archive') IS NULL OR to_regclass('ai_jobs') IS NULL OR

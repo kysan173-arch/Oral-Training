@@ -442,15 +442,15 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 | 方法 | 路径 | 角色 | 说明 |
 |---|---|---|---|
-| `POST` | `/supervisor/training-plans` | `admin` | 发布计划；请求体 `title`(1-100)、`period`(`week`/`month`)、`dueAt`、`requiredCount`(1-20)、`requiredPassRate`(0-100)、`description`(≤500)、`scenarioIds`（空数组=全部场景）、`targetUserIds`（空数组=全团队成员，最多 500 个去重 id）、`focusDimension`（选填，目标维度 key，空串=不限）、`maxPerScenario`（选填，0-10，**0=不限**，见下）；返回新建计划、`assignmentCount`、`targeted`、`requestedCount`、`skippedCount` |
-| `GET` | `/supervisor/training-plans?status=all\|active\|expired` | `admin` | 本人发布的计划列表，附 `assignmentCount`、`doneCount`、`avgScore`（统计时按当前团队过滤一次，与成员列表口径一致）、`focusDimension`/`focusDimensionLabel`、`focusAvgScore`、`maxPerScenario`、`scoreBasis`（`dimension`/`total`） |
-| `GET` | `/supervisor/training-plans/{planId}` | `admin` | 计划详情与逐学员进度（`completedCount`、`avgScore`（综合分）、`focusAvgScore`、`score`（判定实际用的分）、`scoreBasis`、`lastTrainingDate`、`done`）；`plan` 内附 `focusDimension`/`focusDimensionLabel` 与 `maxPerScenario`——页面必须据此说明判定依据，不能拿 `avgScore` 去核对结论 |
+| `POST` | `/supervisor/training-plans` | `admin` | 发布计划；请求体 `title`(1-100)、`period`(`week`/`month`)、`dueAt`、`requiredCount`(1-20)、`requiredPassRate`(0-100)、`description`(≤500)、`scenarioIds`（空数组=全部场景）、`targetUserIds`（空数组=全团队成员，最多 500 个去重 id）、`focusDimension`（选填，目标维度 key，空串=不限）、`maxPerScenario`（选填，0-10，**0=不限**，见下）、`requireEachPass`（选填，布尔，**默认 false**，见下「逐次达标」）；返回新建计划、`assignmentCount`、`targeted`、`requestedCount`、`skippedCount` |
+| `GET` | `/supervisor/training-plans?status=all\|active\|expired` | `admin` | 本人发布的计划列表，附 `assignmentCount`、`doneCount`、`avgScore`（统计时按当前团队过滤一次，与成员列表口径一致）、`focusDimension`/`focusDimensionLabel`、`focusAvgScore`、`maxPerScenario`、`requireEachPass`、`scoreBasis`（`dimension`/`total`） |
+| `GET` | `/supervisor/training-plans/{planId}` | `admin` | 计划详情与逐学员进度（`completedCount`、`avgScore`（综合分）、`focusAvgScore`、`score`（判定实际用的分）、`scoreBasis`、`lastTrainingDate`、`done`、`minScore`/`minFocusScore`/`lastScore`（诊断信号，`null`=窗口内无有效训练））；`plan` 内附 `focusDimension`/`focusDimensionLabel`、`maxPerScenario` 与 `requireEachPass`——页面必须据此说明判定依据，不能拿 `avgScore` 去核对结论 |
 | `POST` | `/supervisor/training-plans/{planId}/notify` | `admin` | 标记已提醒并回传未完成名单，供前端复制；当前无订阅消息通道 |
 | `POST` | `/supervisor/training-plans/suggest` | `admin` | 按学员五维薄弱项让模型生成计划**草稿**（`status='draft'`，不写指派行、学员完全不可见）；请求体可选 `learnerIds`（空=全团队成员，单次上限 10 人）；返回 `generatedCount` 与 `skipped[{learnerId,reason}]`（单人失败不拖垮整批）。候选池喂 `id`/`name`/`category`/`summary`/`difficulty`/`focus`/`dimensionFocus`（**不含** `hidden_config` 患者剧本与 `roleplay_config` 参考答案）。**模型返回的 `focusDimension` 必须能在它所选的场景里练到**，否则该学员记入 `skipped` 并不产出草稿（见下） |
 | `GET` | `/supervisor/training-plan-drafts` | `admin` | 本人待审核的 AI 草稿列表，附 `focusDimension`/`focusDimensionLabel`、`rationale`、`scenarioIds`、`learnerName`、`dueAt` |
-| `POST` | `/supervisor/training-plans/{planId}/publish` | `admin` | 采纳草稿：`draft` → `published` 并写入指派行。请求体可带 `title`/`description`/`scenarioIds`/`requiredCount`/`requiredPassRate`/`dueAt`/`focusDimension`/`maxPerScenario` 覆盖字段，即「编辑后发布」；空对象即原样采纳 |
+| `POST` | `/supervisor/training-plans/{planId}/publish` | `admin` | 采纳草稿：`draft` → `published` 并写入指派行。请求体可带 `title`/`description`/`scenarioIds`/`requiredCount`/`requiredPassRate`/`dueAt`/`focusDimension`/`maxPerScenario`/`requireEachPass` 覆盖字段，即「编辑后发布」；空对象即原样采纳 |
 | `POST` | `/supervisor/training-plans/{planId}/dismiss` | `admin` | 丢弃草稿：`draft` → `dismissed`（软删，保留采纳率审计） |
-| `GET` | `/learning/training-plans` | `learner` | 本人被指派计划的进度，附 `completedCount`、`avgScore`（综合分）、`focusDimension`/`focusDimensionLabel`、`focusAvgScore`、`score`（判定实际用的分）、`scoreBasis`、`maxPerScenario`、`status`(`pending`/`done`/`expired`) 与 `pendingCount` |
+| `GET` | `/learning/training-plans` | `learner` | 本人被指派计划的进度，附 `completedCount`、`avgScore`（综合分）、`focusDimension`/`focusDimensionLabel`、`focusAvgScore`、`score`（判定实际用的分）、`scoreBasis`、`maxPerScenario`、`requireEachPass`、`minScore`/`minFocusScore`/`lastScore`、`status`(`pending`/`done`/`expired`) 与 `pendingCount` |
 
 进度口径：只统计**客服训练**（`sessions`）的完成次数与平均分，**不含患者模拟**（`roleplay_sessions` 无评分，无法参与「最低平均分」判定）。`scenarioIds` 非空时按 `scenario_id` 过滤训练记录。
 
@@ -468,6 +468,10 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 - 这条约束以前只写在提示词里、**没有任何机制检查**，模型违反了也无人知晓；现在是服务端强制。
 
 **防刷分：同一场景最多计入 N 次**（`maxPerScenario`，迁移 023）。计划可以不指定场景、只给「目标维度 + 分数 + 次数」，学员因此可以反复练最容易的那一个场景，把完成次数与维度均分一起刷上去——计划看着闭环，训练量却没铺开。`maxPerScenario` 非 0 时，同一 `scenario_id` 只按**最早**的 N 次计入完成数与均分，其余次数必须靠其他场景补齐；`0` = 不限（存量计划全部为 0，语义不变）。取「最早」而不是「最近」是刻意的：取最近 N 次时，学员在已达标的场景上多练一次（且这次分数更低）就会把原来的好成绩顶出统计，计划可能由达标翻回未达标，等于惩罚额外训练；取最早 N 次则多练只是不计入，永不倒扣。该约束与达标判定同在四处共用的 `planProgressJoin()` 里实现，改一处即四处生效——但也因此必须逐处回归。CSV 导出（`scope=plan_members`）附「目标维度 / 判定分 / 判定依据 / 同场景次数上限 / 综合均分」列，判定分与「是否达标」同源。
+
+**逐次达标：窗口内最低分 ≥ 达标线**（`requireEachPass`，迁移 031）。均分会掩盖尾部风险——真实数据里出现过 `75 + 52`（均分 63.5）按 60 分线算「达标」，而该学员第二次只有 52 分。计划开启 `requireEachPass` 后，判定分改取**窗口内最低分**（`MIN`）而不是均分，要求每一次都过线；`false`（默认）保持原均分口径，存量计划语义一字不变。回退规则与均分口径完全一致：目标维度无有效评分时退到综合最低分，缺失绝不当 0 分。
+
+**为什么用「最低分」而不是「最后一次」**：判定与 `maxPerScenario` 共用同一批行（先按场景截取**最早** N 次再聚合），所以多练不会把已有成绩顶出统计、永不倒扣。若改看「最后一次」，学员在已达标的场景上多练一次失手就会翻回未达标——等于因为多练而受罚。真实数据也印证了这点：某学员 `91/0/5/79` 均分 43.8（不达标）但最后一次 79（达标），「看最后一次」反而会**放松**标准。开关由主管显式选择，系统不偷偷改判定口径（与 D1「不做自动升级」同一条原则）。
 
 场景分类 `category` 的取值与中文名为 `consultation` 咨询解答、`price_negotiation` 价格异议、`complaint_handling` 投诉安抚、`recommendation` 项目推荐，与 `migrations/007` 的 CHECK 约束一致，也与学员端训练页展示的分类名一致。
 

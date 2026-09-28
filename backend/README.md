@@ -39,6 +39,7 @@
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\028_scenario_variants.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\029_scenario_variants_bulk.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\030_scenario_ai_draft.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\031_plan_each_pass.sql
    ```
 
    `003` 会完整归档历史重复轮次后建立唯一索引，回填回复状态，并为已有 `generating` 记录补任务。`004` 保留所有旧记录并归属到 `demo-user-001`。`005` 按“最新回复 + 其之前最近一次输入”修复被拆开的历史问答，并补建完成会话缺失的报告或任务；被替换的消息、报告和任务状态都会归档。迁移本身不会调用模型，执行 `005` 至 `022` 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务、知识、不可变版本、发布审计及独立草稿生成队列；`011` 增加角色互换 RAG 快照、证据 trace 和消息引用。`012` 至 `022` 依次为自定义患者画像、推荐场景、培训计划与指派、主管团队归属、消息情绪、轮次内提示唯一键、场景反应规则、自由模拟模板、冲突类场景、AI 计划草稿（`021` 给 `training_plans` 加 `source` / `status` / `origin_learner_id` / `rationale`，存量行落回 supervisor / published），以及计划目标维度（`022` 给 `training_plans` 加 `focus_dimension`，空串=按综合分达标、保持存量计划语义，非空时改用该维度均分判定）。

@@ -2767,6 +2767,11 @@ class ReliableDatabase {
        从而堵住「反复练最容易的场景把某维度刷上去」。计入最早 N 次，
        理由见 planProgressJoin 的注释。 */
     const auto max_per_scenario = clampInt(jsonInt(payload, "maxPerScenario", 0), 0, 10);
+    /* 逐次达标（迁移 031）：打开后判定分取窗口内**最低分**而不是均分，防止
+       「前 80 后 50 平均成 65」这类尾部风险被均分掩盖。默认关闭，存量计划语义
+       完全不变。它沿用「取最早 N 次」的截取，所以多练不会把已有成绩顶出统计，
+       永不倒扣。 */
+    const bool require_each_pass = payload.value("requireEachPass", false);
     const auto description = utf8Truncate(trim(jsonString(payload, "description")), 500);
     /* 目标维度：可选。空 = 不限维度，达标仍看综合分（存量计划语义不变）；
        非空时必须是维度目录里的合法 key，否则拒绝——写进非法 key 会让达标分数
@@ -2816,10 +2821,10 @@ class ReliableDatabase {
     }
     tx.exec_params(R"(
       INSERT INTO training_plans
-        (id, title, period, scenario_ids, required_count, required_pass_rate, description, due_at, created_by, focus_dimension, max_per_scenario)
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::timestamptz, $9, $10, $11)
+        (id, title, period, scenario_ids, required_count, required_pass_rate, description, due_at, created_by, focus_dimension, max_per_scenario, require_each_pass)
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::timestamptz, $9, $10, $11, $12)
     )", plan_id, title, period, scenario_ids.dump(), required_count, required_pass_rate,
-        description, due_at, supervisor_id, focus_dimension, max_per_scenario);
+        description, due_at, supervisor_id, focus_dimension, max_per_scenario, require_each_pass);
     /* 指定学员时先确认至少有一人可用，否则直接拒绝——
        避免「计划发布成功但零指派」这种静默失效（前端会提示覆盖 0 人）。
        可用 = 在职且当前属于本主管团队。 */
@@ -2850,6 +2855,7 @@ class ReliableDatabase {
     return {{"plan", {{"id", plan_id}, {"title", title}, {"period", period}, {"dueAt", due_at},
                       {"requiredCount", required_count}, {"requiredPassRate", required_pass_rate},
                       {"maxPerScenario", max_per_scenario},
+                      {"requireEachPass", require_each_pass},
                       {"scenarioIds", scenario_ids}, {"description", description}}},
             {"assignmentCount", static_cast<int>(assigned.affected_rows())},
             {"targeted", targeted},
@@ -3038,7 +3044,7 @@ class ReliableDatabase {
     pqxx::work tx(connection.get());
     const auto rows = tx.exec_params(R"(
       SELECT origin_learner_id, title, period, scenario_ids, required_count, required_pass_rate,
-             focus_dimension, max_per_scenario,
+             focus_dimension, max_per_scenario, require_each_pass,
              description, to_char(due_at AT TIME ZONE 'Asia/Shanghai',
                                   'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at
       FROM training_plans
@@ -3056,6 +3062,7 @@ class ReliableDatabase {
     auto due_at = std::string(rows[0]["due_at"].c_str());
     auto focus_dimension = std::string(rows[0]["focus_dimension"].c_str());
     auto max_per_scenario = rows[0]["max_per_scenario"].as<int>();
+    auto require_each_pass = rows[0]["require_each_pass"].as<bool>();
     const auto learner_id = rows[0]["origin_learner_id"].is_null()
         ? std::string() : std::string(rows[0]["origin_learner_id"].c_str());
 
@@ -3083,6 +3090,11 @@ class ReliableDatabase {
       if (overrides.contains("maxPerScenario")) {
         max_per_scenario = clampInt(jsonInt(overrides, "maxPerScenario", max_per_scenario), 0, 10);
       }
+      /* 布尔开关同理：false 是合法取值（显式改回均分口径），所以按键是否存在判断，
+         而不是「值为 true 才生效」。 */
+      if (overrides.contains("requireEachPass") && overrides["requireEachPass"].is_boolean()) {
+        require_each_pass = overrides["requireEachPass"].get<bool>();
+      }
       if (overrides.contains("description")) {
         description = utf8Truncate(trim(jsonString(overrides, "description")), 500);
       }
@@ -3107,10 +3119,11 @@ class ReliableDatabase {
       UPDATE training_plans
       SET title = $2, period = $3, scenario_ids = $4::jsonb, required_count = $5,
           required_pass_rate = $6, description = $7, due_at = $8::timestamptz,
-          focus_dimension = $9, max_per_scenario = $10, status = 'published', updated_at = NOW()
+          focus_dimension = $9, max_per_scenario = $10, require_each_pass = $11,
+          status = 'published', updated_at = NOW()
       WHERE id = $1
     )", plan_id, title, period, scenario_ids.dump(), required_count, required_pass_rate,
-        description, due_at, focus_dimension, max_per_scenario);
+        description, due_at, focus_dimension, max_per_scenario, require_each_pass);
     /* learner_id 为空（理论上 AI 草稿不会）时退化成全团队指派，与人工发布口径一致。 */
     const auto assigned = tx.exec_params(R"(
       INSERT INTO training_assignments(plan_id, learner_id)
@@ -3125,6 +3138,7 @@ class ReliableDatabase {
             {"focusDimensionLabel", focus_dimension.empty()
                  ? std::string() : planDimensionLabel(focus_dimension)},
             {"maxPerScenario", max_per_scenario},
+            {"requireEachPass", require_each_pass},
             {"learnerId", learner_id},
             {"assignmentCount", static_cast<int>(assigned.affected_rows())}};
   }
@@ -3158,7 +3172,7 @@ class ReliableDatabase {
        因此统计时按当前团队过滤一次，保证数字与成员列表口径一致。 */
     const auto rows = tx.exec_params(R"(
       SELECT p.id, p.title, p.period, p.scenario_ids, p.required_count, p.required_pass_rate,
-        p.description, p.focus_dimension, p.max_per_scenario,
+        p.description, p.focus_dimension, p.max_per_scenario, p.require_each_pass,
         to_char(p.due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
         (p.due_at <= NOW()) AS expired,
         COUNT(a.learner_id) AS assignment_count,
@@ -3166,7 +3180,12 @@ class ReliableDatabase {
            avg_score 本身保持「综合均分」语义不变，前端展示团队均分不受影响。 */
         COUNT(a.learner_id) FILTER (
           WHERE COALESCE(prog.completed_count, 0) >= p.required_count
-            AND COALESCE(prog.avg_focus_score, COALESCE(prog.avg_score, 0)) >= p.required_pass_rate
+            /* require_each_pass 打开时用窗口内最低分判定（逐次达标），否则用均分。
+               两条分支的「缺失回退」完全一致：目标维度无有效评分时都退到综合分。 */
+            AND CASE WHEN p.require_each_pass
+                     THEN COALESCE(prog.min_focus_score, COALESCE(prog.min_score, 0))
+                     ELSE COALESCE(prog.avg_focus_score, COALESCE(prog.avg_score, 0))
+                END >= p.required_pass_rate
         ) AS done_count,
         COALESCE(ROUND(AVG(COALESCE(prog.avg_score, 0))::numeric, 1), 0) AS avg_score,
         ROUND(AVG(prog.avg_focus_score)::numeric, 1) AS avg_focus_score
@@ -3190,6 +3209,7 @@ class ReliableDatabase {
                        {"requiredCount", row["required_count"].as<int>()},
                        {"requiredPassRate", row["required_pass_rate"].as<int>()},
                        {"maxPerScenario", row["max_per_scenario"].as<int>()},
+                       {"requireEachPass", row["require_each_pass"].as<bool>()},
                        {"description", row["description"].c_str()},
                        {"dueAt", row["due_at"].c_str()},
                        {"expired", row["expired"].as<bool>()},
@@ -3216,7 +3236,7 @@ class ReliableDatabase {
     /* 只允许读本人发布的计划；别人的计划与不存在返回同一个 404。 */
     const auto plan_rows = tx.exec_params(R"(
       SELECT id, title, period, scenario_ids, required_count, required_pass_rate, description,
-        focus_dimension, max_per_scenario,
+        focus_dimension, max_per_scenario, require_each_pass,
         to_char(due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
         (due_at <= NOW()) AS expired
       FROM training_plans WHERE id = $1 AND created_by = $2
@@ -3233,6 +3253,7 @@ class ReliableDatabase {
         COALESCE(prog.completed_count, 0) AS completed_count,
         COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score,
         ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score,
+        prog.min_score, prog.min_focus_score, prog.last_score,
         to_char(prog.last_training_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS last_training_date
       FROM training_assignments a
       JOIN plan p ON p.id = a.plan_id
@@ -3243,14 +3264,17 @@ class ReliableDatabase {
       ORDER BY lower(COALESCE(NULLIF(u.display_name, ''), u.id))
     )", plan_id, supervisor_id);
     const auto focus_dimension = std::string(plan_row["focus_dimension"].c_str());
+    /* 逐次达标开关（迁移 031），管辖本计划全部学员的判定口径。 */
+    const bool require_each_pass = plan_row["require_each_pass"].as<bool>();
     json assignments = json::array();
     int done_count = 0;
     double score_sum = 0.0;
     for (const auto& row : rows) {
       const auto completed_count = row["completed_count"].as<int>();
       const auto avg_score = row["avg_score"].as<double>();
-      /* 与列表口径完全一致：有目标维度且该维度有评分时按维度分判定 */
-      const auto score = planScoreFor(row, focus_dimension);
+      /* 与列表口径完全一致：有目标维度且该维度有评分时按维度分判定。
+         requireEachPass 打开时 planJudgeScore 取的是窗口内最低分而非均分。 */
+      const auto score = planJudgeScore(row, focus_dimension, require_each_pass);
       const bool done = completed_count >= required_count && score >= required_pass_rate;
       if (done) done_count += 1;
       score_sum += score;
@@ -3280,6 +3304,7 @@ class ReliableDatabase {
                       {"scenarioIds", jsonbColumn(plan_row, "scenario_ids")},
                       {"requiredCount", required_count}, {"requiredPassRate", required_pass_rate},
                       {"maxPerScenario", plan_row["max_per_scenario"].as<int>()},
+                      {"requireEachPass", require_each_pass},
                       {"description", plan_row["description"].c_str()},
                       {"dueAt", plan_row["due_at"].c_str()},
                       {"expired", plan_row["expired"].as<bool>()},
@@ -3319,8 +3344,10 @@ class ReliableDatabase {
         COALESCE(NULLIF(u.display_name, ''), '未命名学员') AS display_name,
         COALESCE(prog.completed_count, 0) AS completed_count,
         p.required_count, p.required_pass_rate, p.focus_dimension, p.max_per_scenario,
+        p.require_each_pass,
         COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score,
-        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score
+        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score,
+        prog.min_score, prog.min_focus_score, prog.last_score
       FROM training_plans p
       JOIN training_assignments a ON a.plan_id = p.id
       JOIN users u ON u.id = a.learner_id
@@ -3337,7 +3364,7 @@ class ReliableDatabase {
       const auto focus_dimension = std::string(row["focus_dimension"].c_str());
       /* 导出名单与判定口径必须一致：否则主管照 CSV 去催人，催的是「按综合分已达标、
          但按目标维度其实没达标」的学员，等于白催。 */
-      const auto score = planScoreFor(row, focus_dimension);
+      const auto score = planJudgeScore(row, focus_dimension, row["require_each_pass"].as<bool>());
       items.push_back({{"planTitle", row["plan_title"].c_str()},
                        {"dueDate", row["due_date"].c_str()},
                        {"expired", row["expired"].as<bool>()},
@@ -3359,6 +3386,7 @@ class ReliableDatabase {
                        {"score", score},
                        {"scoreBasis", planScoreBasis(row, focus_dimension)},
                        {"maxPerScenario", row["max_per_scenario"].as<int>()},
+                       {"requireEachPass", row["require_each_pass"].as<bool>()},
                        {"requiredPassRate", row["required_pass_rate"].as<int>()},
                        {"done", completed_count >= row["required_count"].as<int>() &&
                                 score >= row["required_pass_rate"].as<int>()}});
@@ -3371,12 +3399,13 @@ class ReliableDatabase {
     pqxx::read_transaction tx(connection.get());
     const auto rows = tx.exec_params(R"(
       SELECT p.id, p.title, p.period, p.scenario_ids, p.required_count, p.required_pass_rate,
-        p.description, p.focus_dimension, p.max_per_scenario,
+        p.description, p.focus_dimension, p.max_per_scenario, p.require_each_pass,
         to_char(p.due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
         (p.due_at <= NOW()) AS expired,
         COALESCE(prog.completed_count, 0) AS completed_count,
         COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score,
-        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score
+        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score,
+        prog.min_score, prog.min_focus_score, prog.last_score
       FROM training_assignments a
       JOIN training_plans p ON p.id = a.plan_id
       )" + planProgressJoin() + R"(
@@ -3393,7 +3422,7 @@ class ReliableDatabase {
       const bool expired = row["expired"].as<bool>();
       const auto focus_dimension = std::string(row["focus_dimension"].c_str());
       /* 学员端与主管端必须同一口径，否则会出现「主管看到达标、学员看到未达标」 */
-      const auto score = planScoreFor(row, focus_dimension);
+      const auto score = planJudgeScore(row, focus_dimension, row["require_each_pass"].as<bool>());
       const bool done = completed_count >= required_count && score >= required_pass_rate;
       if (!done && !expired) pending_count += 1;
       plans.push_back({{"id", row["id"].c_str()}, {"title", row["title"].c_str()},
@@ -3401,6 +3430,7 @@ class ReliableDatabase {
                        {"scenarioIds", jsonbColumn(row, "scenario_ids")},
                        {"requiredCount", required_count}, {"requiredPassRate", required_pass_rate},
                        {"maxPerScenario", row["max_per_scenario"].as<int>()},
+                       {"requireEachPass", row["require_each_pass"].as<bool>()},
                        {"description", row["description"].c_str()}, {"dueAt", row["due_at"].c_str()},
                        {"completedCount", completed_count}, {"avgScore", avg_score},
                        {"focusDimension", focus_dimension},
@@ -3767,7 +3797,22 @@ class ReliableDatabase {
     return row["avg_score"].is_null() ? 0.0 : row["avg_score"].as<double>();
   }
 
-  /* 判定分来源，与 planScoreFor 严格配对：
+  /* 判定分（含「逐次达标」口径，迁移 031）。require_each_pass 打开时改取窗口内最低分：
+     均分会掩盖尾部风险，而最低分要求「每一次都过线」。两条分支的缺失回退完全一致
+     ——目标维度无有效评分时都退到综合分，缺失绝不当成 0 分。
+     与 planProgressJoin 是**同一批行**（先按场景截取最早 N 次再聚合），所以多练不会
+     把已有成绩顶出统计，永不倒扣。 */
+  static double planJudgeScore(const pqxx::row& row, const std::string& focus_dimension,
+                               bool require_each_pass) {
+    const char* focus_column = require_each_pass ? "min_focus_score" : "avg_focus_score";
+    const char* total_column = require_each_pass ? "min_score" : "avg_score";
+    if (!focus_dimension.empty() && !row[focus_column].is_null()) {
+      return row[focus_column].as<double>();
+    }
+    return row[total_column].is_null() ? 0.0 : row[total_column].as<double>();
+  }
+
+  /* 判定分来源，与 planJudgeScore 严格配对：
        dimension = 计划指定了目标维度，且该维度确有有效评分，判定分就是它；
        total     = 该维度无有效评分，已回退综合分。
      回退本身是有意设计（缺失不能当 0 分），但必须对主管可见——否则会出现

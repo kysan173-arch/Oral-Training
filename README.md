@@ -92,6 +92,7 @@ $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\028_scenario_variants.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\029_scenario_variants_bulk.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\030_scenario_ai_draft.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\031_plan_each_pass.sql
 ```
 
 > 生产或共享环境请使用更安全的密码；本地测试可用 `oral_training_pass`。请不要把真实密码提交到仓库。
@@ -211,6 +212,7 @@ $env:PGCLIENTENCODING='UTF8'
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\028_scenario_variants.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\029_scenario_variants_bulk.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\030_scenario_ai_draft.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\031_plan_each_pass.sql
 ```
 
 说明：

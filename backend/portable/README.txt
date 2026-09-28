@@ -15,7 +15,7 @@
    020_conflict_scenarios.sql、021_ai_training_plans.sql、022_plan_focus_dimension.sql、
    023_plan_scenario_cap.sql、024_scenario_dimension_weights.sql、025_scenario_templates.sql、
    026_difficulty_tiers.sql、027_advanced_tier_openings.sql、028_scenario_variants.sql、
-   029_scenario_variants_bulk.sql、030_scenario_ai_draft.sql。
+   029_scenario_variants_bulk.sql、030_scenario_ai_draft.sql、031_plan_each_pass.sql。
 4. 复制 backend.env.example 为 backend.env，并填写数据库、DeepSeek 和身份配置。
 5. 双击 start-backend.cmd。
 
@@ -57,7 +57,7 @@ X-Forwarded-For 和 X-Forwarded-Proto 会被接受；无效或降级配置会导
 021_ai_training_plans、022_plan_focus_dimension、023_plan_scenario_cap、
 024_scenario_dimension_weights、025_scenario_templates、026_difficulty_tiers、
 027_advanced_tier_openings、028_scenario_variants、029_scenario_variants_bulk、
-030_scenario_ai_draft。
+030_scenario_ai_draft、031_plan_each_pass。
 迁移可重复执行（幂等）。
 
 可选演示数据：若想立即看到主管端聚合/成员数据，可在迁移后执行：
