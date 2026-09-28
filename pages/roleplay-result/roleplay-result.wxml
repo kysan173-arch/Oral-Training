@@ -9,7 +9,7 @@
   <view class="notice-box"><text class="notice-icon">i</text><text>本复盘用于帮助新人理解标准客服的沟通结构与合规边界，不含数值评分，不构成医疗建议。</text></view>
 
   <view class="section-title-row"><text class="section-title">整体接待总结</text><text class="section-caption">一句话看懂本次练习</text></view>
-  <view class="summary-card card"><text class="summary-quote">“{{summary.summary}}”</text></view>
+  <view class="summary-card card"><text class="summary-quote">{{summary.summary}}</text></view>
 
   <view class="section-title-row"><text class="section-title">已覆盖的问题</text><text class="section-caption">{{summary.coveredTopics.length}} 项</text></view>
   <view class="list-card card">

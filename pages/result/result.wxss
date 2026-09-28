@@ -107,8 +107,10 @@
 .result-link-row { display: flex; align-items: center; justify-content: center; padding: 16rpx 0 24rpx; }
 .text-button { color: var(--text-secondary); background: transparent; font-size: 26rpx; padding: 12rpx; }
 .disclaimer { display: block; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
-.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; background: var(--bg-grad, var(--color-bg)); }
-.loading-card { width: 100%; padding: 48rpx 32rpx; text-align: center; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
+/* 同 roleplay-result：width:100% 的卡片在没有左右 padding 的容器里会贴屏幕边。
+   两者必须一起改，否则两个报告页的加载态又分叉。 */
+.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; padding: 0 24rpx 40rpx; background: var(--bg-grad, var(--color-bg)); }
+.loading-card { width: 100%; box-sizing: border-box; padding: 48rpx 32rpx; text-align: center; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
 .loading-title { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
 .loading-text { display: block; margin-top: 16rpx; color: var(--text-secondary); font-size: 26rpx; line-height: 1.6; }
 .retry-button { width: 100%; margin-top: 30rpx; }
