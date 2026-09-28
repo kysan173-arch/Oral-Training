@@ -12,9 +12,36 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace oral_training::knowledge {
+
+std::optional<GenerationTarget> parseGenerationTarget(const std::string& kind) {
+  if (kind == "service_draft") return GenerationTarget::ServiceDraft;
+  if (kind == "knowledge_draft") return GenerationTarget::KnowledgeDraft;
+  if (kind == "scenario_draft") return GenerationTarget::ScenarioDraft;
+  return std::nullopt;
+}
+
+std::string generationTargetTable(GenerationTarget target) {
+  switch (target) {
+    case GenerationTarget::ServiceDraft: return "service_drafts";
+    case GenerationTarget::KnowledgeDraft: return "knowledge_drafts";
+    case GenerationTarget::ScenarioDraft: return "scenarios";
+  }
+  return std::string();
+}
+
+std::string generationTargetLabel(GenerationTarget target) {
+  switch (target) {
+    case GenerationTarget::ServiceDraft: return "服务草稿";
+    case GenerationTarget::KnowledgeDraft: return "知识草稿";
+    case GenerationTarget::ScenarioDraft: return "训练场景骨架";
+  }
+  return std::string();
+}
+
 namespace {
 
 [[noreturn]] void invalid(const std::string& message) {
@@ -215,6 +242,18 @@ void validateServiceDraft(const json& payload) {
   validateStringArray(payload, "excludedItems", 100, 300);
   validateStringArray(payload, "professionalTopics", 100, 120);
   validateStringArray(payload, "scenarioIds", 20, 120);
+  /* scenarioIds 的每一条都会被 publishService 逐条 INSERT 进 service_scenarios，
+     而该表两列都是 NOT NULL —— 元素若以 SQL NULL 绑定，会报成
+     `null value in column "scenario_id" ... violates not-null constraint`，
+     现场看像数据库故障。
+     上面 validateStringArray 已经拦住了非字符串/空串/非数组；
+     这里再显式验一遍，是为了让契约在「草稿校验」这层就写明，
+     并把报错换成可读中文（否则无法从约束错误定位到输入的那一条）。 */
+  for (const auto& scenario_id : payload.value("scenarioIds", json::array())) {
+    if (!scenario_id.is_string() || scenario_id.get<std::string>().empty()) {
+      invalid("scenarioIds 每一项都必须是非空场景 id");
+    }
+  }
   for (const auto* field : {"visitDuration", "treatmentDuration", "followupInterval"}) {
     if (!payload.contains(field)) invalid(std::string("缺少 ") + field);
     validateDuration(payload[field], field);
@@ -252,31 +291,68 @@ void validateKnowledgeDraft(const std::string& title, const std::string& body,
 }
 
 void validateGeneratedDraft(const std::string& kind, const json& candidate) {
-  if (kind == "service_draft") {
+  /* 显式分发：未知类型直接拒绝，不再有「不是 service_draft 就当 knowledge_draft」
+     的兜底（R09）。新增类型时编译器会在这里报出「未覆盖的枚举值」，
+     提醒你补分支——这正是把隐式 if 换成 switch 的收益。 */
+  const auto target = parseGenerationTarget(kind);
+  if (!target.has_value()) invalid("生成任务类型无效");
+  if (target == GenerationTarget::ServiceDraft) {
     validateServiceDraft(candidate);
     if (candidate.value("dataOrigin", "") != "synthetic") {
       invalid("生成服务草稿只能标记为 synthetic");
     }
     return;
   }
-  if (kind != "knowledge_draft" || !candidate.is_object() ||
-      !candidate.contains("title") || !candidate["title"].is_string() ||
-      !candidate.contains("body") || !candidate["body"].is_string() ||
-      !candidate.contains("metadata") || !candidate["metadata"].is_object()) {
-    invalid("生成知识草稿结构无效");
+  if (target == GenerationTarget::KnowledgeDraft) {
+    if (!candidate.is_object() || !candidate.contains("title") || !candidate["title"].is_string() ||
+        !candidate.contains("body") || !candidate["body"].is_string() ||
+        !candidate.contains("metadata") || !candidate["metadata"].is_object()) {
+      invalid("生成知识草稿结构无效");
+    }
+    validateKnowledgeDraft(candidate["title"].get<std::string>(),
+                           candidate["body"].get<std::string>(), candidate["metadata"]);
+    const auto& metadata = candidate["metadata"];
+    if (metadata.value("origin", "") != "synthetic" ||
+        metadata.value("verification", "") != "unverified" ||
+        metadata.value("trainingScope", "") != "demo" ||
+        (metadata.contains("sourceTitle") && metadata["sourceTitle"].is_string() &&
+         !metadata["sourceTitle"].get<std::string>().empty()) ||
+        (metadata.contains("sourceLocator") && metadata["sourceLocator"].is_string() &&
+         !metadata["sourceLocator"].get<std::string>().empty()) ||
+        (metadata.contains("sourceUrl") && !metadata["sourceUrl"].is_null())) {
+      invalid("生成知识草稿不得伪造来源或审核标记");
+    }
+    return;
   }
-  validateKnowledgeDraft(candidate["title"].get<std::string>(),
-                         candidate["body"].get<std::string>(), candidate["metadata"]);
-  const auto& metadata = candidate["metadata"];
-  if (metadata.value("origin", "") != "synthetic" ||
-      metadata.value("verification", "") != "unverified" ||
-      metadata.value("trainingScope", "") != "demo" ||
-      (metadata.contains("sourceTitle") && metadata["sourceTitle"].is_string() &&
-       !metadata["sourceTitle"].get<std::string>().empty()) ||
-      (metadata.contains("sourceLocator") && metadata["sourceLocator"].is_string() &&
-       !metadata["sourceLocator"].get<std::string>().empty()) ||
-      (metadata.contains("sourceUrl") && !metadata["sourceUrl"].is_null())) {
-    invalid("生成知识草稿不得伪造来源或审核标记");
+  /* 场景骨架（迁移 030）：这里只做**形状**检查，让 worker 能快速失败并给出
+     可读的失败原因；字段级约束（长度、条数、情绪词表、红线条数）由落库那一步
+     统一执行——它由 store 层注入（KnowledgeAdminQueue::ScenarioDraftWriter），
+     最终走 ReliableDatabase::validateScenarioPayload，与主管手工保存完全同一条路径。 */
+  if (!candidate.is_object()) invalid("生成场景骨架结构无效");
+  const std::vector<std::pair<const char*, const char*>> required = {
+      {"name", "场景名称"},       {"summary", "场景简介"},
+      {"category", "场景分类"},   {"difficulty", "难度"},
+      {"focus", "训练重点"},      {"patientProfile", "患者画像"},
+      {"hiddenConfig", "隐藏剧本"}};
+  for (const auto& field : required) {
+    if (!candidate.contains(field.first)) {
+      invalid(std::string("生成场景骨架缺少") + field.second);
+    }
+  }
+  if (!candidate["focus"].is_array() || !candidate["patientProfile"].is_object() ||
+      !candidate["hiddenConfig"].is_object()) {
+    invalid("生成场景骨架字段类型无效");
+  }
+  /* 机构事实（能否退费、转交谁、答复时限）**只能由主管填**：模型不知道本机构
+     的真实流程，编出来的红线会让学员把错的做法练成肌肉记忆。
+     所以 AI 骨架的服务要点必须为空，哪怕它「很贴心地」填了也要拒绝。 */
+  if (candidate.contains("roleplayConfig") && !candidate["roleplayConfig"].is_null()) {
+    const auto& roleplay = candidate["roleplayConfig"];
+    if (!roleplay.is_object()) invalid("生成场景骨架的 roleplayConfig 结构无效");
+    if (roleplay.contains("serviceGuidance") &&
+        roleplay["serviceGuidance"].is_array() && !roleplay["serviceGuidance"].empty()) {
+      invalid("AI 骨架不得填写服务要点，机构红线必须由主管填写");
+    }
   }
 }
 
@@ -529,7 +605,14 @@ json KnowledgeStore::publishService(const std::string& actor_id,
   tx.exec_params("UPDATE clinic_services SET current_revision_id = $2, status = 'active', updated_at = NOW() WHERE id = $1",
                  service_id, revision_id);
   tx.exec_params("DELETE FROM service_scenarios WHERE service_id = $1", service_id);
+  /* 显式取字符串再绑参：service_scenarios 两列都是 NOT NULL，元素一旦以
+     SQL NULL 绑定，报的是 `null value in column "service_id"` —— 看不出是
+     输入的第几个场景 id 有问题。validateServiceDraft 已拦过一层，
+     这里按「写入前再校验」的惯例兜底，保证报错停在可读的中文上。 */
   for (const auto& scenario_id : payload.value("scenarioIds", json::array())) {
+    if (!scenario_id.is_string() || scenario_id.get<std::string>().empty()) {
+      invalid("scenarioIds 每一项都必须是非空场景 id");
+    }
     tx.exec_params("INSERT INTO service_scenarios(service_id, scenario_id) VALUES ($1, $2)",
                    service_id, scenario_id.get<std::string>());
   }

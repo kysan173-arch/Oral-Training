@@ -1,5 +1,7 @@
 #pragma once
 
+#include "api_error.h"
+
 struct AiJob {
   std::string id;
   std::string type;
@@ -8,14 +10,60 @@ struct AiJob {
   int attempt = 0;
 };
 
+/* ── AI 任务类型的显式分发（RAG 执行计划 R09 的硬约束） ──────────────────────
+   类型 → 目标表 / 去重键 / 失败码，三件事必须由**同一张映射表**给出。
+   之前写成「不是 evaluation 就是 roleplay」，等于把「未知类型」也算成 roleplay：
+   将来加第三种任务时，只要漏改任意一处（锁、去重、失败标记），结果就会静默落到
+   错的目标表里，而且不报错——这正是风险表 R09 要防的那一条。
+   想加新类型：只在这里加一个枚举值 + 三个分支，其余调用点不必改。 */
+enum class AiJobKind { Evaluation, RoleplaySummary };
+
+/* 从字符串解析类型。**返回 optional 而不是抛异常**：这个函数会被 DB 里读出的
+   job_type 调用（claim / 过期恢复），遇到脏数据必须能优雅拒绝，而不是让整个
+   claim 事务抛出去、把 worker 拖进退避循环。 */
+inline std::optional<AiJobKind> parseAiJobKind(const std::string& type) {
+  if (type == "evaluation") return AiJobKind::Evaluation;
+  if (type == "roleplay_summary") return AiJobKind::RoleplaySummary;
+  return std::nullopt;
+}
+
+inline const char* aiJobTargetTable(AiJobKind kind) {
+  switch (kind) {
+    case AiJobKind::Evaluation: return "sessions";
+    case AiJobKind::RoleplaySummary: return "roleplay_sessions";
+  }
+  return nullptr;
+}
+
+inline std::string aiJobDedupeKey(AiJobKind kind, const std::string& target_id) {
+  switch (kind) {
+    case AiJobKind::Evaluation: return "evaluation:" + target_id;
+    case AiJobKind::RoleplaySummary: return "roleplay-summary:" + target_id;
+  }
+  return std::string();
+}
+
+inline const char* aiJobFailureCode(AiJobKind kind) {
+  switch (kind) {
+    case AiJobKind::Evaluation: return "EVALUATION_ERROR";
+    case AiJobKind::RoleplaySummary: return "ROLEPLAY_SUMMARY_ERROR";
+  }
+  return "UNKNOWN_JOB_TYPE";
+}
+
 // Every transaction that touches both a session and its AI state must lock
 // the session first. The session serializes report/job writes for that target;
 // queue claim and heartbeat transactions touch jobs only and never wait on it.
 inline bool lockAiJobTarget(pqxx::transaction_base& tx, const std::string& type,
                             const std::string& target_id, bool skip_locked = false) {
-  const std::string table = type == "evaluation" ? "sessions" : "roleplay_sessions";
-  return !tx.exec_params("SELECT id FROM " + table + " WHERE id = $1 FOR UPDATE" +
-                        (skip_locked ? " SKIP LOCKED" : ""), target_id).empty();
+  const auto kind = parseAiJobKind(type);
+  /* 未知类型拒绝执行：宁可不锁，也不猜一个目标表去锁。
+     返回 false 的语义是「目标不可处理」，调用方（markExhaustedLeases）会跳过它；
+     对应任务会由 claim 顶部的清理语句标记为 dead，不会一直吊在 running。 */
+  if (!kind.has_value()) return false;
+  return !tx.exec_params(std::string("SELECT id FROM ") + aiJobTargetTable(*kind) +
+                             " WHERE id = $1 FOR UPDATE" + (skip_locked ? " SKIP LOCKED" : ""),
+                         target_id).empty();
 }
 
 inline int aiJobRetryDelaySeconds(int completed_attempts) {
@@ -24,8 +72,11 @@ inline int aiJobRetryDelaySeconds(int completed_attempts) {
 
 inline void enqueueAiJob(pqxx::transaction_base& tx, const std::string& type,
                          const std::string& target_id, bool reset_dead_job = false) {
-  const auto dedupe_key = type == "evaluation"
-      ? "evaluation:" + target_id : "roleplay-summary:" + target_id;
+  /* 入队一律来自本进程的字面量（evaluation / roleplay_summary），未知类型是
+     编程错误而不是运行时状况——直接抛，别让它悄悄入队再去污染目标表。 */
+  const auto kind = parseAiJobKind(type);
+  if (!kind.has_value()) throw ApiError(500, "UNKNOWN_JOB_TYPE", "未知 AI 任务类型");
+  const auto dedupe_key = aiJobDedupeKey(*kind, target_id);
   if (reset_dead_job) {
     const auto reset = tx.exec_params(R"(
       INSERT INTO ai_jobs
@@ -51,8 +102,9 @@ inline void enqueueAiJob(pqxx::transaction_base& tx, const std::string& type,
 
 inline bool ensureAiJob(pqxx::transaction_base& tx, const std::string& type,
                         const std::string& target_id) {
-  const auto dedupe_key = type == "evaluation"
-      ? "evaluation:" + target_id : "roleplay-summary:" + target_id;
+  const auto kind = parseAiJobKind(type);
+  if (!kind.has_value()) throw ApiError(500, "UNKNOWN_JOB_TYPE", "未知 AI 任务类型");
+  const auto dedupe_key = aiJobDedupeKey(*kind, target_id);
   auto jobs = tx.exec_params(
       "SELECT status, generation FROM ai_jobs WHERE dedupe_key = $1", dedupe_key);
   if (jobs.empty()) {
@@ -111,6 +163,7 @@ class ReliableDatabase {
     pqxx::read_transaction tx(connection.get());
     const auto rows = tx.exec_params(R"(
       SELECT s.id, s.name, s.category, s.summary, s.difficulty, s.focus, s.patient_profile, s.max_rounds,
+        s.dimension_weights, s.difficulty_tiers,
         COALESCE(best.best_score, 0) AS best_score,
         active.id AS active_id, active.current_round AS active_current_round,
         active.max_rounds AS active_max_rounds, active.updated_at AS active_updated_at
@@ -134,6 +187,15 @@ class ReliableDatabase {
           {"category", row["category"].c_str()},
           {"summary", row["summary"].c_str()}, {"difficulty", row["difficulty"].c_str()},
           {"focus", json::parse(row["focus"].c_str())},
+          /* 该场景主要练哪几个维度，按权重降序；空数组 = 尚未标注 */
+          {"dimensionFocus", dimensionFocusOf(row)},
+          /* 可选难度档位（迁移 026 / 027）。空对象 = 这条场景没有进阶档，前端不必展示档位选择。
+             **只下发 summary**，不把 difficulty_tiers 整段透传出去：
+               - openings 是患者的台词。提前给学员看到全部变体，等于把答案发了，
+                 「多句变体防背答案」也就没有意义了（027 加这个字段的初衷正相反）。
+               - initialState 是内部难度参数（信任度起点等），前端展示用不到。
+             前端只需要「有没有进阶档」+「它是什么档」这两件事。 */
+          {"difficultyTiers", tierSummaryForLearner(row)},
           {"patientProfile", json::parse(row["patient_profile"].c_str())},
           {"maxRounds", row["max_rounds"].as<int>()},
           {"bestScore", row["best_score"].is_null()
@@ -200,6 +262,72 @@ class ReliableDatabase {
       items.push_back(text);
     }
     return items;
+  }
+
+  /* 规范化主管提交的维度权重（场景 ↔ 维度映射，迁移 024）：
+       * 只保留五维白名单内的 key；非数字、零、负数一律丢弃；
+       * 结果为空对象 = 「未标注」。推荐逻辑必须跳过空对象，绝不能把它当成
+         「全维度均等」——那是两种完全不同的语义（见 024 的注释）。
+       * 其余情况按总和归一化到 1.0。归一化放在服务端做，是为了让
+         「各场景权重可跨场景比较」这个不变式不依赖调用方守规矩：
+         主管填 3/1/1 和填 0.6/0.2/0.2 应当存成同一个东西。
+     两位小数舍入后总和可能落在 0.99/1.01，属可接受误差，不做二次修正。 */
+  static json normalizedDimensionWeights(const json& raw) {
+    if (!raw.is_object()) return json::object();
+    json kept = json::object();
+    double total = 0.0;
+    for (const auto& item : raw.items()) {
+      if (!isPlanDimension(item.key()) || !item.value().is_number()) continue;
+      const double value = item.value().get<double>();
+      if (!(value > 0.0)) continue;
+      kept[item.key()] = value;
+      total += value;
+    }
+    if (total <= 0.0) return json::object();
+    json result = json::object();
+    for (const auto& item : kept.items()) {
+      result[item.key()] = std::round(item.value().get<double>() / total * 100.0) / 100.0;
+    }
+    return result;
+  }
+
+  /* 把 dimension_weights 渲染成展示就绪的数组，按权重降序：
+       [{"key":"medicalCompliance","name":"医疗合规","weight":0.45}, ...]
+     中文名取 planDimensionLabel()（与 planDimensions() 同一口径），因此前端不需要
+     再维护一份「维度 key → 中文名」映射——那会是同类映射的第 6 个副本。
+     白名单外的 key 直接丢弃：脏数据不该渲染成空白标签。 */
+  static json dimensionFocusOf(const pqxx::row& row) {
+    json items = json::array();
+    const auto weights = parseColumn(row, "dimension_weights");
+    if (!weights.is_object()) return items;
+    for (const auto& item : weights.items()) {
+      if (!item.value().is_number() || !isPlanDimension(item.key())) continue;
+      items.push_back({{"key", item.key()},
+                       {"name", planDimensionLabel(item.key())},
+                       {"weight", item.value()}});
+    }
+    std::sort(items.begin(), items.end(), [](const json& left, const json& right) {
+      return left.value("weight", 0.0) > right.value("weight", 0.0);
+    });
+    return items;
+  }
+
+  /* 学员端可见的档位信息：只有「有没有进阶档」和它的一句说明。
+     刻意不透传 difficulty_tiers 整段——
+       openings 是患者的台词，提前把全部变体发给学员，等于把答案给了他，
+       与 027 用多句变体「防背答案」的初衷正好相反；
+       initialState 是内部难度参数，前端展示用不到。
+     前端靠 advanced 是否存在决定要不要给挑战入口，靠 summary 写确认弹窗，
+     这两件事都必须保留。（主管端要编辑档位参数时走 supervisorScenarioCatalog。） */
+  static json tierSummaryForLearner(const pqxx::row& row) {
+    json out = json::object();
+    const auto tiers = parseColumn(row, "difficulty_tiers");
+    if (!tiers.contains("advanced") || !tiers["advanced"].is_object()) return out;
+    const auto& advanced = tiers["advanced"];
+    const auto summary = (advanced.contains("summary") && advanced["summary"].is_string())
+        ? advanced["summary"].get<std::string>() : std::string();
+    out["advanced"] = {{"summary", summary}};
+    return out;
   }
 
   /* 校验 + 归一化场景字段：只接受白名单键，任何未知输入直接丢弃而不是透传数据库。
@@ -272,8 +400,12 @@ class ReliableDatabase {
     const auto& raw_state = raw_hidden.contains("initialState") && raw_hidden["initialState"].is_object()
         ? raw_hidden["initialState"] : json::object();
     const auto emotion = jsonString(raw_state, "emotion", "平静");
-    if (emotion != "平静" && emotion != "犹豫" && emotion != "焦虑" && emotion != "缓和") {
-      throw ApiError(400, "INVALID_ARGUMENT", "初始情绪只能是 平静/犹豫/焦虑/缓和");
+    // 词表必须与 main.cpp normalizePatientReply 的 allowed_emotions 同步：
+    // 不满/愤怒是冲突类场景（投诉、索赔、逼承诺）的初始档，
+    // 缺了这两档，患者只能以「焦虑」开场，对抗强度演不出来。
+    if (emotion != "平静" && emotion != "犹豫" && emotion != "焦虑" && emotion != "缓和" &&
+        emotion != "不满" && emotion != "愤怒") {
+      throw ApiError(400, "INVALID_ARGUMENT", "初始情绪只能是 平静/犹豫/焦虑/缓和/不满/愤怒");
     }
     const auto emotion_level = jsonInt(raw_state, "emotionLevel", 0);
     if (emotion_level < -2 || emotion_level > 2) {
@@ -288,11 +420,18 @@ class ReliableDatabase {
       throw ApiError(400, "INVALID_ARGUMENT",
                      "患者行为规则需 5-400 个字，建议写成「若客服……应……」的条件式");
     }
-    out["hiddenConfig"] = {{"opening", opening}, {"hidden", hidden_items},
-                           {"initialState", {{"emotion", emotion},
-                                             {"emotionLevel", emotion_level},
-                                             {"trustLevel", trust_level}}},
-                           {"instructions", instructions}};
+    json hidden_out = {{"opening", opening}, {"hidden", hidden_items},
+                       {"initialState", {{"emotion", emotion},
+                                         {"emotionLevel", emotion_level},
+                                         {"trustLevel", trust_level}}},
+                       {"instructions", instructions}};
+    /* 变体池原样透传（经结构校验）。hiddenConfig 是白名单重建的，不显式带上 variants，
+       主管编辑任何其他字段都会静默清空它——变体池「只对 2 条示范场景生效」会变成
+       「一旦被编辑过就一条都不剩」。 */
+    const auto variants = normalizedVariants(
+        raw_hidden.contains("variants") ? raw_hidden["variants"] : json::array());
+    if (!variants.empty()) hidden_out["variants"] = variants;
+    out["hiddenConfig"] = hidden_out;
     const auto& raw_roleplay = merged.contains("roleplayConfig") && merged["roleplayConfig"].is_object()
         ? merged["roleplayConfig"] : json::object();
     out["roleplayConfig"] = {
@@ -305,7 +444,336 @@ class ReliableDatabase {
     if (sort_order < 1 || sort_order > 999) throw ApiError(400, "INVALID_ARGUMENT", "排序号需 1-999");
     out["sortOrder"] = sort_order;
     out["isActive"] = merged.value("isActive", true);
+    /* 场景 ↔ 维度映射（迁移 024）。缺省 = 空对象 = 未标注。
+       updateScenario 会把库里的既有值并进 merged，所以 PUT 不提交该字段 = 保留原值，
+       提交了就走白名单 + 归一化。 */
+    out["dimensionWeights"] = normalizedDimensionWeights(
+        merged.contains("dimensionWeights") ? merged["dimensionWeights"] : json::object());
+    /* 难度档位（迁移 026）。空对象 = 这条场景没有进阶档（学员端不给挑战入口）。
+       PUT 不提交该字段时 updateScenario 已把库里的既有值并进 merged，所以「不改档位」
+       的轻量请求（如只下架）能原样保留；提交 `{}` 则是显式清掉进阶档。 */
+    out["difficultyTiers"] = normalizedDifficultyTiers(
+        merged.contains("difficultyTiers") ? merged["difficultyTiers"] : json::object());
     return out;
+  }
+
+  /* AI 骨架草稿的入库校验（迁移 030）：**复用主管手工填写时用的同一套约束**。
+     模型产出绝不能绕过校验——否则「AI 生成的场景」会成为唯一一类没被长度、条数、
+     情绪词表约束过的场景，而它恰恰最需要约束。
+     id / sortOrder / isActive 由系统持有、模型不该产出：这里显式补进去，
+     即使模型多嘴返回了这三个字段也会被覆盖。 */
+  static json validateGeneratedScenario(const json& candidate, const std::string& scenario_id,
+                                        int sort_order, bool is_active) {
+    json merged = candidate.is_object() ? candidate : json::object();
+    merged["id"] = scenario_id;
+    merged["sortOrder"] = sort_order;
+    merged["isActive"] = is_active;
+    return validateScenarioPayload(merged);
+  }
+
+  /* AI 骨架的落库（迁移 030）。由知识队列在**它自己的事务里**回调进来，
+     因此这里只能使用传入的 tx，绝不能自己开连接/事务（那会把「写场景」和
+     「任务置成功」拆成两笔事务，也就失去了原子性）。
+     两道闸门：
+       · 占位行必须仍处于未上架状态——主管在生成期间把它上架了，就不该再被覆盖；
+       · 内容必须过 validateGeneratedScenario（与手工建场景同一套约束）。
+     返回 {applied, warnings}；applied=false 表示 stale，候选结果照样存档但不落库，
+     与两类草稿「手工编辑优先」的语义一致。 */
+  static json applyScenarioDraft(pqxx::transaction_base& tx, const std::string& scenario_id,
+                                 const std::string& job_id, const json& candidate) {
+    const auto rows = tx.exec_params(R"(
+      SELECT sort_order, is_active FROM scenarios WHERE id = $1 FOR UPDATE
+    )", scenario_id);
+    if (rows.empty() || rows[0]["is_active"].as<bool>()) {
+      return {{"applied", false}, {"reason", rows.empty() ? "SCENARIO_MISSING" : "SCENARIO_PUBLISHED"}};
+    }
+    const auto data = validateGeneratedScenario(candidate, scenario_id,
+                                               rows[0]["sort_order"].as<int>(), false);
+    /* ⚠️ 占位符编号必须与下面的实参顺序一一对应（1=场景 id，2=任务 id，3 起是内容）。
+       曾经这里从 $4 起编号、实参却从第 3 个开始，于是 $3 既没被 SQL 引用又被绑了值，
+       PostgreSQL 直接报「无法确定参数 $3 的数据类型」——任务永远进不了 succeeded。
+       这种错编译期看不出来，只有真库跑一遍才会现形（scenario_draft_test 抓到）。 */
+    const auto updated = tx.exec_params(R"(
+      UPDATE scenarios SET name = $3, category = $4, summary = $5, difficulty = $6,
+        focus = $7::jsonb, dimension_weights = $8::jsonb, patient_profile = $9::jsonb,
+        hidden_config = $10::jsonb, roleplay_config = $11::jsonb, max_rounds = $12,
+        difficulty_tiers = $13::jsonb, ai_draft = TRUE, is_active = FALSE, generation_id = NULL
+      WHERE id = $1 AND generation_id = $2 AND is_active = FALSE
+      RETURNING sort_order
+    )", scenario_id, job_id, data["name"].get<std::string>(), data["category"].get<std::string>(),
+        data["summary"].get<std::string>(), data["difficulty"].get<std::string>(),
+        data["focus"].dump(), data["dimensionWeights"].dump(), data["patientProfile"].dump(),
+        data["hiddenConfig"].dump(), data["roleplayConfig"].dump(),
+        data["maxRounds"].get<int>(), data["difficultyTiers"].dump());
+    if (updated.empty()) return {{"applied", false}, {"reason", "GENERATION_NOT_OWNER"}};
+    return {{"applied", true}, {"warnings", scenarioQualityWarnings(data)}};
+  }
+
+  /* 校验 + 归一化进阶档。结构与 createSession 的覆盖链一一对应：
+     initialState 三项是「这局开局多紧张」，openings 是「患者第一句话说什么」。
+     校验口径刻意与 hidden_config.initialState / opening 完全一致——
+     同一个概念两套规则，迟早会漂移成「标准档能存的值进阶档存不进去」。 */
+  static json normalizedDifficultyTiers(const json& raw) {
+    if (raw.is_null()) return json::object();
+    if (!raw.is_object()) throw ApiError(400, "INVALID_ARGUMENT", "难度档位需为对象");
+    json out = json::object();
+    if (!raw.contains("advanced") || raw["advanced"].is_null()) return out;
+    const auto& advanced = raw["advanced"];
+    if (!advanced.is_object()) throw ApiError(400, "INVALID_ARGUMENT", "进阶档需为对象");
+    auto summary = trim(jsonString(advanced, "summary"));
+    if (utf8Length(summary) > 60) {
+      throw ApiError(400, "INVALID_ARGUMENT", "进阶档说明需 60 个字以内");
+    }
+    const auto& state = advanced.contains("initialState") && advanced["initialState"].is_object()
+        ? advanced["initialState"] : json::object();
+    const auto emotion = jsonString(state, "emotion");
+    if (emotion != "平静" && emotion != "犹豫" && emotion != "焦虑" && emotion != "缓和" &&
+        emotion != "不满" && emotion != "愤怒") {
+      throw ApiError(400, "INVALID_ARGUMENT",
+                     "进阶档初始情绪只能是 平静/犹豫/焦虑/缓和/不满/愤怒");
+    }
+    const auto emotion_level = jsonInt(state, "emotionLevel", 0);
+    if (emotion_level < -2 || emotion_level > 2) {
+      throw ApiError(400, "INVALID_ARGUMENT", "进阶档情绪强度需在 -2 到 2 之间");
+    }
+    const auto trust_level = jsonInt(state, "trustLevel", 50);
+    if (trust_level < 0 || trust_level > 100) {
+      throw ApiError(400, "INVALID_ARGUMENT", "进阶档初始信任度需 0-100");
+    }
+    json openings = json::array();
+    if (advanced.contains("openings")) {
+      if (!advanced["openings"].is_array()) {
+        throw ApiError(400, "INVALID_ARGUMENT", "进阶档开场白需为数组");
+      }
+      for (const auto& item : advanced["openings"]) {
+        if (!item.is_string()) continue;
+        const auto text = trim(item.get<std::string>());
+        if (utf8Length(text) < 5 || utf8Length(text) > 200) {
+          throw ApiError(400, "INVALID_ARGUMENT", "进阶档开场白每句需 5-200 个字");
+        }
+        if (openings.size() >= 3) throw ApiError(400, "INVALID_ARGUMENT", "进阶档开场白最多 3 句");
+        openings.push_back(text);
+      }
+    }
+    json tier = {{"summary", summary},
+                 {"initialState", {{"emotion", emotion},
+                                   {"emotionLevel", emotion_level},
+                                   {"trustLevel", trust_level}}}};
+    /* 留空 = 该场景的进阶开场白沿用标准档那句。这是合法的省略（比如只想调数值），
+       但要在响应的 warnings 里提醒——进阶档玩家看到和普通档一样的第一句话，
+       会以为档位没生效（这正是 027 修的那个缺陷）。 */
+    tier["openings"] = openings;
+    out["advanced"] = tier;
+    return out;
+  }
+
+  /* 同场景变体池（P1-2）的结构校验。让 API 能提交 variants，同时把脏数据挡在外面：
+     每组必须带非空 hidden 数组（每条 1-60 字），instructions 可选（5-400 字，缺省沿用主值）。
+     非法组直接丢弃；全丢 = 无变体。上限 5 组——变体是「防背答案」的手段，不是内容仓库，
+     堆到十几组只会让质量失控。
+
+     ⚠️ 这个白名单必须存在，否则 updateScenario 的 hiddenConfig 重建会把 variants 抹掉：
+     主管编辑任何其他字段（哪怕只改简介）都会连带清空变体池，而且不报任何错。 */
+  static json normalizedVariants(const json& raw) {
+    if (!raw.is_array()) return json::array();
+    json out = json::array();
+    for (const auto& item : raw) {
+      if (!item.is_object()) continue;
+      if (out.size() >= 5) break;
+      json hidden_items = json::array();
+      if (item.contains("hidden") && item["hidden"].is_array()) {
+        for (const auto& entry : item["hidden"]) {
+          if (!entry.is_string()) continue;
+          if (hidden_items.size() >= 5) break;
+          const auto text = trim(entry.get<std::string>());
+          if (text.empty() || utf8Length(text) > 60) continue;
+          hidden_items.push_back(text);
+        }
+      }
+      if (hidden_items.empty()) continue;
+      json variant = {{"hidden", hidden_items}};
+      if (item.contains("instructions") && item["instructions"].is_string()) {
+        const auto text = trim(item["instructions"].get<std::string>());
+        if (utf8Length(text) >= 5 && utf8Length(text) <= 400) variant["instructions"] = text;
+      }
+      out.push_back(variant);
+    }
+    return out;
+  }
+
+  /* 变体池组数。<2 一律视为「没有变体池」——1 组和 0 组在效果上完全一样，换不起来。 */
+  static int variantPoolSize(const json& hidden) {
+    if (!hidden.is_object() || !hidden.contains("variants") ||
+        !hidden["variants"].is_array()) {
+      return 0;
+    }
+    return static_cast<int>(hidden["variants"].size());
+  }
+
+  /* 场景质量软校验：把《训练场景设计规范》六条判据里**机器能判**的部分挑出来。
+     刻意不抛异常——判据 1（表面诉求与真实顾虑的落差）和判据 2 的「性质错开」
+     本质需要语义理解，机器只能看形状。硬拦会把好场景挡在门外，所以只提醒。
+     返回 [{code, message}]，随创建/更新响应下发，由前端展示给主管。 */
+  static json scenarioQualityWarnings(const json& data) {
+    json warnings = json::array();
+    const auto& hidden_conf = data.contains("hiddenConfig") && data["hiddenConfig"].is_object()
+        ? data["hiddenConfig"] : json::object();
+    const auto opening = jsonString(hidden_conf, "opening");
+    const auto instructions = jsonString(hidden_conf, "instructions");
+    const auto& hidden = hidden_conf.contains("hidden") && hidden_conf["hidden"].is_array()
+        ? hidden_conf["hidden"] : json::array();
+    const auto& roleplay = data.contains("roleplayConfig") && data["roleplayConfig"].is_object()
+        ? data["roleplayConfig"] : json::object();
+    const auto& guidance = roleplay.contains("serviceGuidance") &&
+            roleplay["serviceGuidance"].is_array()
+        ? roleplay["serviceGuidance"] : json::array();
+
+    auto ends_with = [](const std::string& text, const std::string& suffix) {
+      return text.size() >= suffix.size() &&
+             text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    auto has_any = [](const std::string& text, const std::vector<std::string>& needles) {
+      for (const auto& needle : needles) {
+        if (text.find(needle) != std::string::npos) return true;
+      }
+      return false;
+    };
+
+    // 判据 2：隐藏顾虑建议恰好 3 条（「性质错开」不可机检，只能提醒数量）
+    if (hidden.size() != 3) {
+      warnings.push_back({{"code", "HIDDEN_COUNT"},
+          {"message", "隐藏顾虑是 " + std::to_string(hidden.size()) +
+              " 条，建议 3 条并分属情绪型（怕什么）/证据型（握着什么）/意愿型（什么条件下配合）。"
+              "只写一条，学员问一次就到底了；三条同类也一样。"}});
+    }
+
+    // 判据 5：开场白应当是攻击或施压，不是礼貌提问
+    if (ends_with(opening, "？") || ends_with(opening, "?")) {
+      warnings.push_back({{"code", "OPENING_IS_QUESTION"},
+          {"message", "开场白以问号结尾，读起来像礼貌咨询。这样学员会直接进入「答题」模式，"
+              "练不到情绪承接——而那正是客服岗最需要练的。改成质问或施压，"
+              "礼貌提问只适合初级档的温和咨询场景。"}});
+    }
+
+    // 判据 3：缓和条件（披露门）——「只有……才……」
+    if (!has_any(instructions, {"才"})) {
+      warnings.push_back({{"code", "NO_RELIEF_CONDITION"},
+          {"message", "患者行为规则里没看到「只有……才……」的缓和条件。"
+              "不写清「客服做到哪几件事患者才愿意配合」，患者会一直堵在表面诉求上，训练没有出口。"}});
+    }
+
+    // 判据 4：升级条件——「若……应……」，且必须覆盖「答非所问」
+    if (!has_any(instructions, {"若", "如果"})) {
+      warnings.push_back({{"code", "NO_ESCALATION_CONDITION"},
+          {"message", "患者行为规则里没看到「若……应……」的升级条件。"
+              "只写怎么消气、不写什么会让患者更火，冲突会在第一个回合就哑火，第 3 轮开始退化成闲聊。"}});
+    } else if (!has_any(instructions, {"答非所问", "一两个词", "敷衍"})) {
+      warnings.push_back({{"code", "NO_EVASION_RULE"},
+          {"message", "升级条件里没覆盖「答非所问只有一两个词」——这是最常见的敷衍形态，"
+              "也是最该被惩罚的行为（见迁移 018 的统一反应规则）。"}});
+    }
+
+    // 判据 6：必须有一个「舒服但违规」的坑。机器判不出「坑」本身，
+    // 唯一可用的替代指标是机构红线写没写——没写红线，坑就必然不存在。
+    if (guidance.empty()) {
+      warnings.push_back({{"code", "NO_SERVICE_GUIDANCE"},
+          {"message", "服务要点为空。这条场景里客服不能承诺什么、该转交给谁、多久答复，"
+              "都是本机构的真实流程，必须由你填写。留空的话学员拿不到红线，"
+              "合规维度也永远测不出区分度。"}});
+    } else {
+      bool has_red_line = false;
+      for (const auto& item : guidance) {
+        if (!item.is_string()) continue;
+        if (has_any(item.get<std::string>(), {"不得", "不能", "禁止", "不可", "避免"})) {
+          has_red_line = true;
+          break;
+        }
+      }
+      if (!has_red_line) {
+        warnings.push_back({{"code", "NO_RED_LINE"},
+            {"message", "服务要点里没有出现「不得/不能/禁止」这类红线表述。"
+                "这条场景可能存在「怎么说都不太错」的问题——分数会全挤在 70-85 之间，"
+                "没有区分度，也就无法用于达标判定或弱项识别。"}});
+      }
+    }
+
+    // 模板占位符未替换
+    const std::vector<std::string> placeholder_sources = {
+        opening, instructions, jsonString(data, "name"), jsonString(data, "summary")};
+    for (const auto& text : placeholder_sources) {
+      if (text.find("【") != std::string::npos) {
+        warnings.push_back({{"code", "PLACEHOLDER_NOT_REPLACED"},
+            {"message", "内容里还留着模板占位符（【…】），请替换成这条场景的真实内容再上架。"}});
+        break;
+      }
+    }
+
+    // 进阶档开场白缺失或与标准档雷同：进阶档玩家第一句话和普通档一字不差，
+    // 会以为档位没生效（027 之前真实发生过的缺陷）。数值上更紧张但台词照旧，不报错但必须提醒。
+    const auto& tiers = data.contains("difficultyTiers") && data["difficultyTiers"].is_object()
+        ? data["difficultyTiers"] : json::object();
+    if (tiers.contains("advanced") && tiers["advanced"].is_object()) {
+      const auto& adv_openings = tiers["advanced"].contains("openings") &&
+              tiers["advanced"]["openings"].is_array()
+          ? tiers["advanced"]["openings"] : json::array();
+      if (adv_openings.empty()) {
+        warnings.push_back({{"code", "ADVANCED_OPENING_MISSING"},
+            {"message", "进阶档没有单独的开场白，患者第一句话会和标准档完全一样——"
+                "学员会以为档位没生效。进阶台词应当开场即施压，且不给耐心。"}});
+      } else {
+        for (const auto& item : adv_openings) {
+          if (item.is_string() && item.get<std::string>() == opening) {
+            warnings.push_back({{"code", "ADVANCED_OPENING_DUPLICATE"},
+                {"message", "进阶档有一句开场白与标准档完全相同，等于白写——请替换成不同的施压方式。"}});
+            break;
+          }
+        }
+      }
+    }
+
+    /* 判据 7（P1-2）：没有变体池 → 复练必然通胀。
+       这不是「结构错误」而是「运营建议」：机器判不出某条场景该不该加变体，
+       但能把「还没加」这件事变成主管看得见的信号——比闷在代码里强。
+       只提醒不拦：变体是选填项，新场景先上架、后补变体是完全合理的顺序。 */
+    if (variantPoolSize(hidden_conf) < 2) {
+      warnings.push_back({{"code", "NO_VARIANT_POOL"},
+          {"message", "这条场景还没有变体池（或只有 1 组），学员复练到第三次很可能已经把隐藏顾虑"
+              "背下来了，这个分就不再代表能力。建议补 2 组平行变体：同一场景骨架，"
+              "换一组顾虑组合（仍要分情绪型/证据型/意愿型）、换一个松口条件。"}});
+    } else {
+      /* 判据 8：变体必须真的换了一组顾虑。与主值一字不差的「变体」什么也没换，
+         但它会让变体池计数达标、NO_VARIANT_POOL 消失——比没有变体更糟：
+         它有「已加变体」的信号，却没有防背答案的效果，而主管不会再去检查。 */
+      const auto& variants = hidden_conf.contains("variants") && hidden_conf["variants"].is_array()
+          ? hidden_conf["variants"] : json::array();
+      for (const auto& variant : variants) {
+        if (!variant.is_object() || !variant.contains("hidden") ||
+            !variant["hidden"].is_array()) {
+          continue;
+        }
+        if (variant["hidden"] == hidden) {
+          warnings.push_back({{"code", "VARIANT_DUPLICATE"},
+              {"message", "有一组变体的隐藏顾虑与主值完全相同——学员第二次练就会遇到一模一样的剧本，"
+                  "这组变体等于没加。请换一组真正不同的顾虑组合（仍要分情绪型/证据型/意愿型），"
+                  "或者直接删掉这一组。"}});
+          break;
+        }
+      }
+    }
+
+    /* 判据 9：维度权重为空 → 这条场景永远不会出现在弱项推荐里。
+       retrainCandidates 用 `dimension_weights ? $2` 过滤，未标注的场景是**直接消失**，
+       而不是排在候选最后。漏填不报错、页面上也看不出差别，只在学员点「复练 X 维度」时
+       静默缺席——所以必须在这里提醒。 */
+    const auto& weights = data.contains("dimensionWeights") && data["dimensionWeights"].is_object()
+        ? data["dimensionWeights"] : json::object();
+    if (weights.empty()) {
+      warnings.push_back({{"code", "NO_DIMENSION_WEIGHTS"},
+          {"message", "还没有标注维度侧重。学员的「按弱项复练」只在标注过的场景里推荐，"
+              "这条场景不会出现在任何一个维度的候选里——不是排在最后，是直接消失。"
+              "按这条场景实际练到什么，给 1-3 个维度填权重即可。"}});
+    }
+    return warnings;
   }
 
   // 管理目录：返回全量字段（含 hidden_config / roleplay_config），含已下架场景
@@ -314,32 +782,113 @@ class ReliableDatabase {
     auto connection = database_pool_->acquire();
     pqxx::read_transaction tx(connection.get());
     const auto rows = tx.exec(R"(
-      SELECT id, name, category, summary, difficulty, focus, patient_profile,
-        hidden_config, roleplay_config, max_rounds, sort_order, is_active, is_template
+      SELECT id, name, category, summary, difficulty, focus, dimension_weights, patient_profile,
+        hidden_config, roleplay_config, max_rounds, sort_order, is_active, is_template,
+        difficulty_tiers, ai_draft, generation_id
       FROM scenarios
       WHERE NOT is_template
       ORDER BY sort_order
     )");
     json items = json::array();
     for (const auto& row : rows) {
+      const auto hidden_cfg = parseColumn(row, "hidden_config");
       items.push_back({{"id", row["id"].c_str()}, {"name", row["name"].c_str()},
                        {"category", row["category"].c_str()}, {"summary", row["summary"].c_str()},
                        {"difficulty", row["difficulty"].c_str()},
                        {"focus", parseColumn(row, "focus", true)},
+                       /* 原始权重供编辑表单用；dimensionFocus 是同一份数据的展示形态
+                          （已带中文名并按权重降序），避免前端再维护一份 key→中文名映射 */
+                       {"dimensionWeights", parseColumn(row, "dimension_weights")},
+                       {"dimensionFocus", dimensionFocusOf(row)},
                        {"patientProfile", parseColumn(row, "patient_profile")},
-                       {"hiddenConfig", parseColumn(row, "hidden_config")},
+                       {"hiddenConfig", hidden_cfg},
                        {"roleplayConfig", parseColumn(row, "roleplay_config")},
+                      /* 完整档位（含 openings）：主管端要编辑它们。
+                         学员端走 tierSummaryForLearner 只拿 summary，两处不要混用。 */
+                      {"difficultyTiers", parseColumn(row, "difficulty_tiers")},
+                       /* 变体池是否有 2 组以上，供管理列表标注「未加变体池」。
+                          只下发布尔，不下发内容——列表页不需要，编辑表单走 hiddenConfig。 */
+                       {"hasVariantPool", variantPoolSize(hidden_cfg) >= 2},
+                       /* AI 骨架草稿（迁移 030）：aiDraft 是来源标记（永久），
+                          generating 是「正在生成」。列表要据此显示「AI 草稿 / 生成中」，
+                          并禁止在生成期间进入编辑（占位内容不满足校验，进去也存不了）。 */
+                       {"aiDraft", row["ai_draft"].as<bool>()},
+                       {"generating", !row["generation_id"].is_null()},
                        {"maxRounds", row["max_rounds"].as<int>()},
                        {"sortOrder", row["sort_order"].as<int>()},
                        {"isActive", row["is_active"].as<bool>()}});
     }
-    return {{"items", items}};
+    /* 骨架模板单独一段返回，不混进 items：items 是「学员能练的场景」的运营清单，
+       模板不进任何场景列表。用 id 前缀 tpl- 与自由模拟的隐藏模板
+       （free-roleplay-template）区分——后者同样是 is_template，
+       但它是系统载体，不是给主管用的起点。 */
+    const auto template_rows = tx.exec(R"(
+      SELECT id, name, category, summary, difficulty, focus, dimension_weights, patient_profile,
+        hidden_config, roleplay_config, max_rounds, sort_order
+      FROM scenarios
+      WHERE is_template AND id LIKE 'tpl-%'
+      ORDER BY category, sort_order
+    )");
+    json templates = json::array();
+    for (const auto& row : template_rows) {
+      /* 返回完整字段而不仅是元数据：前端拿它**预填整张表单**，
+         主管在模板内容上改，而不是从空白开始——这正是「低门槛新建」的关键。
+         sortOrder 也一并下发：模板占用 9xx 保留区，前端凭它把空号推荐
+         自动避开那一段，不必在 JS 里硬编码区间。 */
+      templates.push_back({{"id", row["id"].c_str()}, {"name", row["name"].c_str()},
+                           {"category", row["category"].c_str()},
+                           {"summary", row["summary"].c_str()},
+                           {"difficulty", row["difficulty"].c_str()},
+                           {"focus", parseColumn(row, "focus", true)},
+                           {"dimensionWeights", parseColumn(row, "dimension_weights")},
+                           /* 模板自带该分类的典型维度权重：没有权重的场景不会出现在
+                              任何维度的弱项推荐里（retrainCandidates 的 `? $2` 过滤），
+                              而主管端目前还没有权重编辑器——留空等于永远推不出来。 */
+                           {"dimensionFocus", dimensionFocusOf(row)},
+                           {"patientProfile", parseColumn(row, "patient_profile")},
+                           {"hiddenConfig", parseColumn(row, "hidden_config")},
+                           {"roleplayConfig", parseColumn(row, "roleplay_config")},
+                           {"maxRounds", row["max_rounds"].as<int>()},
+                           {"sortOrder", row["sort_order"].as<int>()}});
+    }
+    return {{"items", items}, {"templates", templates}};
   }
 
   json createScenario(const json& payload) const {
+    json body = payload;
+    /* 「以此模板新建」：先读出骨架当基底，再让请求体逐键覆盖。
+       模板的 id 与 sort_order 必须丢弃——前者会让新场景撞 id，
+       后者会撞 sort_order 的唯一索引（模板落在 9xx 保留区，本就不该给业务场景用）。 */
+    const auto template_id = trim(jsonString(body, "fromTemplateId"));
+    body.erase("fromTemplateId");
+    if (!template_id.empty()) {
+      auto tpl_conn = database_pool_->acquire();
+      pqxx::read_transaction tpl_tx(tpl_conn.get());
+      const auto rows = tpl_tx.exec_params(R"(
+        SELECT summary, category, difficulty, focus, dimension_weights, patient_profile,
+          hidden_config, roleplay_config, max_rounds
+        FROM scenarios WHERE id = $1 AND is_template
+      )", template_id);
+      if (rows.empty()) {
+        throw ApiError(404, "TEMPLATE_NOT_FOUND", "骨架模板不存在或已被移除");
+      }
+      /* summary 必须一起继承。漏了它，一个只覆盖 name 的请求会因为两侧都没有简介
+         而被校验拦下（「场景简介需 2-60 个字」）——模板明明有简介。
+         这个疏漏是端到端验证抓出来的：SQL 断言和编译都发现不了。 */
+      json base = {{"summary", rows[0]["summary"].c_str()},
+                   {"category", rows[0]["category"].c_str()},
+                   {"difficulty", rows[0]["difficulty"].c_str()},
+                   {"focus", parseColumn(rows[0], "focus", true)},
+                   {"dimensionWeights", parseColumn(rows[0], "dimension_weights")},
+                   {"patientProfile", parseColumn(rows[0], "patient_profile")},
+                   {"hiddenConfig", parseColumn(rows[0], "hidden_config")},
+                   {"roleplayConfig", parseColumn(rows[0], "roleplay_config")},
+                   {"maxRounds", rows[0]["max_rounds"].as<int>()}};
+      for (auto it = body.begin(); it != body.end(); ++it) base[it.key()] = it.value();
+      body = base;
+    }
     // 场景 id 选填：留空时自动生成（主管不需要理解英文标识的内部含义）。
     // 手工填写仍走白名单校验；生成值 sc-<毫秒时间戳> 必然满足 id 规则。
-    json body = payload;
     const auto requested_id = body.contains("id") && body["id"].is_string()
         ? trim(body["id"].get<std::string>()) : std::string();
     if (requested_id.empty()) {
@@ -359,17 +908,23 @@ class ReliableDatabase {
       throw ApiError(409, "SORT_ORDER_TAKEN", "排序号已被其他场景占用");
     }
     tx.exec_params(R"(
-      INSERT INTO scenarios(id, name, category, summary, difficulty, focus, patient_profile,
-        hidden_config, roleplay_config, max_rounds, sort_order, is_active, is_template)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, FALSE)
+      INSERT INTO scenarios(id, name, category, summary, difficulty, focus, dimension_weights,
+        patient_profile, hidden_config, roleplay_config, max_rounds, sort_order, is_active,
+        is_template, difficulty_tiers)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb,
+              $11, $12, $13, FALSE, $14::jsonb)
     )", data["id"].get<std::string>(), data["name"].get<std::string>(),
         data["category"].get<std::string>(), data["summary"].get<std::string>(),
         data["difficulty"].get<std::string>(), data["focus"].dump(),
+        data["dimensionWeights"].dump(),
         data["patientProfile"].dump(), data["hiddenConfig"].dump(),
         data["roleplayConfig"].dump(), data["maxRounds"].get<int>(),
-        data["sortOrder"].get<int>(), data["isActive"].get<bool>());
+        data["sortOrder"].get<int>(), data["isActive"].get<bool>(),
+        data["difficultyTiers"].dump());
     tx.commit();
-    return {{"id", data["id"].get<std::string>()}, {"created", true}};
+    return {{"id", data["id"].get<std::string>()}, {"created", true},
+            /* 质量软校验随响应下发：不拦保存，但要让主管知道哪些判据没过 */
+            {"warnings", scenarioQualityWarnings(data)}};
   }
 
   /* 更新场景：请求体里出现的键覆盖既有值，未出现的键保留原值——
@@ -382,17 +937,29 @@ class ReliableDatabase {
     auto connection = database_pool_->acquire();
     pqxx::work tx(connection.get());
     const auto rows = tx.exec_params(R"(
-      SELECT id, name, category, summary, difficulty, focus, patient_profile, hidden_config,
-        roleplay_config, max_rounds, sort_order, is_active
+      SELECT id, name, category, summary, difficulty, focus, dimension_weights, patient_profile,
+        hidden_config, roleplay_config, max_rounds, sort_order, is_active, difficulty_tiers,
+        generation_id
       FROM scenarios WHERE id = $1 FOR UPDATE
     )", scenario_id);
     if (rows.empty()) throw ApiError(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    /* 生成中的占位行不允许被编辑。两条理由，任一条单独成立就足够：
+         · 占位内容本来就不满足校验（空 focus / 空 hidden_config），存也存不进去；
+         · 放行的话，主管刚改的内容会被随后成功写入的 AI 结果整个覆盖。
+       而且「上一句是 AI 生成中、下一句变成 500 约束冲突」比直接拒绝更糟。 */
+    if (!rows[0]["generation_id"].is_null()) {
+      throw ApiError(409, "SCENARIO_GENERATING",
+                     "这条场景的 AI 骨架正在生成，完成后才能编辑");
+    }
     json merged = {{"id", scenario_id},
                    {"name", rows[0]["name"].c_str()},
                    {"category", rows[0]["category"].c_str()},
                    {"summary", rows[0]["summary"].c_str()},
                    {"difficulty", rows[0]["difficulty"].c_str()},
                    {"focus", parseColumn(rows[0], "focus", true)},
+                   /* 并进 base，这样 PUT 不带该字段时保留原值（与其余字段同一套合并语义） */
+                   {"dimensionWeights", parseColumn(rows[0], "dimension_weights")},
+                   {"difficultyTiers", parseColumn(rows[0], "difficulty_tiers")},
                    {"patientProfile", parseColumn(rows[0], "patient_profile")},
                    {"hiddenConfig", parseColumn(rows[0], "hidden_config")},
                    {"roleplayConfig", parseColumn(rows[0], "roleplay_config")},
@@ -403,6 +970,15 @@ class ReliableDatabase {
       if (it.key() == "id" || it.key() == "isTemplate") continue;
       merged[it.key()] = it.value();
     }
+    /* 变体池兜底：主管端编辑表单不持有 variants（目前没有编辑器），它提交的 hiddenConfig
+       里必然没有该键；而 payload 的 hiddenConfig 是**整体覆盖** DB 值的。不在这里补回，
+       主管哪怕只改个简介，变体池也会被静默清空（已确认的链路：白名单重建 + 整体覆盖）。
+       将来主管端有了变体编辑器，它会显式提交 variants，走 normalizedVariants 的校验。 */
+    const auto db_hidden = parseColumn(rows[0], "hidden_config");
+    if (db_hidden.contains("variants") && merged.contains("hiddenConfig") &&
+        merged["hiddenConfig"].is_object() && !merged["hiddenConfig"].contains("variants")) {
+      merged["hiddenConfig"]["variants"] = db_hidden["variants"];
+    }
     const auto data = validateScenarioPayload(merged);
     if (data["sortOrder"].get<int>() != rows[0]["sort_order"].as<int>() &&
         !tx.exec_params("SELECT 1 FROM scenarios WHERE sort_order = $1 AND id <> $2",
@@ -411,16 +987,20 @@ class ReliableDatabase {
     }
     tx.exec_params(R"(
       UPDATE scenarios SET name = $2, category = $3, summary = $4, difficulty = $5,
-        focus = $6::jsonb, patient_profile = $7::jsonb, hidden_config = $8::jsonb,
-        roleplay_config = $9::jsonb, max_rounds = $10, sort_order = $11, is_active = $12
+        focus = $6::jsonb, dimension_weights = $7::jsonb, patient_profile = $8::jsonb,
+        hidden_config = $9::jsonb, roleplay_config = $10::jsonb, max_rounds = $11,
+        sort_order = $12, is_active = $13, difficulty_tiers = $14::jsonb
       WHERE id = $1
     )", scenario_id, data["name"].get<std::string>(), data["category"].get<std::string>(),
         data["summary"].get<std::string>(), data["difficulty"].get<std::string>(),
-        data["focus"].dump(), data["patientProfile"].dump(), data["hiddenConfig"].dump(),
+        data["focus"].dump(), data["dimensionWeights"].dump(),
+        data["patientProfile"].dump(), data["hiddenConfig"].dump(),
         data["roleplayConfig"].dump(), data["maxRounds"].get<int>(),
-        data["sortOrder"].get<int>(), data["isActive"].get<bool>());
+        data["sortOrder"].get<int>(), data["isActive"].get<bool>(),
+        data["difficultyTiers"].dump());
     tx.commit();
-    return {{"id", scenario_id}, {"updated", true}, {"isActive", data["isActive"].get<bool>()}};
+    return {{"id", scenario_id}, {"updated", true}, {"isActive", data["isActive"].get<bool>()},
+            {"warnings", scenarioQualityWarnings(data)}};
   }
 
   static bool profileField(const json& custom_profile, const char* key, std::string& out) {
@@ -478,6 +1058,12 @@ class ReliableDatabase {
       opening = "您好，我最近" + concern + "，心里挺" + emotion + "的";
       if (has_age) opening += "。我今年" + age + "岁";
       opening += "，能麻烦您帮我看看是怎么回事吗？";
+    } else if (has_emotion && (emotion == "不满" || emotion == "愤怒")) {
+      // 冲突情绪不能套「麻烦您帮我看看」的求助口吻：愤怒的患者是来要说法、
+      // 不是来请教问题的，句式必须跟着换，否则开场白人设自相矛盾。
+      opening = "您好，我最近" + concern + "，说实话我挺" + emotion + "的";
+      if (has_age) opening += "，我今年" + age + "岁";
+      opening += "，想请你们给我个说法。";
     } else {
       opening = "您好，我最近" + concern;
       if (has_age) opening += "，我今年" + age + "岁";
@@ -487,8 +1073,111 @@ class ReliableDatabase {
     return opening;
   }
 
+  /* 从档位给的多个开场白里挑一条（迁移 027）。
+     用会话 id 做种子而不是全局随机数：同一会话永远得到同一条（可复现、便于排查），
+     不同会话会看到不同变体——这正是变体要的效果（同一患者练到第三次，连开场都一字不差，
+     这个分就不再代表能力）。全局 RNG 会让「同样的输入得到不同的输出」，
+     测试与问题定位都失去准星，而这里并不需要真随机。 */
+  static std::string pickTierOpening(const json& openings, const std::string& seed,
+                                     const std::string& fallback) {
+    std::vector<std::string> items;
+    if (openings.is_array()) {
+      for (const auto& item : openings) {
+        if (!item.is_string()) continue;
+        const auto text = trim(item.get<std::string>());
+        if (!text.empty()) items.push_back(text);
+      }
+    }
+    if (items.empty()) return fallback;
+    if (items.size() == 1) return items[0];
+    /* FNV-1a 自己算，不用 std::hash：后者不保证跨标准库 / 跨编译器版本稳定，
+       而这里需要「同一个会话 id 在哪儿都挑到同一条」。 */
+    unsigned long long hash = 1469598103934665603ULL;
+    for (const unsigned char ch : seed) {
+      hash ^= ch;
+      hash *= 1099511628211ULL;
+    }
+    return items[static_cast<size_t>(hash % items.size())];
+  }
+
+  /* 把难度档位叠加到场景的 hidden_config 上（026 的 initialState + 027 的开场白）。
+     只做覆盖链「场景默认 → 档位」这两步，第三步（自定义画像）由调用方完成——
+     两个调用点对画像的处理略有不同：restartSession 只沿用 emotion。
+
+     tier 不是 advanced、或这条场景压根没有档位定义时原样返回：「没有进阶档」是正常状态
+     （主管自建的新场景就没有，026 只回填过一次），不是学员的错，
+     不该让他卡在创建会话这一步。 */
+  static json applyTierToHidden(const json& hidden, const std::string& tier, const json& tiers,
+                                const std::string& seed) {
+    json merged = hidden.is_object() ? hidden : json::object();
+    if (!merged.contains("initialState") || !merged["initialState"].is_object()) {
+      merged["initialState"] = json::object();
+    }
+    if (!merged.contains("opening") || !merged["opening"].is_string()) merged["opening"] = "";
+    if (tier != "advanced" || !tiers.contains("advanced") || !tiers["advanced"].is_object()) {
+      return merged;
+    }
+    const auto& advanced = tiers["advanced"];
+    if (advanced.contains("initialState") && advanced["initialState"].is_object()) {
+      for (auto it = advanced["initialState"].begin(); it != advanced["initialState"].end(); ++it) {
+        merged["initialState"][it.key()] = it.value();
+      }
+    }
+    /* 开场白必须跟着档位一起换。只改 initialState 的话，患者内部状态是更紧张了，
+       开口说的却还是标准档那句原话——学员听不出难度差别，等于档位只做了一半（027 修的就是这里）。 */
+    if (advanced.contains("openings")) {
+      merged["opening"] = pickTierOpening(advanced["openings"], seed,
+                                          merged.value("opening", std::string()));
+    }
+    return merged;
+  }
+
+  /* P1-2 同场景变体池：从 hidden_config.variants 里按会话 id 确定性选一组，
+     覆盖 hidden（隐藏顾虑）与 instructions（披露节奏）。
+     目的：同一学员复练同一场景时，患者「藏着什么顾虑、什么条件下才松口」每次都不同，
+     背答案就失效了——这正是 D1 里比「难度不够」更该担心的分数通胀。
+     选取做成 session_id 的纯函数（FNV-1a，与 pickTierOpening 同源）：同一会话
+     每轮重算结果一致（患者人设不漂移）、不同会话看到不同变体；不落库、零迁移。
+     variants 缺省或空 = 无变体，原样返回（与迁移前的行为完全一致）。 */
+  static json applyVariantsToHidden(const json& hidden, const std::string& seed) {
+    if (!hidden.is_object()) return hidden.is_null() ? json::object() : hidden;
+    /* 先复制并剥离 variants 元数据键：它是给后端选取用的，绝不能泄露进患者提示词——
+       否则模型会看到「其他变体里的顾虑」，等于把答案递到它眼前。 */
+    json merged = hidden;
+    json variants = json::array();
+    if (merged.contains("variants")) {
+      variants = merged["variants"];
+      merged.erase("variants");
+    }
+    if (!variants.is_array() || variants.empty()) return merged;
+    size_t index = 0;
+    if (variants.size() > 1) {
+      unsigned long long hash = 1469598103934665603ULL;
+      for (const unsigned char ch : seed) {
+        hash ^= ch;
+        hash *= 1099511628211ULL;
+      }
+      index = static_cast<size_t>(hash % variants.size());
+    }
+    const auto& chosen = variants[index];
+    if (!chosen.is_object()) return merged;
+    if (chosen.contains("hidden") && chosen["hidden"].is_array()) {
+      merged["hidden"] = chosen["hidden"];
+    }
+    if (chosen.contains("instructions") && chosen["instructions"].is_string() &&
+        !trim(chosen["instructions"].get<std::string>()).empty()) {
+      merged["instructions"] = chosen["instructions"].get<std::string>();
+    }
+    return merged;
+  }
+
+  /* tier：难度档位（迁移 026 / 027）。'standard' = 场景默认强度；
+     'advanced' 用 `scenarios.difficulty_tiers.advanced` 覆盖初始状态与开场白。
+     覆盖链是「场景默认 → 档位 → 自定义画像」：学员显式填的画像优先级最高，
+     因为那是他明确表达的要求，不该被档位悄悄改掉。 */
   json createSession(const std::string& user_id, const std::string& scenario_id,
-                     const json& custom_profile = nullptr) const {
+                     const json& custom_profile = nullptr,
+                     const std::string& tier = "standard") const {
     auto connection = database_pool_->acquire();
     pqxx::work tx(connection.get());
     const auto scenario = tx.exec_params("SELECT * FROM scenarios WHERE id = $1", scenario_id);
@@ -496,10 +1185,14 @@ class ReliableDatabase {
     const auto& row = scenario[0];
     const auto hidden = json::parse(row["hidden_config"].c_str());
 
+    /* 会话 id 先生成：进阶档要从多条开场白里按会话 id 确定性地挑一条（见 pickTierOpening），
+       所以它必须早于开场白的计算。 */
+    const auto session_id = makeId("sess");
+    json merged_hidden = applyTierToHidden(hidden, tier, parseColumn(row, "difficulty_tiers"),
+                                           session_id);
+
     // Merge custom patient profile into hidden initialState if provided
-    json merged_hidden = hidden;
     if (custom_profile.is_object()) {
-      if (!merged_hidden.contains("initialState")) merged_hidden["initialState"] = json::object();
       auto& initial = merged_hidden["initialState"];
       if (custom_profile.contains("emotion") && custom_profile["emotion"].is_string()) {
         initial["emotion"] = custom_profile["emotion"].get<std::string>();
@@ -515,19 +1208,20 @@ class ReliableDatabase {
         {"trustLevel", merged_hidden["initialState"].value("trustLevel", 50)},
         {"revealedInformation", json::array()}, {"riskTriggered", false},
     };
-    const auto session_id = makeId("sess");
     const auto opening_id = makeId("msg");
-      const std::string custom_profile_str = custom_profile.is_object() ? custom_profile.dump() : "{}";
-      // 开场白优先基于自定义画像生成，未提供画像时回退到场景模板
-      const std::string opening = customPatientOpening(custom_profile,
-                                                       hidden["opening"].get<std::string>());
+    const std::string custom_profile_str = custom_profile.is_object() ? custom_profile.dump() : "{}";
+    /* 开场白优先按自定义画像拼，未提供画像时用「档位覆盖后」的场景开场白。
+       必须读 merged_hidden 而不是 hidden——读 hidden 的话进阶档的台词永远不会生效，
+       而且这种错法不会报任何错，只是「档位看起来没反应」。 */
+    const std::string opening = customPatientOpening(custom_profile,
+                                                     merged_hidden.value("opening", std::string()));
       const auto inserted = tx.exec_params(R"(
       INSERT INTO sessions
-          (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, patient_state, custom_patient_profile)
-        VALUES ($1, $2, $3, $4, 'in_progress', 0, $5, $6::jsonb, $7::jsonb)
+          (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, patient_state, custom_patient_profile, difficulty_tier)
+        VALUES ($1, $2, $3, $4, 'in_progress', 0, $5, $6::jsonb, $7::jsonb, $8)
         ON CONFLICT (user_id, scenario_id) WHERE status = 'in_progress' DO NOTHING
         RETURNING id
-      )", session_id, user_id, scenario_id, row["name"].c_str(), row["max_rounds"].as<int>(), state.dump(), custom_profile_str);
+      )", session_id, user_id, scenario_id, row["name"].c_str(), row["max_rounds"].as<int>(), state.dump(), custom_profile_str, tier);
       if (inserted.empty()) throw ApiError(409, "SESSION_IN_PROGRESS", "该场景已有进行中的训练");
     tx.exec_params(R"(
       INSERT INTO messages(id, session_id, role, content, round, emotion)
@@ -543,25 +1237,30 @@ class ReliableDatabase {
     auto connection = database_pool_->acquire();
     pqxx::work tx(connection.get());
     const auto previous = tx.exec_params(
-        "SELECT scenario_id, status, custom_patient_profile FROM sessions WHERE id = $1 AND user_id = $2 FOR UPDATE",
+        "SELECT scenario_id, status, custom_patient_profile, difficulty_tier FROM sessions WHERE id = $1 AND user_id = $2 FOR UPDATE",
         session_id, user_id);
     if (previous.empty()) throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
     if (std::string(previous[0]["status"].c_str()) != "in_progress") {
       throw ApiError(409, "SESSION_NOT_RESTARTABLE", "只有进行中的训练可以重新开始");
     }
     const auto scenario_id = std::string(previous[0]["scenario_id"].c_str());
-    // 保留旧会话的自定义画像，重新开始时继续沿用
+    // 保留旧会话的自定义画像与难度档位：重开沿用同一档，否则「再来一次」会悄悄换掉难度
     json custom_profile = nullptr;
     if (!previous[0]["custom_patient_profile"].is_null()) {
       custom_profile = json::parse(previous[0]["custom_patient_profile"].c_str());
     }
+    const auto tier = std::string(previous[0]["difficulty_tier"].c_str());
     tx.exec_params("UPDATE sessions SET status = 'abandoned', updated_at = NOW() WHERE id = $1", session_id);
     const auto scenario = tx.exec_params("SELECT * FROM scenarios WHERE id = $1", scenario_id)[0];
     const auto hidden = json::parse(scenario["hidden_config"].c_str());
-    json merged_hidden = hidden;
+    const auto new_id = makeId("sess");
+    /* 与 createSession 同一套覆盖链：场景默认 → 档位 → 自定义画像。
+       种子用**新的**会话 id：重开算新的一局，开场白可能换成另一条变体——这正是多句
+       变体想要的效果（同一条台词背三遍，分数就不再代表能力）。难度参数与原来完全一致。 */
+    json merged_hidden = applyTierToHidden(hidden, tier, parseColumn(scenario, "difficulty_tiers"),
+                                           new_id);
     if (custom_profile.is_object() && custom_profile.contains("emotion")
         && custom_profile["emotion"].is_string()) {
-      if (!merged_hidden.contains("initialState")) merged_hidden["initialState"] = json::object();
       merged_hidden["initialState"]["emotion"] = custom_profile["emotion"].get<std::string>();
     }
     const json state = {
@@ -570,17 +1269,16 @@ class ReliableDatabase {
         {"trustLevel", merged_hidden["initialState"].value("trustLevel", 50)},
         {"revealedInformation", json::array()}, {"riskTriggered", false},
     };
-    const auto new_id = makeId("sess");
     const auto opening_id = makeId("msg");
     const std::string custom_profile_str = custom_profile.is_object() ? custom_profile.dump() : "{}";
     const std::string opening = customPatientOpening(custom_profile,
-                                                     hidden["opening"].get<std::string>());
+                                                     merged_hidden.value("opening", std::string()));
     tx.exec_params(R"(
       INSERT INTO sessions
-        (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, patient_state, custom_patient_profile)
-      VALUES ($1, $2, $3, $4, 'in_progress', 0, $5, $6::jsonb, $7::jsonb)
+        (id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, patient_state, custom_patient_profile, difficulty_tier)
+      VALUES ($1, $2, $3, $4, 'in_progress', 0, $5, $6::jsonb, $7::jsonb, $8)
     )", new_id, user_id, scenario_id, scenario["name"].c_str(),
-        scenario["max_rounds"].as<int>(), state.dump(), custom_profile_str);
+        scenario["max_rounds"].as<int>(), state.dump(), custom_profile_str, tier);
     tx.exec_params("INSERT INTO messages(id, session_id, role, content, round, emotion) VALUES ($1, $2, 'patient', $3, 0, $4)",
                    opening_id, new_id, opening, jsonString(state, "emotion"));
     const auto saved = getSessionRow(tx, new_id, user_id);
@@ -733,7 +1431,7 @@ class ReliableDatabase {
     auto connection = database_pool_->acquire();
     pqxx::read_transaction tx(connection.get());
     std::string query = "SELECT id, scenario_id, scenario_name, status, current_round, max_rounds, " +
-        std::string(kSessionTimes) + ", total_score, evaluation_status, custom_patient_profile FROM sessions WHERE user_id = " +
+        std::string(kSessionTimes) + ", total_score, evaluation_status, custom_patient_profile, difficulty_tier FROM sessions WHERE user_id = " +
         tx.quote(user_id);
     if (status != "all") query += " AND status = " + tx.quote(status);
     if (!scenario_id.empty()) query += " AND scenario_id = " + tx.quote(scenario_id);
@@ -1158,7 +1856,7 @@ class ReliableDatabase {
       const auto recent_rows = tx.exec(
           "SELECT id, scenario_id, scenario_name, status, current_round, max_rounds, " +
           std::string(kSessionTimes) +
-          ", total_score, evaluation_status, custom_patient_profile FROM sessions WHERE user_id = " + tx.quote(user_id) +
+          ", total_score, evaluation_status, custom_patient_profile, difficulty_tier FROM sessions WHERE user_id = " + tx.quote(user_id) +
           " AND status <> 'abandoned' ORDER BY updated_at DESC LIMIT 5");
       for (const auto& row : recent_rows) recent.push_back(sessionJson(row));
     }
@@ -1715,6 +2413,12 @@ class ReliableDatabase {
         COUNT(s.id) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready') AS completed_sessions,
         COUNT(s.id) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready' AND s.total_score >= 60) AS passed_sessions,
         AVG(s.total_score) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready') AS average_score,
+        AVG(s.total_score) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready'
+          AND s.difficulty_tier = 'standard') AS avg_standard_score,
+        AVG(s.total_score) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready'
+          AND s.difficulty_tier = 'advanced') AS avg_advanced_score,
+        COUNT(s.id) FILTER (WHERE s.status = 'completed' AND s.evaluation_status = 'ready'
+          AND s.difficulty_tier = 'advanced') AS advanced_sessions,
         to_char(MAX(s.updated_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS last_training_date
       FROM users u LEFT JOIN sessions s ON s.user_id = u.id
       WHERE u.role = 'learner' AND u.status = 'active'
@@ -1731,6 +2435,14 @@ class ReliableDatabase {
                          {"joinedAt", row["joined_at"].c_str()}, {"totalSessions", row["total_sessions"].as<int>()},
                          {"completedSessions", completed},
                          {"averageScore", row["average_score"].is_null() ? 0.0 : row["average_score"].as<double>()},
+                         /* 分档均分（P1-1）：混在一起的平均分会把「主动挑战更难档」
+                            读成「退步」。没练过进阶档是 null——前端必须把它显示成
+                            「未挑战」而不是 0，0 会被读成「练过但很差」。 */
+                         {"standardAvgScore", row["avg_standard_score"].is_null()
+                             ? json(nullptr) : json(row["avg_standard_score"].as<double>())},
+                         {"advancedAvgScore", row["avg_advanced_score"].is_null()
+                             ? json(nullptr) : json(row["avg_advanced_score"].as<double>())},
+                         {"advancedCount", row["advanced_sessions"].as<int>()},
                          {"passRate", completed == 0 ? 0.0
                             : std::round(static_cast<double>(passed) / completed * 1000.0) / 10.0},
                          {"lastTrainingDate", row["last_training_date"].is_null()
@@ -1869,11 +2581,17 @@ class ReliableDatabase {
       SELECT COUNT(*) FILTER (WHERE status <> 'abandoned') AS total_sessions,
         COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS completed_sessions,
         COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready' AND total_score >= 60) AS passed_sessions,
-        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS average_score
+        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready') AS average_score,
+        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready'
+          AND difficulty_tier = 'standard') AS avg_standard_score,
+        AVG(total_score) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready'
+          AND difficulty_tier = 'advanced') AS avg_advanced_score,
+        COUNT(*) FILTER (WHERE status = 'completed' AND evaluation_status = 'ready'
+          AND difficulty_tier = 'advanced') AS advanced_sessions
       FROM sessions WHERE user_id = $1
     )", member_id)[0];
     const auto report_rows = tx.exec_params(R"(
-      SELECT s.id, s.scenario_id, s.scenario_name, s.total_score,
+      SELECT s.id, s.scenario_id, s.scenario_name, s.total_score, s.difficulty_tier,
         to_char(s.finished_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS finished_date, e.report
       FROM sessions s JOIN evaluations e ON e.session_id = s.id
       WHERE s.user_id = $1 AND s.status = 'completed' AND s.evaluation_status = 'ready' AND e.status = 'ready'
@@ -1895,6 +2613,8 @@ class ReliableDatabase {
       all_trend.push_back({{"sessionId", row["id"].c_str()}, {"scenarioId", row["scenario_id"].c_str()},
                            {"scenarioName", row["scenario_name"].c_str()}, {"date", row["finished_date"].c_str()},
                            {"totalScore", row["total_score"].as<int>()},
+                          /* 档位随点下发：混档趋势本身不可比，前端默认只画标准档 */
+                          {"difficultyTier", row["difficulty_tier"].c_str()},
                            {"scores", report.value("dimensionScores", json::object())}});
     }
     const auto averages = dimensionAverages(totals, dimension_counts, keys);
@@ -1914,6 +2634,11 @@ class ReliableDatabase {
     }
     const auto passed = stats["passed_sessions"].as<int>();
     const auto reported_completed = stats["completed_sessions"].as<int>();
+    const auto advanced_sessions = stats["advanced_sessions"].as<int>();
+    /* 进阶挑战率（P1-1）：比均分更有信息量的一个数——「标准档 88 分但从未挑战进阶档」
+       直接回答「他是不是在舒适区」。分母是已完成报告数，0 时置 null（前端显示「—」）。 */
+    const auto advanced_challenge_rate = reported_completed == 0
+        ? json(nullptr) : json(std::round(static_cast<double>(advanced_sessions) / reported_completed * 1000.0) / 10.0);
     // 抽查入口需要的最近会话（含进行中）：与 recentSessions（仅已完成已评分）分开，
     // 避免动到 member-detail 已消费的字段结构。
     const auto inspect_rows = tx.exec_params(R"(
@@ -1939,6 +2664,12 @@ class ReliableDatabase {
                            {"joinedAt", user_rows[0]["joined_at"].c_str()}}},
             {"totalSessions", stats["total_sessions"].as<int>()}, {"completedSessions", reported_completed},
             {"averageScore", stats["average_score"].is_null() ? 0.0 : stats["average_score"].as<double>()},
+            {"standardAvgScore", stats["avg_standard_score"].is_null()
+                ? json(nullptr) : json(stats["avg_standard_score"].as<double>())},
+            {"advancedAvgScore", stats["avg_advanced_score"].is_null()
+                ? json(nullptr) : json(stats["avg_advanced_score"].as<double>())},
+            {"advancedCount", advanced_sessions},
+            {"advancedChallengeRate", advanced_challenge_rate},
             {"passRate", reported_completed == 0 ? 0.0
                 : std::round(static_cast<double>(passed) / reported_completed * 1000.0) / 10.0},
             {"dimensionAverages", averages}, {"weaknesses", dimensionWeaknesses(averages)},
@@ -2031,7 +2762,19 @@ class ReliableDatabase {
     if (due_at.empty()) throw ApiError(400, "INVALID_ARGUMENT", "截止时间不能为空");
     const auto required_count = clampInt(jsonInt(payload, "requiredCount", 1), 1, 20);
     const auto required_pass_rate = clampInt(jsonInt(payload, "requiredPassRate", 60), 0, 100);
+    /* 防刷分上限：0 = 不限（与存量计划语义一致）。它不改变 required_count，
+       只把「同一场景最多能贡献几次」封顶——上限一到，剩余次数只能靠别的场景补齐，
+       从而堵住「反复练最容易的场景把某维度刷上去」。计入最早 N 次，
+       理由见 planProgressJoin 的注释。 */
+    const auto max_per_scenario = clampInt(jsonInt(payload, "maxPerScenario", 0), 0, 10);
     const auto description = utf8Truncate(trim(jsonString(payload, "description")), 500);
+    /* 目标维度：可选。空 = 不限维度，达标仍看综合分（存量计划语义不变）；
+       非空时必须是维度目录里的合法 key，否则拒绝——写进非法 key 会让达标分数
+       永远回退综合分，主管却以为在考弱项，属于静默失效。 */
+    auto focus_dimension = trim(jsonString(payload, "focusDimension"));
+    if (!focus_dimension.empty() && !isPlanDimension(focus_dimension)) {
+      throw ApiError(400, "INVALID_ARGUMENT", "目标维度取值无效");
+    }
     json scenario_ids = json::array();
     if (payload.contains("scenarioIds") && payload["scenarioIds"].is_array()) {
       for (const auto& item : payload["scenarioIds"]) {
@@ -2073,10 +2816,10 @@ class ReliableDatabase {
     }
     tx.exec_params(R"(
       INSERT INTO training_plans
-        (id, title, period, scenario_ids, required_count, required_pass_rate, description, due_at, created_by)
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::timestamptz, $9)
+        (id, title, period, scenario_ids, required_count, required_pass_rate, description, due_at, created_by, focus_dimension, max_per_scenario)
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::timestamptz, $9, $10, $11)
     )", plan_id, title, period, scenario_ids.dump(), required_count, required_pass_rate,
-        description, due_at, supervisor_id);
+        description, due_at, supervisor_id, focus_dimension, max_per_scenario);
     /* 指定学员时先确认至少有一人可用，否则直接拒绝——
        避免「计划发布成功但零指派」这种静默失效（前端会提示覆盖 0 人）。
        可用 = 在职且当前属于本主管团队。 */
@@ -2106,11 +2849,301 @@ class ReliableDatabase {
     tx.commit();
     return {{"plan", {{"id", plan_id}, {"title", title}, {"period", period}, {"dueAt", due_at},
                       {"requiredCount", required_count}, {"requiredPassRate", required_pass_rate},
+                      {"maxPerScenario", max_per_scenario},
                       {"scenarioIds", scenario_ids}, {"description", description}}},
             {"assignmentCount", static_cast<int>(assigned.affected_rows())},
             {"targeted", targeted},
             {"requestedCount", targeted ? static_cast<int>(target_user_ids.size()) : 0},
             {"skippedCount", skipped_count}};
+  }
+
+  /* ── AI 计划草稿（迁移 021） ──────────────────────────────────────────
+     大模型按学员薄弱项生成计划后先落 draft，由主管审核后才指派给学员。
+     草稿刻意不写 training_assignments，因此绝不会出现在学员待办里；
+     只有 publishPlan 之后才生效。本层只负责落库，模型调用一律在事务外完成
+     （AGENTS.md：模型网络调用不得持有数据库事务）。 */
+
+  json createAiPlanDraft(const std::string& supervisor_id, const json& draft,
+                         const std::string& learner_id) const {
+    const auto title = utf8Truncate(trim(jsonString(draft, "title")), 100);
+    if (title.empty()) throw ApiError(400, "INVALID_ARGUMENT", "AI 草稿缺少标题");
+    auto period = jsonString(draft, "period", "week");
+    if (period != "week" && period != "month") period = "week";
+    /* 截止时间由模型给「几天内完成」，真正的时间戳在 SQL 里用 NOW() 推算：
+       C++ 侧手算时区与 ISO 格式化容易出错（且要带 +08:00），交给数据库最稳。 */
+    const auto due_in_days = clampInt(jsonInt(draft, "dueInDays", 7), 1, 30);
+    /* 数值一律再 clamp 一次：模型输出不可信，且这里是与人工发布同一套边界。 */
+    const auto required_count = clampInt(jsonInt(draft, "requiredCount", 3), 1, 20);
+    const auto required_pass_rate = clampInt(jsonInt(draft, "requiredPassRate", 60), 0, 100);
+    const auto description = utf8Truncate(trim(jsonString(draft, "description")), 500);
+    const auto rationale = utf8Truncate(trim(jsonString(draft, "rationale")), 500);
+    /* 目标维度必须落在五维白名单内。模型有可能自造 key（如 "communication"），
+       一旦落库，达标 SQL 里 report->'dimensionScores'->自造key 永远是 NULL，
+       计划会永久判不达标——比丢弃这个字段更糟。所以不认识就置空（回退综合分）。 */
+    const auto requested_dimension = trim(jsonString(draft, "focusDimension"));
+    const auto focus_dimension = isPlanDimension(requested_dimension)
+        ? requested_dimension : std::string();
+    json scenario_ids = json::array();
+    if (draft.contains("scenarioIds") && draft["scenarioIds"].is_array()) {
+      for (const auto& item : draft["scenarioIds"]) {
+        if (item.is_string() && !item.get<std::string>().empty() && scenario_ids.size() < 10) {
+          scenario_ids.push_back(item);
+        }
+      }
+    }
+    if (scenario_ids.empty()) {
+      throw ApiError(400, "INVALID_ARGUMENT", "AI 草稿未包含任何有效场景");
+    }
+    const auto plan_id = makeId("plan");
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    /* 从生成到主管采纳之间，学员可能已被移出团队；此时草稿不再可发布。 */
+    const auto member = tx.exec_params(R"(
+      SELECT 1 FROM supervisor_team_members WHERE learner_id = $1 AND supervisor_id = $2
+    )", learner_id, supervisor_id);
+    if (member.empty()) throw ApiError(400, "INVALID_ARGUMENT", "该学员已不在你的团队中");
+    /* 目标维度必须真能由所选场景练到。刻意放在落库边界而不是模型网关里：这是一条
+       **数据一致性约束**，任何网关（含将来接入的微调模型）都必须绕不过去——写在某个
+       网关实现内部就只能保护那一条路径。
+       提示词里一直写着这条规则，但此前没有任何机制验证它：模型可以选一个练不到该维度的
+       场景，而 focus_dimension 只做「是不是五维之一」的白名单校验。落库后该维度永远
+       没有有效评分，达标判定静默回退综合分——主管以为在考 A、实际按 B 判。
+       空 focus_dimension 表示「不限维度」，是合法降级，不拦。 */
+    if (!focus_dimension.empty()) {
+      const auto weight_rows = tx.exec_params(R"(
+        SELECT dimension_weights FROM scenarios
+        WHERE id IN (SELECT jsonb_array_elements_text($1::jsonb))
+      )", scenario_ids.dump());
+      std::set<std::string> trainable;
+      for (const auto& weight_row : weight_rows) {
+        const auto weights = parseColumn(weight_row, "dimension_weights");
+        if (!weights.is_object()) continue;
+        for (const auto& entry : weights.items()) {
+          if (!isPlanDimension(entry.key())) continue;
+          if (entry.value().is_number() && entry.value().get<double>() > 0.0) {
+            trainable.insert(entry.key());
+          }
+        }
+      }
+      if (trainable.count(focus_dimension) == 0) {
+        std::string available;
+        for (const auto& key : trainable) {
+          if (!available.empty()) available += "、";
+          available += planDimensionLabel(key);
+        }
+        throw ApiError(400, "PLAN_DIMENSION_NOT_TRAINABLE",
+            "目标维度「" + planDimensionLabel(focus_dimension) + "」在所选场景里无法练到"
+            + (available.empty() ? "（所选场景尚未标注维度权重）"
+                                 : "；所选场景可练到的维度只有：" + available)
+            + "。若照此落库，该维度将永远没有有效评分，达标判定会静默回退综合分。");
+      }
+    }
+    tx.exec_params(R"(
+      INSERT INTO training_plans
+        (id, title, period, scenario_ids, required_count, required_pass_rate, description,
+         due_at, created_by, source, status, origin_learner_id, rationale, focus_dimension)
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, NOW() + make_interval(days => $8), $9,
+              'ai', 'draft', $10, $11, $12)
+    )", plan_id, title, period, scenario_ids.dump(), required_count, required_pass_rate,
+        description, due_in_days, supervisor_id, learner_id, rationale, focus_dimension);
+    tx.commit();
+    return {{"id", plan_id}, {"title", title}, {"period", period},
+            {"scenarioIds", scenario_ids}, {"requiredCount", required_count},
+            {"requiredPassRate", required_pass_rate}, {"description", description},
+            {"rationale", rationale}, {"dueInDays", due_in_days}, {"learnerId", learner_id},
+            {"focusDimension", focus_dimension},
+            {"focusDimensionLabel", focus_dimension.empty()
+                 ? std::string() : planDimensionLabel(focus_dimension)}};
+  }
+
+  json listPlanDrafts(const std::string& supervisor_id) const {
+    auto connection = database_pool_->acquire();
+    pqxx::read_transaction tx(connection.get());
+    /* 只列本人创建、且目标学员仍在本人团队内的草稿：学员被移出团队后，
+       草稿已无发布对象，继续展示只会让主管点进一个必然失败的入口。 */
+    const auto rows = tx.exec_params(R"(
+      SELECT p.id, p.title, p.period, p.scenario_ids, p.required_count, p.required_pass_rate,
+        p.description, p.rationale, p.origin_learner_id, p.focus_dimension,
+        to_char(p.due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
+        COALESCE(NULLIF(u.display_name, ''), '学员') AS learner_name
+      FROM training_plans p
+      LEFT JOIN users u ON u.id = p.origin_learner_id
+      WHERE p.created_by = $1 AND p.status = 'draft'
+        AND (p.origin_learner_id IS NULL OR EXISTS (
+          SELECT 1 FROM supervisor_team_members tm
+          WHERE tm.learner_id = p.origin_learner_id AND tm.supervisor_id = $1))
+      ORDER BY p.created_at DESC
+    )", supervisor_id);
+    json items = json::array();
+    for (const auto& row : rows) {
+      items.push_back({{"id", row["id"].c_str()}, {"title", row["title"].c_str()},
+                       {"period", row["period"].c_str()},
+                       {"scenarioIds", jsonbColumn(row, "scenario_ids")},
+                       {"requiredCount", row["required_count"].as<int>()},
+                       {"requiredPassRate", row["required_pass_rate"].as<int>()},
+                       {"description", row["description"].c_str()},
+                       {"rationale", row["rationale"].c_str()},
+                       {"focusDimension", row["focus_dimension"].c_str()},
+                       {"focusDimensionLabel", std::string(row["focus_dimension"].c_str()).empty()
+                            ? std::string()
+                            : planDimensionLabel(std::string(row["focus_dimension"].c_str()))},
+                       {"learnerId", row["origin_learner_id"].is_null()
+                                        ? std::string() : std::string(row["origin_learner_id"].c_str())},
+                       {"learnerName", row["learner_name"].c_str()},
+                       {"dueAt", row["due_at"].c_str()}});
+    }
+    return {{"items", items}, {"total", static_cast<int>(items.size())}};
+  }
+
+  /* 团队学员 + 各自薄弱项画像，作为 AI 计划生成的输入。
+     刻意逐个调用 learningProfile（它自己开事务），因此本方法本身不持有事务；
+     调用方负责限制人数（团队量级很小）。requested_ids 为空即全团队。 */
+  json teamLearnerProfiles(const std::string& supervisor_id,
+                           const std::vector<std::string>& requested_ids) const {
+    json items = json::array();
+    {
+      auto connection = database_pool_->acquire();
+      pqxx::read_transaction tx(connection.get());
+      const auto rows = tx.exec_params(R"(
+        SELECT u.id, COALESCE(NULLIF(u.display_name, ''), '学员') AS display_name
+        FROM supervisor_team_members tm
+        JOIN users u ON u.id = tm.learner_id AND u.role = 'learner' AND u.status = 'active'
+        WHERE tm.supervisor_id = $1
+          AND ($2::jsonb = '[]'::jsonb
+               OR u.id IN (SELECT jsonb_array_elements_text($2::jsonb)))
+        ORDER BY u.display_name
+      )", supervisor_id, json(requested_ids).dump());
+      for (const auto& row : rows) {
+        items.push_back({{"id", row["id"].c_str()}, {"displayName", row["display_name"].c_str()}});
+      }
+    }
+    for (auto& item : items) {
+      const auto profile = learningProfile(item["id"].get<std::string>());
+      /* 跨层读 JSON 一律 value() 带默认值：learningProfile 契约里 weaknesses 可能为空数组 */
+      item["profile"] = {{"weaknesses", profile.value("weaknesses", json::array())},
+                         {"dimensionAverages", profile.value("dimensionAverages", json::object())},
+                         {"overall", profile.value("overall", json::object())}};
+    }
+    return {{"items", items}, {"total", static_cast<int>(items.size())}};
+  }
+
+  /* 采纳草稿。overrides 里给了哪项就覆盖哪项，空对象即「原样发布」，
+     从而支持主管「编辑后发布」而不必先建后改。 */
+  json publishPlan(const std::string& supervisor_id, const std::string& plan_id,
+                   const json& overrides) const {
+    if (plan_id.empty() || plan_id.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "计划标识无效");
+    }
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      SELECT origin_learner_id, title, period, scenario_ids, required_count, required_pass_rate,
+             focus_dimension, max_per_scenario,
+             description, to_char(due_at AT TIME ZONE 'Asia/Shanghai',
+                                  'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at
+      FROM training_plans
+      WHERE id = $1 AND created_by = $2 AND status = 'draft'
+      FOR UPDATE
+    )", plan_id, supervisor_id);
+    if (rows.empty()) throw ApiError(404, "NOT_FOUND", "草稿不存在或已被处理");
+
+    auto title = std::string(rows[0]["title"].c_str());
+    auto period = std::string(rows[0]["period"].c_str());
+    auto scenario_ids = jsonbColumn(rows[0], "scenario_ids");
+    auto required_count = rows[0]["required_count"].as<int>();
+    auto required_pass_rate = rows[0]["required_pass_rate"].as<int>();
+    auto description = std::string(rows[0]["description"].c_str());
+    auto due_at = std::string(rows[0]["due_at"].c_str());
+    auto focus_dimension = std::string(rows[0]["focus_dimension"].c_str());
+    auto max_per_scenario = rows[0]["max_per_scenario"].as<int>();
+    const auto learner_id = rows[0]["origin_learner_id"].is_null()
+        ? std::string() : std::string(rows[0]["origin_learner_id"].c_str());
+
+    if (overrides.is_object()) {
+      const auto new_title = utf8Truncate(trim(jsonString(overrides, "title")), 100);
+      if (!new_title.empty()) title = new_title;
+      const auto new_period = jsonString(overrides, "period", "");
+      if (new_period == "week" || new_period == "month") period = new_period;
+      if (overrides.contains("scenarioIds") && overrides["scenarioIds"].is_array()) {
+        json picked = json::array();
+        for (const auto& item : overrides["scenarioIds"]) {
+          if (item.is_string() && !item.get<std::string>().empty() && picked.size() < 10) {
+            picked.push_back(item);
+          }
+        }
+        if (!picked.empty()) scenario_ids = picked;
+      }
+      if (overrides.contains("requiredCount")) {
+        required_count = clampInt(jsonInt(overrides, "requiredCount", required_count), 1, 20);
+      }
+      if (overrides.contains("requiredPassRate")) {
+        required_pass_rate = clampInt(jsonInt(overrides, "requiredPassRate", required_pass_rate), 0, 100);
+      }
+      /* 0 是合法取值（不限场景次数），所以不能用「非 0 才生效」的写法。 */
+      if (overrides.contains("maxPerScenario")) {
+        max_per_scenario = clampInt(jsonInt(overrides, "maxPerScenario", max_per_scenario), 0, 10);
+      }
+      if (overrides.contains("description")) {
+        description = utf8Truncate(trim(jsonString(overrides, "description")), 500);
+      }
+      const auto new_due = trim(jsonString(overrides, "dueAt"));
+      if (!new_due.empty()) due_at = new_due;
+      /* 目标维度覆盖：空串要能把 AI 指定的维度**取消掉**（改回不限、按综合分判定），
+         所以不能用「非空才生效」的写法。非法 key 直接拒绝，不能静默保留原值——
+         否则主管以为改了，达标口径其实没变。 */
+      if (overrides.contains("focusDimension")) {
+        const auto new_focus = trim(jsonString(overrides, "focusDimension"));
+        if (new_focus.empty()) {
+          focus_dimension.clear();
+        } else if (isPlanDimension(new_focus)) {
+          focus_dimension = new_focus;
+        } else {
+          throw ApiError(400, "INVALID_ARGUMENT", "目标维度取值无效");
+        }
+      }
+    }
+
+    tx.exec_params(R"(
+      UPDATE training_plans
+      SET title = $2, period = $3, scenario_ids = $4::jsonb, required_count = $5,
+          required_pass_rate = $6, description = $7, due_at = $8::timestamptz,
+          focus_dimension = $9, max_per_scenario = $10, status = 'published', updated_at = NOW()
+      WHERE id = $1
+    )", plan_id, title, period, scenario_ids.dump(), required_count, required_pass_rate,
+        description, due_at, focus_dimension, max_per_scenario);
+    /* learner_id 为空（理论上 AI 草稿不会）时退化成全团队指派，与人工发布口径一致。 */
+    const auto assigned = tx.exec_params(R"(
+      INSERT INTO training_assignments(plan_id, learner_id)
+      SELECT $1, tm.learner_id FROM supervisor_team_members tm
+      JOIN users u ON u.id = tm.learner_id AND u.role = 'learner' AND u.status = 'active'
+      WHERE tm.supervisor_id = $2 AND ($3::text = '' OR tm.learner_id = $3::text)
+      ON CONFLICT (plan_id, learner_id) DO NOTHING
+    )", plan_id, supervisor_id, learner_id);
+    tx.commit();
+    return {{"id", plan_id}, {"title", title}, {"status", "published"},
+            {"focusDimension", focus_dimension},
+            {"focusDimensionLabel", focus_dimension.empty()
+                 ? std::string() : planDimensionLabel(focus_dimension)},
+            {"maxPerScenario", max_per_scenario},
+            {"learnerId", learner_id},
+            {"assignmentCount", static_cast<int>(assigned.affected_rows())}};
+  }
+
+  json dismissPlan(const std::string& supervisor_id, const std::string& plan_id) const {
+    if (plan_id.empty() || plan_id.size() > 120) {
+      throw ApiError(400, "INVALID_ARGUMENT", "计划标识无效");
+    }
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    /* 软删而非 DELETE：保留「AI 生成多少条 / 采纳多少条」的采纳率审计。 */
+    const auto rows = tx.exec_params(R"(
+      UPDATE training_plans SET status = 'dismissed', updated_at = NOW()
+      WHERE id = $1 AND created_by = $2 AND status = 'draft'
+      RETURNING id
+    )", plan_id, supervisor_id);
+    if (rows.empty()) throw ApiError(404, "NOT_FOUND", "草稿不存在或已被处理");
+    tx.commit();
+    return {{"id", plan_id}, {"status", "dismissed"}};
   }
 
   json listTrainingPlans(const std::string& supervisor_id, const std::string& requested_status) const {
@@ -2125,45 +3158,51 @@ class ReliableDatabase {
        因此统计时按当前团队过滤一次，保证数字与成员列表口径一致。 */
     const auto rows = tx.exec_params(R"(
       SELECT p.id, p.title, p.period, p.scenario_ids, p.required_count, p.required_pass_rate,
-        p.description,
+        p.description, p.focus_dimension, p.max_per_scenario,
         to_char(p.due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
         (p.due_at <= NOW()) AS expired,
         COUNT(a.learner_id) AS assignment_count,
+        /* 达标口径：计划指定了目标维度就用该维度的均分，该维度无有效评分时回退综合分。
+           avg_score 本身保持「综合均分」语义不变，前端展示团队均分不受影响。 */
         COUNT(a.learner_id) FILTER (
           WHERE COALESCE(prog.completed_count, 0) >= p.required_count
-            AND COALESCE(prog.avg_score, 0) >= p.required_pass_rate
+            AND COALESCE(prog.avg_focus_score, COALESCE(prog.avg_score, 0)) >= p.required_pass_rate
         ) AS done_count,
-        COALESCE(ROUND(AVG(COALESCE(prog.avg_score, 0))::numeric, 1), 0) AS avg_score
+        COALESCE(ROUND(AVG(COALESCE(prog.avg_score, 0))::numeric, 1), 0) AS avg_score,
+        ROUND(AVG(prog.avg_focus_score)::numeric, 1) AS avg_focus_score
       FROM training_plans p
       LEFT JOIN training_assignments a ON a.plan_id = p.id
         AND EXISTS (SELECT 1 FROM supervisor_team_members tm
                     WHERE tm.learner_id = a.learner_id AND tm.supervisor_id = $1)
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS completed_count, AVG(s.total_score) AS avg_score
-        FROM sessions s
-        WHERE s.user_id = a.learner_id
-          AND s.status = 'completed' AND s.evaluation_status = 'ready'
-          AND s.finished_at >= p.created_at AND s.finished_at <= p.due_at
-          AND (p.scenario_ids = '[]'::jsonb OR p.scenario_ids ? s.scenario_id)
-      ) prog ON TRUE
-      WHERE p.created_by = $1
+      )" + planProgressJoin() + R"(
+      WHERE p.created_by = $1 AND p.status = 'published'
     )" + status_filter + R"(
       GROUP BY p.id
       ORDER BY p.created_at DESC
     )", supervisor_id);
     json plans = json::array();
     for (const auto& row : rows) {
+      const auto focus_dimension = std::string(row["focus_dimension"].c_str());
+      const auto score_basis = planScoreBasis(row, focus_dimension);
       plans.push_back({{"id", row["id"].c_str()}, {"title", row["title"].c_str()},
                        {"period", row["period"].c_str()},
                        {"scenarioIds", jsonbColumn(row, "scenario_ids")},
                        {"requiredCount", row["required_count"].as<int>()},
                        {"requiredPassRate", row["required_pass_rate"].as<int>()},
+                       {"maxPerScenario", row["max_per_scenario"].as<int>()},
                        {"description", row["description"].c_str()},
                        {"dueAt", row["due_at"].c_str()},
                        {"expired", row["expired"].as<bool>()},
                        {"assignmentCount", row["assignment_count"].as<int>()},
                        {"doneCount", row["done_count"].as<int>()},
-                       {"avgScore", row["avg_score"].as<double>()}});
+                       {"avgScore", row["avg_score"].as<double>()},
+                       {"focusDimension", focus_dimension},
+                       {"focusDimensionLabel", focus_dimension.empty()
+                            ? std::string() : planDimensionLabel(focus_dimension)},
+                       /* null = 该维度还没有任何有效评分，前端据此说明「暂无维度分」 */
+                       {"focusAvgScore", row["avg_focus_score"].is_null()
+                            ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                       {"scoreBasis", score_basis}});
     }
     return {{"status", status}, {"plans", plans}, {"total", static_cast<int>(plans.size())}};
   }
@@ -2177,6 +3216,7 @@ class ReliableDatabase {
     /* 只允许读本人发布的计划；别人的计划与不存在返回同一个 404。 */
     const auto plan_rows = tx.exec_params(R"(
       SELECT id, title, period, scenario_ids, required_count, required_pass_rate, description,
+        focus_dimension, max_per_scenario,
         to_char(due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
         (due_at <= NOW()) AS expired
       FROM training_plans WHERE id = $1 AND created_by = $2
@@ -2192,35 +3232,35 @@ class ReliableDatabase {
       SELECT u.id AS learner_id, COALESCE(NULLIF(u.display_name, ''), '未命名学员') AS display_name,
         COALESCE(prog.completed_count, 0) AS completed_count,
         COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score,
+        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score,
         to_char(prog.last_training_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS last_training_date
       FROM training_assignments a
       JOIN plan p ON p.id = a.plan_id
       JOIN users u ON u.id = a.learner_id
         AND EXISTS (SELECT 1 FROM supervisor_team_members tm
                     WHERE tm.learner_id = u.id AND tm.supervisor_id = $2)
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS completed_count, AVG(s.total_score) AS avg_score,
-          MAX(s.updated_at) AS last_training_at
-        FROM sessions s
-        WHERE s.user_id = a.learner_id
-          AND s.status = 'completed' AND s.evaluation_status = 'ready'
-          AND s.finished_at >= p.created_at AND s.finished_at <= p.due_at
-          AND (p.scenario_ids = '[]'::jsonb OR p.scenario_ids ? s.scenario_id)
-      ) prog ON TRUE
+      )" + planProgressJoin() + R"(
       ORDER BY lower(COALESCE(NULLIF(u.display_name, ''), u.id))
     )", plan_id, supervisor_id);
+    const auto focus_dimension = std::string(plan_row["focus_dimension"].c_str());
     json assignments = json::array();
     int done_count = 0;
     double score_sum = 0.0;
     for (const auto& row : rows) {
       const auto completed_count = row["completed_count"].as<int>();
       const auto avg_score = row["avg_score"].as<double>();
-      const bool done = completed_count >= required_count && avg_score >= required_pass_rate;
+      /* 与列表口径完全一致：有目标维度且该维度有评分时按维度分判定 */
+      const auto score = planScoreFor(row, focus_dimension);
+      const bool done = completed_count >= required_count && score >= required_pass_rate;
       if (done) done_count += 1;
-      score_sum += avg_score;
+      score_sum += score;
       assignments.push_back({{"learnerId", row["learner_id"].c_str()},
                              {"displayName", row["display_name"].c_str()},
                              {"completedCount", completed_count}, {"avgScore", avg_score},
+                             {"focusAvgScore", row["avg_focus_score"].is_null()
+                                  ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                             {"score", score},
+                             {"scoreBasis", planScoreBasis(row, focus_dimension)},
                              {"lastTrainingDate", row["last_training_date"].is_null()
                                  ? json(nullptr) : json(row["last_training_date"].c_str())},
                              {"done", done}});
@@ -2230,9 +3270,15 @@ class ReliableDatabase {
                       {"period", plan_row["period"].c_str()},
                       {"scenarioIds", jsonbColumn(plan_row, "scenario_ids")},
                       {"requiredCount", required_count}, {"requiredPassRate", required_pass_rate},
+                      {"maxPerScenario", plan_row["max_per_scenario"].as<int>()},
                       {"description", plan_row["description"].c_str()},
                       {"dueAt", plan_row["due_at"].c_str()},
-                      {"expired", plan_row["expired"].as<bool>()}}},
+                      {"expired", plan_row["expired"].as<bool>()},
+                      /* 目标维度必须在详情里下发：学员行的判定分是「该维度均分」，
+                         页面若不知道计划针对哪一维，就只能显示综合分——数字与结论互相矛盾。 */
+                      {"focusDimension", focus_dimension},
+                      {"focusDimensionLabel", focus_dimension.empty()
+                           ? std::string() : planDimensionLabel(focus_dimension)}}},
             {"assignments", assignments}, {"assignmentCount", total}, {"doneCount", done_count},
             {"avgScore", total == 0 ? 0.0 : std::round(score_sum / total * 10.0) / 10.0}};
   }
@@ -2263,28 +3309,26 @@ class ReliableDatabase {
         (p.due_at <= NOW()) AS expired,
         COALESCE(NULLIF(u.display_name, ''), '未命名学员') AS display_name,
         COALESCE(prog.completed_count, 0) AS completed_count,
-        p.required_count, p.required_pass_rate,
-        COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score
+        p.required_count, p.required_pass_rate, p.focus_dimension, p.max_per_scenario,
+        COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score,
+        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score
       FROM training_plans p
       JOIN training_assignments a ON a.plan_id = p.id
       JOIN users u ON u.id = a.learner_id
         AND u.status = 'active'
         AND EXISTS (SELECT 1 FROM supervisor_team_members tm
                     WHERE tm.learner_id = u.id AND tm.supervisor_id = $1)
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS completed_count, AVG(s.total_score) AS avg_score
-        FROM sessions s
-        WHERE s.user_id = a.learner_id
-          AND s.status = 'completed' AND s.evaluation_status = 'ready'
-          AND s.finished_at >= p.created_at AND s.finished_at <= p.due_at
-          AND (p.scenario_ids = '[]'::jsonb OR p.scenario_ids ? s.scenario_id)
-      ) prog ON TRUE
+      )" + planProgressJoin() + R"(
       ORDER BY p.created_at DESC, lower(COALESCE(NULLIF(u.display_name, ''), u.id))
     )", supervisor_id);
     json items = json::array();
     for (const auto& row : rows) {
       const auto completed_count = row["completed_count"].as<int>();
       const auto avg_score = row["avg_score"].as<double>();
+      const auto focus_dimension = std::string(row["focus_dimension"].c_str());
+      /* 导出名单与判定口径必须一致：否则主管照 CSV 去催人，催的是「按综合分已达标、
+         但按目标维度其实没达标」的学员，等于白催。 */
+      const auto score = planScoreFor(row, focus_dimension);
       items.push_back({{"planTitle", row["plan_title"].c_str()},
                        {"dueDate", row["due_date"].c_str()},
                        {"expired", row["expired"].as<bool>()},
@@ -2292,9 +3336,17 @@ class ReliableDatabase {
                        {"completedCount", completed_count},
                        {"requiredCount", row["required_count"].as<int>()},
                        {"avgScore", avg_score},
+                       {"focusDimension", focus_dimension},
+                       {"focusDimensionLabel", focus_dimension.empty()
+                            ? std::string() : planDimensionLabel(focus_dimension)},
+                       {"focusAvgScore", row["avg_focus_score"].is_null()
+                            ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                       {"score", score},
+                       {"scoreBasis", planScoreBasis(row, focus_dimension)},
+                       {"maxPerScenario", row["max_per_scenario"].as<int>()},
                        {"requiredPassRate", row["required_pass_rate"].as<int>()},
                        {"done", completed_count >= row["required_count"].as<int>() &&
-                                avg_score >= row["required_pass_rate"].as<int>()}});
+                                score >= row["required_pass_rate"].as<int>()}});
     }
     return {{"items", items}};
   }
@@ -2304,22 +3356,16 @@ class ReliableDatabase {
     pqxx::read_transaction tx(connection.get());
     const auto rows = tx.exec_params(R"(
       SELECT p.id, p.title, p.period, p.scenario_ids, p.required_count, p.required_pass_rate,
-        p.description,
+        p.description, p.focus_dimension, p.max_per_scenario,
         to_char(p.due_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' AS due_at,
         (p.due_at <= NOW()) AS expired,
         COALESCE(prog.completed_count, 0) AS completed_count,
-        COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score
+        COALESCE(ROUND(prog.avg_score::numeric, 1), 0) AS avg_score,
+        ROUND(prog.avg_focus_score::numeric, 1) AS avg_focus_score
       FROM training_assignments a
       JOIN training_plans p ON p.id = a.plan_id
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS completed_count, AVG(s.total_score) AS avg_score
-        FROM sessions s
-        WHERE s.user_id = a.learner_id
-          AND s.status = 'completed' AND s.evaluation_status = 'ready'
-          AND s.finished_at >= p.created_at AND s.finished_at <= p.due_at
-          AND (p.scenario_ids = '[]'::jsonb OR p.scenario_ids ? s.scenario_id)
-      ) prog ON TRUE
-      WHERE a.learner_id = $1
+      )" + planProgressJoin() + R"(
+      WHERE a.learner_id = $1 AND p.status = 'published'
       ORDER BY p.created_at DESC
     )", user_id);
     json plans = json::array();
@@ -2330,18 +3376,104 @@ class ReliableDatabase {
       const auto required_count = row["required_count"].as<int>();
       const auto required_pass_rate = row["required_pass_rate"].as<int>();
       const bool expired = row["expired"].as<bool>();
-      const bool done = completed_count >= required_count && avg_score >= required_pass_rate;
+      const auto focus_dimension = std::string(row["focus_dimension"].c_str());
+      /* 学员端与主管端必须同一口径，否则会出现「主管看到达标、学员看到未达标」 */
+      const auto score = planScoreFor(row, focus_dimension);
+      const bool done = completed_count >= required_count && score >= required_pass_rate;
       if (!done && !expired) pending_count += 1;
       plans.push_back({{"id", row["id"].c_str()}, {"title", row["title"].c_str()},
                        {"period", row["period"].c_str()},
                        {"scenarioIds", jsonbColumn(row, "scenario_ids")},
                        {"requiredCount", required_count}, {"requiredPassRate", required_pass_rate},
+                       {"maxPerScenario", row["max_per_scenario"].as<int>()},
                        {"description", row["description"].c_str()}, {"dueAt", row["due_at"].c_str()},
                        {"completedCount", completed_count}, {"avgScore", avg_score},
+                       {"focusDimension", focus_dimension},
+                       {"focusDimensionLabel", focus_dimension.empty()
+                            ? std::string() : planDimensionLabel(focus_dimension)},
+                       {"focusAvgScore", row["avg_focus_score"].is_null()
+                            ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                       {"score", score},
+                       {"scoreBasis", planScoreBasis(row, focus_dimension)},
                        {"expired", expired}, {"done", done},
                        {"status", done ? "done" : (expired ? "expired" : "pending")}});
     }
     return {{"plans", plans}, {"total", static_cast<int>(plans.size())}, {"pendingCount", pending_count}};
+  }
+
+  /* 弱项 → 复练场景候选（P0-4）。
+     排序**只由场景自身的维度权重决定**（`dimension_weights->>维度` 降序），不掺学员历史。
+     历史分数只用于展示（「你在该场景的该维度均分」）；一旦让它参与排序，同一份弱项在
+     不同学员那里会推出不同顺序，既没法向人解释，也让「这个场景练这个维度」变得不可预期。
+     未标注该维度的场景（`{}` 或对象里没有这个 key）被**排除**，而不是排在最后——把它们
+     排进候选等于告诉学员「这条也能练」，那是错的。
+     维度非法直接 400：静默返回空列表会让前端显示「暂无推荐」，把调用方写错 key 这件事
+     掩盖成「系统没数据」。 */
+  json retrainCandidates(const std::string& user_id, const std::string& dimension) const {
+    if (!isPlanDimension(dimension)) {
+      throw ApiError(400, "INVALID_ARGUMENT", "维度取值无效");
+    }
+    auto connection = database_pool_->acquire();
+    pqxx::read_transaction tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      SELECT s.id, s.name, s.category, s.summary, s.difficulty, s.focus, s.max_rounds,
+        s.dimension_weights,
+        (s.dimension_weights->>$2)::numeric AS dimension_weight,
+        COALESCE(hist.completed_count, 0) AS completed_count,
+        hist.avg_dimension_score,
+        active.id AS active_id, active.current_round AS active_current_round,
+        active.max_rounds AS active_max_rounds, active.updated_at AS active_updated_at
+      FROM scenarios s
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS completed_count,
+          ROUND(AVG(CASE
+                WHEN jsonb_typeof(e.report->'dimensionScores'->$2) = 'number'
+                THEN (e.report->'dimensionScores'->>$2)::numeric
+              END), 1) AS avg_dimension_score
+        FROM sessions ss
+        LEFT JOIN evaluations e ON e.session_id = ss.id
+        WHERE ss.user_id = $1 AND ss.scenario_id = s.id
+          AND ss.status = 'completed' AND ss.evaluation_status = 'ready'
+      ) hist ON TRUE
+      /* 已有进行中会话时前端要「继续」而不是「新建」——同一场景的进行中会话有唯一约束，
+         直接新建会被拒。这里带上，避免学员点了推荐却撞到一个报错。 */
+      LEFT JOIN LATERAL (
+        SELECT id, current_round, max_rounds, updated_at FROM sessions
+        WHERE user_id = $1 AND scenario_id = s.id AND status = 'in_progress'
+        ORDER BY updated_at DESC LIMIT 1
+      ) active ON TRUE
+      WHERE s.is_active AND NOT s.is_template
+        AND s.dimension_weights ? $2
+        AND (s.dimension_weights->>$2)::numeric > 0
+      ORDER BY dimension_weight DESC, s.sort_order
+    )", user_id, dimension);
+    json items = json::array();
+    for (const auto& row : rows) {
+      json item = {
+          {"id", row["id"].c_str()}, {"name", row["name"].c_str()},
+          {"category", row["category"].c_str()}, {"summary", row["summary"].c_str()},
+          {"difficulty", row["difficulty"].c_str()},
+          {"focus", json::parse(row["focus"].c_str())},
+          /* 该场景整体练哪些维度（按权重降序）：用于向学员解释「为什么推荐它」 */
+          {"dimensionFocus", dimensionFocusOf(row)},
+          {"dimensionWeight", row["dimension_weight"].as<double>()},
+          {"completedCount", row["completed_count"].as<int>()},
+          /* null = 该学员在这个场景还没有该维度的有效评分。
+             前端必须显示「还没练过」，不能显示 0 分——0 分会被读成「练过但很差」。 */
+          {"avgDimensionScore", row["avg_dimension_score"].is_null()
+              ? json(nullptr) : json(row["avg_dimension_score"].as<double>())},
+          {"maxRounds", row["max_rounds"].as<int>()},
+          {"activeSession", nullptr}};
+      if (!row["active_id"].is_null()) {
+        item["activeSession"] = {{"id", row["active_id"].c_str()},
+                                 {"currentRound", row["active_current_round"].as<int>()},
+                                 {"maxRounds", row["active_max_rounds"].as<int>()},
+                                 {"updatedAt", row["active_updated_at"].c_str()}};
+      }
+      items.push_back(item);
+    }
+    return {{"dimension", dimension}, {"dimensionLabel", planDimensionLabel(dimension)},
+            {"items", items}, {"total", static_cast<int>(items.size())}};
   }
 
   // ── 数据报表（文档 3.2 第四模块） ─────────────────────────────────────
@@ -2567,6 +3699,104 @@ class ReliableDatabase {
     return false;
   }
 
+ public:
+  /* 计划目标维度：五维 key 与中文名的唯一来源。中文名必须与 learningProfile /
+     supervisorMemberDetail 里 dimension_copy 的措辞保持一致（那边每条还带改进建议，
+     无法直接共用），改这里就要同步那边，否则学员端与学习画像会出现两种叫法。 */
+  static const std::vector<std::pair<std::string, std::string>>& planDimensions() {
+    static const std::vector<std::pair<std::string, std::string>> dimensions = {
+        {"knowledgeAccuracy", "知识准确性"},
+        {"medicalCompliance", "医疗合规"},
+        {"empathy", "同理心"},
+        {"needsDiscovery", "需求挖掘"},
+        {"serviceEtiquette", "服务礼仪"},
+    };
+    return dimensions;
+  }
+
+  static bool isPlanDimension(const std::string& key) {
+    for (const auto& item : planDimensions()) {
+      if (item.first == key) return true;
+    }
+    return false;
+  }
+
+  static json planDimensionCatalog() {
+    json catalog = json::array();
+    for (const auto& item : planDimensions()) {
+      catalog.push_back({{"id", item.first}, {"name", item.second}});
+    }
+    return catalog;
+  }
+
+  static std::string planDimensionLabel(const std::string& key) {
+    for (const auto& item : planDimensions()) {
+      if (item.first == key) return item.second;
+    }
+    return key;
+  }
+
+  /* 达标分数：计划指定了目标维度时以该维度的平均分为准；若该维度没有任何有效评分
+     （历史报告缺键等），回退到综合分——缺失绝不能当成 0 分，否则会凭空造出不达标。
+     这个口径同时用于主管列表、计划详情、CSV 导出与学员端，四处必须一致。 */
+  static double planScoreFor(const pqxx::row& row, const std::string& focus_dimension) {
+    if (!focus_dimension.empty() && !row["avg_focus_score"].is_null()) {
+      return row["avg_focus_score"].as<double>();
+    }
+    return row["avg_score"].is_null() ? 0.0 : row["avg_score"].as<double>();
+  }
+
+  /* 判定分来源，与 planScoreFor 严格配对：
+       dimension = 计划指定了目标维度，且该维度确有有效评分，判定分就是它；
+       total     = 该维度无有效评分，已回退综合分。
+     回退本身是有意设计（缺失不能当 0 分），但必须对主管可见——否则会出现
+     「主管以为按目标维度考、实际按综合分判」，而达标结论看着完全正常。
+     四处响应（主管列表 / 计划详情 / CSV 导出 / 学员端）都下发该字段，
+     漏一处就会出现「同一个学员在不同页面显示的判定依据不一致」。 */
+  static std::string planScoreBasis(const pqxx::row& row, const std::string& focus_dimension) {
+    return (!focus_dimension.empty() && !row["avg_focus_score"].is_null())
+        ? std::string("dimension") : std::string("total");
+  }
+
+  /* 计划进度的 LATERAL 片段。四处共用同一份 SQL：主管列表 / 计划详情 / CSV 导出 /
+     学员端——任一处单独改，都会出现「主管看到达标、学员看到未达标」的自相矛盾。
+     avg_score 恒为综合分；avg_focus_score 只在计划指定了目标维度时才有值。
+
+     同一场景计入的完成次数受 p.max_per_scenario 限制（0 = 不限），取**最早**的 N 次。
+     取最近 N 次会让「在已达标的场景上多练一次」把原来的好成绩顶出统计，计划可能由
+     达标翻回未达标——等于惩罚额外训练。取最早 N 次则多练只是不计入，永不倒扣。 */
+  static std::string planProgressJoin() {
+    return R"(LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS completed_count, AVG(capped.total_score) AS avg_score,
+          MAX(capped.updated_at) AS last_training_at,
+          AVG(CASE
+                WHEN p.focus_dimension <> ''
+                 AND jsonb_typeof(capped.report->'dimensionScores'->p.focus_dimension) = 'number'
+                THEN (capped.report->'dimensionScores'->>p.focus_dimension)::numeric
+              END) AS avg_focus_score
+        FROM (
+          /* 先按场景编号排窗口，再按上限截取，这样 COUNT/AVG/MAX 与维度均分
+             都只看同一批行，不会出现「次数按上限算、均分按全部算」的错位。 */
+          SELECT s.id, s.total_score, s.updated_at, e.report,
+            ROW_NUMBER() OVER (
+              PARTITION BY s.scenario_id ORDER BY s.finished_at, s.id
+            ) AS scenario_seq
+          FROM sessions s
+          LEFT JOIN evaluations e ON e.session_id = s.id
+          WHERE s.user_id = a.learner_id
+            AND s.status = 'completed' AND s.evaluation_status = 'ready'
+            /* 进阶档不计入计划达标（D1 硬口径）。计划是主管给的硬要求，学员额外挑战
+               不该反噬他——练进阶档拿低分会把计划拖成未达标，那等于因为勇敢而受罚。
+               进阶档的价值在成长趋势，不在达标。 */
+            AND s.difficulty_tier = 'standard'
+            AND s.finished_at >= p.created_at AND s.finished_at <= p.due_at
+            AND (p.scenario_ids = '[]'::jsonb OR p.scenario_ids ? s.scenario_id)
+        ) capped
+        WHERE p.max_per_scenario = 0 OR capped.scenario_seq <= p.max_per_scenario
+      ) prog ON TRUE)";
+  }
+
+ private:
   static std::string violationCategoryLabel(const std::string& category) {
     for (const auto& item : violationCategories()) {
       if (item.first == category) return item.second;
@@ -2831,7 +4061,7 @@ class ReliableDatabase {
     auto rows = tx.exec_params(
         "SELECT id, user_id, scenario_id, scenario_name, status, current_round, max_rounds, " +
         std::string(kSessionTimes) +
-        ", total_score, evaluation_status, custom_patient_profile FROM sessions WHERE id = $1", session_id);
+        ", total_score, evaluation_status, custom_patient_profile, difficulty_tier FROM sessions WHERE id = $1", session_id);
     if (rows.empty() || (!user_id.empty() && std::string(rows[0]["user_id"].c_str()) != user_id)) {
       throw ApiError(404, "SESSION_NOT_FOUND", "训练会话不存在");
     }
@@ -3798,7 +5028,16 @@ class AiJobQueue {
  private:
   static void markTargetFailed(pqxx::transaction_base& tx, const std::string& type,
                                const std::string& target_id, const std::string& error_type) {
-    if (type == "evaluation") {
+    /* 目标标记同样走显式分发。未知类型**什么都不写**：把它当成 roleplay 去标记，
+       就会在 roleplay_summaries 里凭空插一条属于别人的失败记录（R09 风险表）。 */
+    const auto kind = parseAiJobKind(type);
+    if (!kind.has_value()) {
+      std::cerr << json({{"event", "ai_job_target_failed_skipped"},
+                        {"jobType", type}, {"targetId", target_id},
+                        {"reason", "UNKNOWN_JOB_TYPE"}}).dump() << '\n';
+      return;
+    }
+    if (*kind == AiJobKind::Evaluation) {
       tx.exec_params(R"(
         INSERT INTO evaluations(session_id, status, report, error_type, updated_at)
         VALUES ($1, 'failed', NULL, $2, NOW())
@@ -3809,15 +5048,15 @@ class AiJobQueue {
         UPDATE sessions SET evaluation_status = 'failed', total_score = NULL, updated_at = NOW()
         WHERE id = $1
       )", target_id);
-    } else {
-      tx.exec_params(R"(
-        INSERT INTO roleplay_summaries(session_id, status, summary, error_type, updated_at)
-        VALUES ($1, 'failed', NULL, $2, NOW())
-        ON CONFLICT (session_id) DO UPDATE SET status = 'failed', summary = NULL,
-          error_type = EXCLUDED.error_type, updated_at = NOW()
-      )", target_id, error_type);
-      tx.exec_params("UPDATE roleplay_sessions SET updated_at = NOW() WHERE id = $1", target_id);
+      return;
     }
+    tx.exec_params(R"(
+      INSERT INTO roleplay_summaries(session_id, status, summary, error_type, updated_at)
+      VALUES ($1, 'failed', NULL, $2, NOW())
+      ON CONFLICT (session_id) DO UPDATE SET status = 'failed', summary = NULL,
+        error_type = EXCLUDED.error_type, updated_at = NOW()
+    )", target_id, error_type);
+    tx.exec_params("UPDATE roleplay_sessions SET updated_at = NOW() WHERE id = $1", target_id);
   }
 
   static void markExhaustedLeases(pqxx::transaction_base& tx) {

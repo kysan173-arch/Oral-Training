@@ -56,6 +56,17 @@ try {
   Invoke-Psql $emptySchema (Join-Path $migrations '017_hint_per_round.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '018_scenario_reaction_rules.sql') ''
   Invoke-Psql $emptySchema (Join-Path $migrations '019_roleplay_free_template.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '020_conflict_scenarios.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '021_ai_training_plans.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '022_plan_focus_dimension.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '023_plan_scenario_cap.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '024_scenario_dimension_weights.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '025_scenario_templates.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '026_difficulty_tiers.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '027_advanced_tier_openings.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '028_scenario_variants.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '029_scenario_variants_bulk.sql') ''
+  Invoke-Psql $emptySchema (Join-Path $migrations '030_scenario_ai_draft.sql') ''
   Invoke-Psql $emptySchema '' @'
 DO $$ BEGIN
   IF to_regclass('message_repair_archive') IS NULL OR to_regclass('ai_jobs') IS NULL OR
@@ -90,13 +101,234 @@ DO $$ BEGIN
   ) THEN
     RAISE EXCEPTION 'session_hints lost its per-round uniqueness key';
   END IF;
-  -- hint_number 必须已经放开 1..3：提示序号是全场第几条，与轮次无关，
-  -- 旧的上限会让第 4 轮之后的轮次唯一键永远插不进去。
+  -- hint_number must already be uncapped from 1..3: the hint index is the
+  -- session-wide sequence, not the round, so the old cap made later rounds
   IF EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'session_hints_hint_number_check' AND conrelid = 'session_hints'::regclass
   ) THEN
     RAISE EXCEPTION 'session_hints still caps hint_number at 3';
+  END IF;
+  -- max_per_scenario is the only anti-farming switch: a missing column breaks
+  -- all four plan progress queries, and a missing CHECK lets any cap
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'training_plans' AND column_name = 'max_per_scenario'
+      AND is_nullable = 'NO' AND column_default LIKE '0%'
+  ) THEN
+    RAISE EXCEPTION 'training_plans.max_per_scenario was not created as NOT NULL DEFAULT 0';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'training_plans_max_per_scenario_check'
+      AND conrelid = 'training_plans'::regclass
+  ) THEN
+    RAISE EXCEPTION 'training_plans lost its max_per_scenario CHECK';
+  END IF;
+  -- AI scenario skeleton draft (030). Three things must be asserted:
+  --   * kind CHECK must accept scenario_draft, or the queue cannot insert the job;
+  --   * generation_id is both the in-progress marker and the optimistic
+  --     concurrency gate: non-null means that job owns the placeholder row;
+  --   * ai_draft is a provenance marker and must be NOT NULL DEFAULT FALSE,
+  --     or legacy rows would be NULL and the list badge becomes tri-state.
+  -- Note: a boolean default renders bare in information_schema (no quotes),
+  -- unlike jsonb which renders as ''{}''::jsonb -- easy to copy wrong.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_admin_jobs_kind_check'
+      AND conrelid = 'knowledge_admin_jobs'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%scenario_draft%'
+  ) THEN
+    RAISE EXCEPTION 'knowledge_admin_jobs.kind still rejects scenario_draft';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'scenarios' AND column_name = 'generation_id'
+  ) THEN
+    RAISE EXCEPTION 'scenarios.generation_id was not created';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'scenarios' AND column_name = 'ai_draft'
+      AND is_nullable = 'NO' AND column_default LIKE 'false%'
+  ) THEN
+    RAISE EXCEPTION 'scenarios.ai_draft was not created as NOT NULL DEFAULT FALSE';
+  END IF;
+  -- An in-progress scenario must not be publishable (DB-level guard against
+  -- hand-written SQL pushing a half-finished skeleton to learners).
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'scenarios_generating_not_active_check'
+      AND conrelid = 'scenarios'::regclass
+  ) THEN
+    RAISE EXCEPTION 'scenarios lost its generating-not-active guard';
+  END IF;
+  -- scenario dimension weights (024): the column is the whole point of the migration,
+  -- so assert the column shape AND that the backfill actually produced usable data.
+  -- NOTE the quoting: information_schema renders a jsonb default as `'{}'::jsonb`, i.e.
+  -- it STARTS with a quote. `LIKE '{}%'` therefore never matches and the assertion would
+  -- always fire — this script has a database-name guard that keeps it from running
+  -- casually, so the mistake sat here unreported until the block was executed by hand.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'scenarios' AND column_name = 'dimension_weights'
+      AND is_nullable = 'NO' AND column_default LIKE '''{}''%'
+  ) THEN
+    RAISE EXCEPTION 'scenarios.dimension_weights was not created as NOT NULL DEFAULT {}';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'scenarios_dimension_weights_check'
+      AND conrelid = 'scenarios'::regclass
+  ) THEN
+    RAISE EXCEPTION 'scenarios lost its dimension_weights CHECK';
+  END IF;
+  -- A named scenario must have been backfilled: proves the UPDATEs matched, which a
+  -- bare column-exists check would not catch (e.g. a typo'd id would pass silently).
+  IF NOT EXISTS (
+    SELECT 1 FROM scenarios
+    WHERE id = 'guarantee-demand' AND dimension_weights <> '{}'::jsonb
+  ) THEN
+    RAISE EXCEPTION 'scenario dimension weights were not backfilled';
+  END IF;
+  -- Every stored weight must be a positive number <= 1. Guards the invariant the
+  -- recommendation path relies on when it orders scenarios by a single weight.
+  IF EXISTS (
+    SELECT 1 FROM scenarios, jsonb_each(dimension_weights) AS w(key, value)
+    WHERE jsonb_typeof(w.value) <> 'number'
+       OR (w.value)::numeric <= 0 OR (w.value)::numeric > 1
+  ) THEN
+    RAISE EXCEPTION 'scenario dimension weights contain values outside (0, 1]';
+  END IF;
+  -- Only the five scoring dimensions may appear as keys.
+  IF EXISTS (
+    SELECT 1 FROM scenarios, jsonb_object_keys(dimension_weights) AS key
+    WHERE key NOT IN ('knowledgeAccuracy', 'medicalCompliance', 'empathy',
+                      'needsDiscovery', 'serviceEtiquette')
+  ) THEN
+    RAISE EXCEPTION 'scenario dimension weights contain unknown dimension keys';
+  END IF;
+  -- Scenario skeleton templates (025). These rows are only useful if they can actually be
+  -- cloned: createScenario re-validates every field it inherits from the template, so one
+  -- over-long field here makes "create from template" fail with a 400 at runtime. Hence
+  -- asserting every field length against the payload rules, not just the row count.
+  IF (SELECT COUNT(*) FROM scenarios WHERE is_template AND id LIKE 'tpl-%') <> 8 THEN
+    RAISE EXCEPTION 'expected eight scenario skeleton templates';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM scenarios
+    WHERE is_template AND id LIKE 'tpl-%'
+      AND (is_active OR char_length(name) NOT BETWEEN 2 AND 30
+           OR char_length(summary) NOT BETWEEN 2 AND 60
+           OR char_length(patient_profile->>'description') NOT BETWEEN 2 AND 60
+           OR char_length(hidden_config->>'opening') NOT BETWEEN 5 AND 200
+           OR char_length(hidden_config->>'instructions') NOT BETWEEN 5 AND 400
+           OR jsonb_array_length(focus) NOT BETWEEN 1 AND 6
+           OR jsonb_array_length(hidden_config->'hidden') < 1
+           OR sort_order NOT BETWEEN 901 AND 999)
+  ) THEN
+    RAISE EXCEPTION 'scenario skeleton templates would fail payload validation';
+  END IF;
+  -- Templates must never reach the learner list; is_active=FALSE is the second guard
+  -- behind the is_template filter, so assert it stayed FALSE.
+  IF EXISTS (SELECT 1 FROM scenarios WHERE id LIKE 'tpl-%' AND is_active) THEN
+    RAISE EXCEPTION 'scenario skeleton templates leaked into the learner-visible set';
+  END IF;
+  -- Difficulty tiers (026). The learner picks a tier explicitly, the session records which
+  -- one was used, and the plan-progress SQL excludes the advanced tier so nobody is
+  -- penalised for taking on extra difficulty. Assert both columns and their constraints.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'sessions' AND column_name = 'difficulty_tier'
+      AND is_nullable = 'NO' AND column_default LIKE '''standard''%'
+  ) THEN
+    RAISE EXCEPTION 'sessions.difficulty_tier was not created as NOT NULL DEFAULT standard';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sessions_difficulty_tier_check' AND conrelid = 'sessions'::regclass
+  ) THEN
+    RAISE EXCEPTION 'sessions lost its difficulty_tier CHECK';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'scenarios_difficulty_tiers_check' AND conrelid = 'scenarios'::regclass
+  ) THEN
+    RAISE EXCEPTION 'scenarios lost its difficulty_tiers CHECK';
+  END IF;
+  -- Every cloned-from template must carry an advanced tier, otherwise "create from
+  -- template" silently produces a scenario that can never be challenged.
+  IF EXISTS (SELECT 1 FROM scenarios WHERE id LIKE 'tpl-%' AND NOT (difficulty_tiers ? 'advanced')) THEN
+    RAISE EXCEPTION 'scenario skeleton templates were not given an advanced tier';
+  END IF;
+  -- And the tier must actually be HARDER: lower trust, not-weaker emotion, known emotion
+  -- vocabulary. A tier that is not harder is worse than no tier at all, because the
+  -- learner believes they challenged themselves when they did not.
+  IF EXISTS (
+    SELECT 1 FROM scenarios
+    WHERE difficulty_tiers ? 'advanced' AND (
+      (difficulty_tiers->'advanced'->'initialState'->>'trustLevel')::int >=
+        COALESCE((hidden_config->'initialState'->>'trustLevel')::int, 50)
+      OR (difficulty_tiers->'advanced'->'initialState'->>'emotionLevel')::int >
+        COALESCE((hidden_config->'initialState'->>'emotionLevel')::int, 0)
+      OR COALESCE(difficulty_tiers->'advanced'->'initialState'->>'emotion', '') NOT IN
+        ('平静', '犹豫', '焦虑', '缓和', '不满', '愤怒')
+    )
+  ) THEN
+    RAISE EXCEPTION 'advanced difficulty tier is not actually harder than standard';
+  END IF;
+  -- 027: an advanced tier must carry its OWN opening lines. 026 only overrode the initial
+  -- state, so the patient's first sentence was still the standard-tier one — the learner
+  -- could not tell the two tiers apart, and a tier you cannot feel is worse than no tier.
+  IF EXISTS (
+    SELECT 1 FROM scenarios
+    WHERE NOT is_template AND difficulty_tiers ? 'advanced'
+      AND NOT (difficulty_tiers->'advanced' ? 'openings')
+  ) THEN
+    RAISE EXCEPTION 'scenario advanced tier is missing its own opening lines';
+  END IF;
+  -- Variants are the point: one fixed line gets memorised by the third attempt and the
+  -- score stops meaning anything. Requiring >= 2 keeps that property from silently rotting.
+  IF EXISTS (
+    SELECT 1 FROM scenarios
+    WHERE difficulty_tiers->'advanced' ? 'openings'
+      AND (jsonb_typeof(difficulty_tiers->'advanced'->'openings') <> 'array'
+           OR jsonb_array_length(difficulty_tiers->'advanced'->'openings') < 2)
+  ) THEN
+    RAISE EXCEPTION 'advanced tier openings must be an array of at least 2 variants';
+  END IF;
+  -- Each line must be a usable opening (5-200 chars) and must NOT be a copy of the
+  -- standard-tier sentence — that copy is exactly the bug 027 fixes.
+  IF EXISTS (
+    SELECT 1 FROM scenarios,
+      jsonb_array_elements_text(difficulty_tiers->'advanced'->'openings') AS line
+    WHERE difficulty_tiers->'advanced' ? 'openings'
+      AND (char_length(line) NOT BETWEEN 5 AND 200 OR btrim(line) = ''
+           OR line = hidden_config->>'opening')
+  ) THEN
+    RAISE EXCEPTION 'advanced tier openings contain an empty, oversized or duplicated line';
+  END IF;
+  -- 028 + 029: variant pool. Every active non-template scenario must carry >= 2 variants;
+  -- a variant whose hidden set equals the main value (or another variant) is pointless, so
+  -- assert distinctness rather than mere presence. 028 seeded 2 demo scenarios, 029 covered
+  -- the remaining 8 — a partial rollout would silently leave most scenarios memorisable.
+  IF EXISTS (
+    SELECT 1 FROM scenarios
+    WHERE is_active AND NOT is_template
+      AND (jsonb_typeof(hidden_config->'variants') <> 'array'
+           OR jsonb_array_length(hidden_config->'variants') < 2)
+  ) THEN
+    RAISE EXCEPTION 'active scenarios must all define at least 2 variants';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM scenarios,
+      jsonb_array_elements(hidden_config->'variants') AS v
+    WHERE is_active AND NOT is_template
+      AND (NOT (v ? 'hidden') OR jsonb_typeof(v->'hidden') <> 'array'
+           OR jsonb_array_length(v->'hidden') = 0
+           OR v->'hidden' = hidden_config->'hidden')
+  ) THEN
+    RAISE EXCEPTION 'scenario variants must override hidden with a distinct non-empty set';
   END IF;
 END $$;
 '@
@@ -306,9 +538,15 @@ DO $$ BEGIN
 END $$;
 '@
 
-  # 015 的存量回填必须只发生在首次安装：这里先造出「恰好一个在职主管 + 一个在职学员」
-  # 的场景，再重跑迁移。若 first_install 守卫失效，学员会被重新塞回主管名下，
-  # 主管手动移出的成员就会被静默复活。
+  # 015 backfill must only happen on first install. Build the "exactly one active
+  # supervisor + one active learner" state first, then rerun the migrations: if the
+  # first_install guard regresses, the learner gets pushed back under the supervisor
+  # and a manually removed member silently comes back to life.
+  # NOTE: keep every line of this file ASCII. PowerShell 5.1 reads .ps1 as the ANSI
+  # codepage (GBK here), so UTF-8 CJK comment bytes get mis-decoded and can swallow
+  # the following newline -- which folded the here-string opener on the next line
+  # into the comment and made the whole script unparseable (50 syntax errors, and
+  # it still parsed as broken on HEAD). ASCII comments only.
   Invoke-Psql $historySchema '' @'
 INSERT INTO users(id, display_name, role, status, is_demo)
 VALUES ('reliability-supervisor', 'Reliability Supervisor', 'admin', 'active', TRUE),

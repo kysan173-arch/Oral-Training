@@ -77,7 +77,12 @@ const apiStub = {
   }),
   getTeamCandidates: () => Promise.resolve({ candidates: [], total: 0, totalTeamMembers: 3, totalCandidates: 2 })
 };
-if (typeof realApi.formatScore === 'function') apiStub.formatScore = realApi.formatScore;
+/* 纯工具直接取真实实现；新增 utils/api.js 的纯导出时记得加进这个清单，
+   否则页面一调用就报「xxx is not a function」，看起来像页面坏了。 */
+const PURE_EXPORTS = ['formatScore', 'showCenterNotice', 'showNotice', 'hideNotice', 'textWidth'];
+PURE_EXPORTS.forEach(name => {
+  if (typeof realApi[name] === 'function') apiStub[name] = realApi[name];
+});
 const apiModule = new Module(apiPath, null);
 apiModule.filename = apiPath;
 apiModule.loaded = true;

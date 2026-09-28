@@ -49,7 +49,7 @@ global.getCurrentPages = () => [];
 
 const apiPath = path.join(root, 'utils', 'api.js');
 
-/* 桩只负责「数据接口」；页面同时会用到的纯格式化工具（formatScore）直接取真实实现，
+/* 桩只负责「数据接口」；页面同时会用到的纯工具（formatScore、提示浮层适配）直接取真实实现，
    避免页面合法使用真实导出时被桩判成假失败。必须在任何桩写入 require.cache 之前取值。 */
 const PURE_API = (() => {
   try { return require(apiPath); } catch (error) {
@@ -57,9 +57,14 @@ const PURE_API = (() => {
     return {};
   }
 })();
+/* 新增纯工具时记得加到这里，否则页面一发提示就报「xxx is not a function」。
+   注意 showCenterNotice 内部会调 wx.showToast / wx.showModal，桩里得有对应的空实现。 */
+const PURE_EXPORTS = ['formatScore', 'showCenterNotice', 'showNotice', 'hideNotice', 'textWidth'];
 const pureDefaults = () => {
   const base = {};
-  if (typeof PURE_API.formatScore === 'function') base.formatScore = PURE_API.formatScore;
+  PURE_EXPORTS.forEach(name => {
+    if (typeof PURE_API[name] === 'function') base[name] = PURE_API[name];
+  });
   return base;
 };
 
