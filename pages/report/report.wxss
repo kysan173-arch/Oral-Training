@@ -5,7 +5,7 @@
 .history-mode.selected { color: #fff; background: var(--color-primary); font-weight: 500; }
 
 /* 状态筛选（降饱和：选中态深色文字 + 细边框，不用彩色胶囊） */
-.history-filter-card { padding: 16rpx 18rpx; margin: -4rpx 0 20rpx; border-radius: 18rpx; background: #fff; border: 1rpx solid var(--color-border); }
+.history-filter-card { padding: 18rpx; margin: -4rpx 0 20rpx; border-radius: 18rpx; background: #fff; border: 1rpx solid var(--color-border); }
 .status-filter-row { display: flex; gap: 8rpx; }
 .status-filter { flex: 1; padding: 12rpx 4rpx; border-radius: 12rpx; color: var(--text-secondary); border: 1rpx solid transparent; font-size: 24rpx; text-align: center; transition: background .2s, color .2s; }
 .status-filter.selected { color: var(--color-primary); background: var(--color-primary-light); font-weight: 500; }
@@ -50,7 +50,8 @@
    既看不清分界也点不准。补上标准 chip 形态。 */
 .scenario-filter { flex-shrink: 0; padding: 10rpx 24rpx; border-radius: 999rpx; color: var(--text-secondary); background: var(--color-bg); border: 1rpx solid transparent; font-size: 24rpx; line-height: 1.3; transition: background .2s, color .2s; }
 .scenario-filter.selected { color: var(--color-primary); background: var(--color-primary-light); font-weight: 500; }
-.filter-divider { height: 1rpx; margin: 14rpx 0; background: var(--color-border); }
+/* 状态行与分类行之间：留足 22rpx，两块筛选不再挤在一起 */
+.filter-divider { height: 1rpx; margin: 22rpx 0; background: var(--color-border); }
 .history-mode-label { display: block; margin-top: 6rpx; color: var(--text-muted); font-size: 22rpx; }
 .history-actions { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 22rpx; }
 .history-links { display: flex; flex-direction: column; gap: 10rpx; min-width: 0; }

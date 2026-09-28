@@ -1,5 +1,6 @@
 const api = require('../../utils/api.js');
 const datetime = require('../../utils/datetime.js');
+const { CATEGORY_CONFIG } = require('../../utils/scenario.js');
 
 // 雷达图维度取数（配色按我方墨蓝体系，淘汰 master 的 #667eea 紫粉）
 const dimensionsFrom = score => [
@@ -22,9 +23,9 @@ Page({
       { id: 'all', name: '全部' }, { id: 'completed', name: '已完成' },
       { id: 'in_progress', name: '进行中' }, { id: 'abandoned', name: '已放弃' }
     ],
-    scenarioFilters: [{ id: '', name: '全部场景' }],
+    categoryFilters: [{ id: '', name: '全部场景' }],
     selectedStatus: 'all',
-    selectedScenarioId: '',
+    selectedCategory: '',
     roleBlocked: false
   },
 
@@ -35,20 +36,21 @@ Page({
       return;
     }
     this.setData({ roleBlocked: false });
-    this.loadScenarioFilters();
+    this.loadCategoryFilters();
     this.loadSessions();
   },
 
   goAdminDashboard() { wx.switchTab({ url: '/pages/admin/admin' }); },
 
-  loadScenarioFilters() {
-    api.getScenarios().then(data => {
-      const scenarioFilters = [{ id: '', name: '全部场景' }].concat((data.items || []).map(item => ({
-        id: item.id,
-        name: item.name
-      })));
-      this.setData({ scenarioFilters });
-    }).catch(() => {});
+  /* 筛选项固定为「全部 + 四个训练大类」。此前是拉 /scenarios 逐条列场景，但学员侧真正关心的
+     是「哪一类练得怎么样」，而不是某个具体场景；场景一多横排也滑不到头、看不清分界。
+     分类口径取自 utils/scenario.js（唯一来源，后端口径见 reliable_store.h sceneCategories()），
+     顺带省掉一次网络请求。 */
+  loadCategoryFilters() {
+    const categoryFilters = [{ id: '', name: '全部场景' }].concat(
+      CATEGORY_CONFIG.map(category => ({ id: category.id, name: category.name }))
+    );
+    this.setData({ categoryFilters });
   },
 
   loadSessions() {
@@ -58,7 +60,9 @@ Page({
     const isRoleplay = requestedMode === 'patient_simulation';
     const params = {
       status: this.data.selectedStatus,
-      scenarioId: this.data.selectedScenarioId,
+      /* 按训练大类筛选，不再按单个场景。后端 GET /sessions 与 /roleplay/sessions
+         都接受 category 参数（非法值返回 400），两个 tab 行为一致。 */
+      category: this.data.selectedCategory,
       limit: 50
     };
     this.setData({ loading: true });
@@ -102,10 +106,10 @@ Page({
     this.setData({ selectedStatus }, () => this.loadSessions());
   },
 
-  selectScenario(e) {
-    const selectedScenarioId = e.currentTarget.dataset.id || '';
-    if (selectedScenarioId === this.data.selectedScenarioId) return;
-    this.setData({ selectedScenarioId }, () => this.loadSessions());
+  selectCategory(e) {
+    const selectedCategory = e.currentTarget.dataset.id || '';
+    if (selectedCategory === this.data.selectedCategory) return;
+    this.setData({ selectedCategory }, () => this.loadSessions());
   },
 
   // 点击历史卡 → 进入详情页（对话/摘要/雷达图在详情页内加载）
