@@ -180,5 +180,21 @@ set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 echo [INFO] Backend has exited - code %EXIT_CODE%.
 echo.
+rem A failed start used to leave its reason only on the console, which scrolls away
+rem and is gone once the window is closed. On failure, re-run once with the output
+rem captured, so the actual reason survives on disk. If this captured run stays up,
+rem the first failure was transient and the server is now running normally.
+if "%EXIT_CODE%"=="0" goto backend_exited
+set "SERVER_LOG=%~dp0start-backend-server.log"
+echo [HINT] Capturing a diagnostic re-run into start-backend-server.log ...
+echo        (code 3 means the process aborted on an uncaught startup error,
+echo         most often the database not being reachable yet)
+echo.
+"%DEPLOY_EXE%" > "%SERVER_LOG%" 2>&1
+set "RERUN_CODE=%ERRORLEVEL%"
+>>"%LOG%" echo diagnostic rerun exited with code %RERUN_CODE%
+echo [HINT] Diagnostic re-run exited with code %RERUN_CODE% - see start-backend-server.log
+echo.
+:backend_exited
 pause
 endlocal
