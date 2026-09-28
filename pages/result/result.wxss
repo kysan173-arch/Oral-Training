@@ -77,12 +77,18 @@
 .round-head { display: flex; align-items: center; justify-content: space-between; }
 .round-flag { padding: 4rpx 14rpx; border-radius: 8rpx; color: var(--color-danger); background: var(--color-danger-light); font-size: 20rpx; }
 .compare-pane { padding: 16rpx 18rpx; margin-top: 14rpx; border-radius: 14rpx; border-left: 6rpx solid transparent; }
-.compare-you { background: var(--color-primary-pale); border-left-color: var(--text-muted); }
-.compare-better { background: var(--color-primary-light); border-left-color: var(--color-primary); }
+/* 两个框必须一眼分得开。前一版用 --color-primary-pale(#F5F8FC) 与 --color-primary-light
+   (#EEF2F8) 作底色 —— 那是两个**相邻色阶**，亮度差极小，看起来是同一个蓝灰，等于没区分。
+   现在拉开三层：底色（白 vs 主色浅底）、左条（细灰 vs 粗主色）、正文色（次要灰 vs 主色深蓝）。
+   改回相近的浅色会再次丢失区分度，别改。 */
+.compare-you { background: #FFFFFF; border: 1rpx solid var(--color-border); border-left: 6rpx solid var(--text-muted); }
+.compare-better { background: var(--color-primary-light); border-left: 8rpx solid var(--color-primary); }
 .pane-label { display: block; margin-bottom: 6rpx; font-size: 20rpx; font-weight: 600; }
 .compare-you .pane-label { color: var(--text-secondary); }
 .compare-better .pane-label { color: var(--color-primary); }
-.pane-text { display: block; color: var(--text-strong); font-size: 25rpx; line-height: 1.55; }
+.pane-text { display: block; font-size: 25rpx; line-height: 1.55; }
+.compare-you .pane-text { color: var(--text-body); }
+.compare-better .pane-text { color: var(--color-primary); }
 
 .phrase-patient, .phrase-copy, .phrase-reason { display: block; }
 .phrase-patient { color: var(--text-secondary); font-size: 22rpx; line-height: 1.5; }

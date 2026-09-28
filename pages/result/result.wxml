@@ -39,7 +39,7 @@
 
   <view class="section-title-row">
     <text class="section-title">严重违规</text>
-    <text class="section-caption fold-toggle" wx:if="{{evaluation.violations.length > visibleViolations.length || violationsExpanded}}" bindtap="toggleViolations">{{violationsExpanded ? '收起' : '展开全部 ' + evaluation.violations.length + ' 项'}}</text>
+    <text class="section-caption fold-toggle" wx:if="{{violationsExpanded}}" bindtap="toggleViolations">收起</text>
   </view>
   <view class="empty-card card" wx:if="{{evaluation.violations.length === 0}}"><text>本次没有识别到严重违规，继续保持医疗合规边界。</text></view>
   <block wx:else>
@@ -60,7 +60,7 @@
 
   <view class="section-title-row">
     <text class="section-title">关键轮次点评</text>
-    <text class="section-caption fold-toggle" wx:if="{{evaluation.roundComments.length > visibleRoundComments.length || roundCommentsExpanded}}" bindtap="toggleRoundComments">{{roundCommentsExpanded ? '收起' : '展开全部 ' + evaluation.roundComments.length + ' 个回合'}}</text>
+    <text class="section-caption fold-toggle" wx:if="{{roundCommentsExpanded}}" bindtap="toggleRoundComments">收起</text>
   </view>
   <block wx:if="{{evaluation.roundComments.length}}">
     <view class="round-card card" wx:for="{{visibleRoundComments}}" wx:key="round">
