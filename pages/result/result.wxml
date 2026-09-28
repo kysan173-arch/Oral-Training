@@ -76,7 +76,10 @@
         <text class="pane-label">建议这样说</text>
         <text class="pane-text">{{item.rewrite}}</text>
       </view>
-      <text class="round-comment">{{item.comment}}</text>
+      <view class="round-comment-row" wx:if="{{item.comment}}">
+        <text class="round-comment-tag">对比建议</text>
+        <text class="round-comment">{{item.comment}}</text>
+      </view>
     </view>
     <view class="fold-more" wx:if="{{!roundCommentsExpanded && evaluation.roundComments.length > visibleRoundComments.length}}" bindtap="toggleRoundComments">还有 {{evaluation.roundComments.length - visibleRoundComments.length}} 个回合点评，展开查看 ›</view>
   </block>
