@@ -39,31 +39,46 @@
 
   <view class="section-title-row">
     <text class="section-title">严重违规</text>
-    <text class="section-caption fold-toggle" wx:if="{{evaluation.violations.length > 0}}" bindtap="toggleViolations">{{violationsExpanded ? '收起' : '展开全部 ' + evaluation.violations.length + ' 项'}}</text>
+    <text class="section-caption fold-toggle" wx:if="{{evaluation.violations.length > visibleViolations.length || violationsExpanded}}" bindtap="toggleViolations">{{violationsExpanded ? '收起' : '展开全部 ' + evaluation.violations.length + ' 项'}}</text>
   </view>
   <view class="empty-card card" wx:if="{{evaluation.violations.length === 0}}"><text>本次没有识别到严重违规，继续保持医疗合规边界。</text></view>
   <block wx:else>
     <view class="violation-card card" wx:for="{{visibleViolations}}" wx:key="id">
       <view class="violation-top"><text class="violation-type">{{item.type}}</text><text class="deduction">-{{item.deduction}}分</text></view>
-      <text class="quote">“{{item.quote}}”</text>
+      <view class="compare-pane compare-you">
+        <text class="pane-label">你当时说的</text>
+        <text class="pane-text">“{{item.quote}}”</text>
+      </view>
       <text class="violation-reason">{{item.reason}}</text>
-      <view class="rewrite-box"><text class="rewrite-label">建议改写</text><text>{{item.rewrite}}</text></view>
+      <view class="compare-pane compare-better">
+        <text class="pane-label">建议这样说</text>
+        <text class="pane-text">{{item.rewrite}}</text>
+      </view>
     </view>
-    <view class="fold-more" wx:if="{{!violationsExpanded && evaluation.violations.length > 1}}" bindtap="toggleViolations">还有 {{evaluation.violations.length - 1}} 项违规，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{!violationsExpanded && evaluation.violations.length > visibleViolations.length}}" bindtap="toggleViolations">还有 {{evaluation.violations.length - visibleViolations.length}} 项违规，展开查看 ›</view>
   </block>
 
   <view class="section-title-row">
     <text class="section-title">关键轮次点评</text>
-    <text class="section-caption fold-toggle" wx:if="{{evaluation.roundComments.length > 1}}" bindtap="toggleRoundComments">{{roundCommentsExpanded ? '收起' : '展开全部 ' + evaluation.roundComments.length + ' 个回合'}}</text>
+    <text class="section-caption fold-toggle" wx:if="{{evaluation.roundComments.length > visibleRoundComments.length || roundCommentsExpanded}}" bindtap="toggleRoundComments">{{roundCommentsExpanded ? '收起' : '展开全部 ' + evaluation.roundComments.length + ' 个回合'}}</text>
   </view>
   <block wx:if="{{evaluation.roundComments.length}}">
     <view class="round-card card" wx:for="{{visibleRoundComments}}" wx:key="round">
-      <view class="round-badge"><text class="round-label">第 {{item.round}} 轮</text></view>
-      <text class="round-quote">“{{item.userQuote}}”</text>
+      <view class="round-head">
+        <view class="round-badge"><text class="round-label">第 {{item.round}} 轮</text></view>
+        <text class="round-flag" wx:if="{{item.hasViolation}}">该轮含违规</text>
+      </view>
+      <view class="compare-pane compare-you">
+        <text class="pane-label">你当时说的</text>
+        <text class="pane-text">“{{item.userQuote}}”</text>
+      </view>
+      <view class="compare-pane compare-better">
+        <text class="pane-label">建议这样说</text>
+        <text class="pane-text">{{item.rewrite}}</text>
+      </view>
       <text class="round-comment">{{item.comment}}</text>
-      <view class="round-rewrite"><text class="rewrite-label">更优表达</text><text>{{item.rewrite}}</text></view>
     </view>
-    <view class="fold-more" wx:if="{{!roundCommentsExpanded && evaluation.roundComments.length > 1}}" bindtap="toggleRoundComments">还有 {{evaluation.roundComments.length - 1}} 个回合点评，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{!roundCommentsExpanded && evaluation.roundComments.length > visibleRoundComments.length}}" bindtap="toggleRoundComments">还有 {{evaluation.roundComments.length - visibleRoundComments.length}} 个回合点评，展开查看 ›</view>
   </block>
 
   <view class="section-title-row"><text class="section-title">本次优秀话术</text><text class="section-caption">已自动收进话术锦囊</text></view>

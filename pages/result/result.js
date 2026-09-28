@@ -46,6 +46,12 @@ const levelFrom = score => {
 
 const normalizeEvaluation = (evaluation, sessionTotalScore) => {
   const totalScore = totalScoreFrom(evaluation, sessionTotalScore);
+  /* 违规轮次集合：用来在轮次点评上标注「该轮含违规」，把两个区块的关系讲清楚。
+     刻意不把重复轮次从点评区删掉——点评里的 comment 是违规区没有的信息，删了就丢了。
+     两处都保留、并标明它们说的是同一轮，比删一处更安全。 */
+  const violationRounds = new Set(
+    (evaluation.violations || []).map(item => Number(item.round)).filter(round => !isNaN(round))
+  );
   return Object.assign({}, evaluation, {
     totalScore,
     hasTotalScore: totalScore !== null,
@@ -59,7 +65,8 @@ const normalizeEvaluation = (evaluation, sessionTotalScore) => {
     })),
     roundComments: (evaluation.roundComments || []).map(item => Object.assign({}, item, {
       userQuote: item.userMessage || item.userQuote || '',
-      rewrite: item.recommendedRewrite || item.rewrite || ''
+      rewrite: item.recommendedRewrite || item.rewrite || '',
+      hasViolation: violationRounds.has(Number(item.round))
     })),
     recommendedPhrases: (evaluation.recommendedPhrases || []).map(item => Object.assign({}, item, {
       patientSays: item.patientSays || '',
@@ -70,8 +77,11 @@ const normalizeEvaluation = (evaluation, sessionTotalScore) => {
 };
 
 /* WXML 不能对数据路径调用函数（依赖追踪失效且不报错），
-   折叠时要显示的条目在 JS 里预算成字段。 */
-const foldList = (list, expanded) => (expanded ? (list || []) : (list || []).slice(0, 1));
+   折叠时要显示的条目在 JS 里预算成字段。
+   折叠态默认展示 3 条而不是 1 条：只给第 1 条会让学员以为「本次只有一条点评」，
+   而多轮训练的价值恰恰在后面几轮——「看不见」和「没有」在体验上是一样的。 */
+const COLLAPSED_PREVIEW = 3;
+const foldList = (list, expanded) => (expanded ? (list || []) : (list || []).slice(0, COLLAPSED_PREVIEW));
 
 Page({
   data: {

@@ -69,6 +69,21 @@
 .round-label { color: var(--color-primary); font-size: 22rpx; font-weight: 600; }
 .round-quote { display: block; margin-top: 12rpx; color: var(--text-strong); font-size: 26rpx; line-height: 1.55; font-weight: 400; }
 .round-comment { display: block; margin-top: 12rpx; color: var(--text-body); font-size: 22rpx; line-height: 1.55; }
+
+/* 对照区：学员原话 与 模型建议 紧邻排列，方便逐轮对照。
+   刻意用「上下两栏」而不是左右分栏——375px 窄屏下左右各分不到 160px，放不下
+   20–100 字的完整话术，会被折成两个细长条，比原来的堆叠更难读。
+   左侧色条区分身份：灰=学员原话，主色=建议说法。 */
+.round-head { display: flex; align-items: center; justify-content: space-between; }
+.round-flag { padding: 4rpx 14rpx; border-radius: 8rpx; color: var(--color-danger); background: var(--color-danger-light); font-size: 20rpx; }
+.compare-pane { padding: 16rpx 18rpx; margin-top: 14rpx; border-radius: 14rpx; border-left: 6rpx solid transparent; }
+.compare-you { background: var(--color-primary-pale); border-left-color: var(--text-muted); }
+.compare-better { background: var(--color-primary-light); border-left-color: var(--color-primary); }
+.pane-label { display: block; margin-bottom: 6rpx; font-size: 20rpx; font-weight: 600; }
+.compare-you .pane-label { color: var(--text-secondary); }
+.compare-better .pane-label { color: var(--color-primary); }
+.pane-text { display: block; color: var(--text-strong); font-size: 25rpx; line-height: 1.55; }
+
 .phrase-patient, .phrase-copy, .phrase-reason { display: block; }
 .phrase-patient { color: var(--text-secondary); font-size: 22rpx; line-height: 1.5; }
 .phrase-copy { margin-top: 10rpx; color: var(--color-primary); font-size: 26rpx; line-height: 1.6; font-weight: 400; }
