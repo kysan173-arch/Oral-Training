@@ -3259,6 +3259,15 @@ class ReliableDatabase {
                              {"completedCount", completed_count}, {"avgScore", avg_score},
                              {"focusAvgScore", row["avg_focus_score"].is_null()
                                   ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                             /* 诊断信号（不参与判定）：均分会掩盖「前 80 后 50」这类尾部风险，
+                                把窗口内的最低分与最后一次分数一并下发，让主管能看见均分之外的东西。
+                                null = 窗口内没有有效训练。 */
+                             {"minScore", row["min_score"].is_null()
+                                  ? json(nullptr) : json(row["min_score"].as<double>())},
+                             {"minFocusScore", row["min_focus_score"].is_null()
+                                  ? json(nullptr) : json(row["min_focus_score"].as<double>())},
+                             {"lastScore", row["last_score"].is_null()
+                                  ? json(nullptr) : json(row["last_score"].as<double>())},
                              {"score", score},
                              {"scoreBasis", planScoreBasis(row, focus_dimension)},
                              {"lastTrainingDate", row["last_training_date"].is_null()
@@ -3341,6 +3350,12 @@ class ReliableDatabase {
                             ? std::string() : planDimensionLabel(focus_dimension)},
                        {"focusAvgScore", row["avg_focus_score"].is_null()
                             ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                       {"minScore", row["min_score"].is_null()
+                            ? json(nullptr) : json(row["min_score"].as<double>())},
+                       {"minFocusScore", row["min_focus_score"].is_null()
+                            ? json(nullptr) : json(row["min_focus_score"].as<double>())},
+                       {"lastScore", row["last_score"].is_null()
+                            ? json(nullptr) : json(row["last_score"].as<double>())},
                        {"score", score},
                        {"scoreBasis", planScoreBasis(row, focus_dimension)},
                        {"maxPerScenario", row["max_per_scenario"].as<int>()},
@@ -3393,6 +3408,12 @@ class ReliableDatabase {
                             ? std::string() : planDimensionLabel(focus_dimension)},
                        {"focusAvgScore", row["avg_focus_score"].is_null()
                             ? json(nullptr) : json(row["avg_focus_score"].as<double>())},
+                       {"minScore", row["min_score"].is_null()
+                            ? json(nullptr) : json(row["min_score"].as<double>())},
+                       {"minFocusScore", row["min_focus_score"].is_null()
+                            ? json(nullptr) : json(row["min_focus_score"].as<double>())},
+                       {"lastScore", row["last_score"].is_null()
+                            ? json(nullptr) : json(row["last_score"].as<double>())},
                        {"score", score},
                        {"scoreBasis", planScoreBasis(row, focus_dimension)},
                        {"expired", expired}, {"done", done},
@@ -3768,16 +3789,23 @@ class ReliableDatabase {
   static std::string planProgressJoin() {
     return R"(LEFT JOIN LATERAL (
         SELECT COUNT(*) AS completed_count, AVG(capped.total_score) AS avg_score,
+          MIN(capped.total_score) AS min_score,
           MAX(capped.updated_at) AS last_training_at,
+          (ARRAY_AGG(capped.total_score ORDER BY capped.finished_at DESC, capped.id DESC))[1] AS last_score,
           AVG(CASE
                 WHEN p.focus_dimension <> ''
                  AND jsonb_typeof(capped.report->'dimensionScores'->p.focus_dimension) = 'number'
                 THEN (capped.report->'dimensionScores'->>p.focus_dimension)::numeric
-              END) AS avg_focus_score
+              END) AS avg_focus_score,
+          MIN(CASE
+                WHEN p.focus_dimension <> ''
+                 AND jsonb_typeof(capped.report->'dimensionScores'->p.focus_dimension) = 'number'
+                THEN (capped.report->'dimensionScores'->>p.focus_dimension)::numeric
+              END) AS min_focus_score
         FROM (
-          /* 先按场景编号排窗口，再按上限截取，这样 COUNT/AVG/MAX 与维度均分
+          /* 先按场景编号排窗口，再按上限截取，这样 COUNT/AVG/MIN/MAX 与维度分
              都只看同一批行，不会出现「次数按上限算、均分按全部算」的错位。 */
-          SELECT s.id, s.total_score, s.updated_at, e.report,
+          SELECT s.id, s.total_score, s.updated_at, s.finished_at, e.report,
             ROW_NUMBER() OVER (
               PARTITION BY s.scenario_id ORDER BY s.finished_at, s.id
             ) AS scenario_seq
