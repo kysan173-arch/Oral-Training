@@ -311,7 +311,7 @@ RAG_ENABLED=false 阻止新 v2 会话，保留 v2 读取；紧急暂停已存在
 
 步骤：
 
-1. 将全部“evaluation 否则 roleplay”改成显式 evaluation/roleplay_summary/patient_initialization 分发；未知类型拒绝。
+1. 将全部“evaluation 否则 roleplay”改成显式 evaluation/roleplay_summary/patient_initialization 分发；未知类型拒绝。**（已完成：`AiJobKind` + `parseAiJobKind`，覆盖 `lockAiJobTarget` / `enqueueAiJob` / `ensureAiJob` / `markTargetFailed` / worker 失败码；knowledge 队列另有 `GenerationTarget` + `parseGenerationTarget` 覆盖 create/retry/succeed/validateGeneratedDraft/模型提示词）**
 2. 一并覆盖 lockAiJobTarget、去重键、claim、renew、fail、过期恢复、目标失败标记、stats、readiness 和终止流程。
 3. 初始化事务保存会话/context/job；Worker 事务外生成画像和开场；提交锁序 session → context → job/result。
 4. profile 包括稳定身份、需求、预算、顾虑、有限已知内容、披露计划；不创建独立患者表。
@@ -577,7 +577,7 @@ docs/rag-development-plan.md 的第 1—4 节、对应任务与最近交接记�
 - 迁移与配置：确认最新迁移为 `009_legacy_report_totals.sql`，后续从 `010` 开始；本任务无迁移、无新运行配置
 - 注入点：新增 `IModelGateway`，`Service` 默认仍构造原 `ModelGateway`，测试可注入 fake；四类现有模型方法、请求参数、Prompt、解析和底层重试未改
 - 实际测试（2026-09-14）：MSVC Release 构建通过；CTest 6 项中 5 Passed、`database_feature` 因未配置测试数据库 Skipped；新增 `rag_contract` Passed；`static_checks.ps1` Passed（19 个 JS、40 个 JSON）；`git diff --check` 通过；本机 `psql` 18.4
-- 已知限制：R01 前仍不支持 v2/null 报告读取；`reliable_store.h` 的任务类型二选一分发须在 R09 改成显式枚举；CI PostgreSQL 14 兼容性需在迁移实现时验证
+- 已知限制：R01 前仍不支持 v2/null 报告读取；~~`reliable_store.h` 的任务类型二选一分发须在 R09 改成显式枚举~~（**已改，2026-09-27**：`AiJobKind` / `GenerationTarget` 两张显式映射表，未知类型拒绝执行且在 DB 侧不再猜目标表）；CI PostgreSQL 14 兼容性需在迁移实现时验证
 - 下一可执行任务：R01 报告读取、null 展示与聚合兼容；验收后才能生产任何 v2 报告
 
 ### R01 — 报告读取、null 展示与聚合兼容

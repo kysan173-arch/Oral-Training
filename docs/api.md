@@ -96,8 +96,8 @@ Content-Type: application/json
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/scenarios` | 场景、本人最佳分和本人进行中会话 |
-| `POST` | `/sessions` | 创建会话，body 为 `{"scenarioId":"implant-basic","customPatientProfile":{"gender":"女"}}` |
+| `GET` | `/scenarios` | 场景、本人最佳分、本人进行中会话、`dimensionFocus`（该场景主要练的维度，按权重降序、带中文名）与 `difficultyTiers`（可选难度档位；空对象 = 该场景没有进阶档，前端就不展示档位入口） |
+| `POST` | `/sessions` | 创建会话，body 为 `{"scenarioId":"implant-basic","customPatientProfile":{"gender":"女"},"tier":"advanced"}`；`tier` 选填，缺省 `standard` |
 | `GET` | `/sessions` | 本人历史；支持 `status`、`scenarioId`、`limit` |
 | `GET` | `/sessions/{id}` | 会话、完整消息和待恢复输入 |
 | `POST` | `/sessions/{id}/restart` | 放弃进行中会话并创建新会话 |
@@ -131,6 +131,60 @@ Content-Type: application/json
 - 净化后没有任何有效字段时按「未提供画像」处理，会话沿用场景默认画像（`custom_patient_profile` 存为 `{}`，`session.customPatientProfile` 回传 `{}`）。
 - 开场白在创建会话时生成一次；`POST /sessions/{id}/restart` 会沿用原会话的自定义画像重新生成开场白。
 - `GET /sessions/{id}` 的 `session.customPatientProfile` 回传净化后的画像，与提交时一致，前端可直接用于展示。
+
+### 难度档位（迁移 `026_difficulty_tiers.sql` / `027_advanced_tier_openings.sql`）
+
+`POST /sessions` 可选传入 `tier`：`standard`（缺省）或 `advanced`。会话所用档位由 `GET /sessions/{id}` 与 `GET /sessions` 的 `difficultyTier` 一并返回。
+
+- **档位由学员显式选择，系统不做自动升级。** 悄悄调难度会让分数失去可解释性（这轮 70 分，是我退步了还是患者更凶了？），失败也会被归因成「我是不是变差了」——这是训练系统最不该制造的情绪。
+- 覆盖优先级：**场景默认 → 档位 `difficulty_tiers[tier]` → `customPatientProfile`**。学员显式填的画像始终最高，不会被档位改掉。
+- 档位覆盖**两样东西**：`initialState`（情绪 / 情绪强度 / 信任度，迁移 `026`）与**开场白 `openings`**（迁移 `027`）。只覆盖前者的话，患者内部状态确实更紧张了、开口说的却还是标准档那句原话——学员听不出难度差别，档位等于只做了一半。
+- **`openings` 是数组，每条场景至少 2 句**，由服务端按**会话 id 确定性地**挑一条：同一会话永远同一条（可复现、便于排查），不同会话会看到不同变体。固定单句在第 3 次训练就被背下来了，这个分也就不再代表能力。
+- `scenarios.difficulty_tiers` 只存**非默认档**：空对象 = 这条场景没有进阶档，前端就不展示档位入口。场景没有该档定义时传 `tier` **不报错**，按 standard 处理（「没有进阶档」是正常状态，不是学员的错）。
+- 非法 `tier` 值返回 400 `INVALID_ARGUMENT`，**不静默降级**——降级会让学员以为自己在挑战进阶档、实际跑的是标准档。
+- **主管端可编辑档位**（`POST/PUT /supervisor/scenarios` 的 `difficultyTiers`）：`{advanced: {summary, initialState{emotion, emotionLevel, trustLevel}, openings[0..3]}}`。校验口径与标准档的 `hiddenConfig` 完全一致（同一情绪词表、同一强度/信任度区间、开场白 5-200 字）。`openings` 允许留空（沿用标准档开场白），但保存响应会带 `ADVANCED_OPENING_MISSING` 提醒——台词照旧会让学员以为档位没生效；某句与标准档开场白完全相同则提醒 `ADVANCED_OPENING_DUPLICATE`。
+- ⚠️ **进阶档不计入培训计划达标**（`planProgressJoin` 只统计 `difficulty_tier = 'standard'`），只进成长趋势。计划是主管给的硬要求，学员额外挑战不该反噬他。
+- **学员端 `GET /scenarios` 下发的 `difficultyTiers` 只含 `summary`**，不含 `openings` 与 `initialState`：前者是患者的台词，把全部变体提前发给学员等于把答案给了他（与「多句变体防背答案」的初衷正好相反）；后者是内部难度参数，前端展示用不到。前端只需要「有没有进阶档」+「它是什么档」这两件事。
+
+### 同场景变体池（迁移 `028_scenario_variants.sql` / `029_scenario_variants_bulk.sql`，零 schema 迁移）
+
+`hidden_config.variants` 是可选的数组，每个元素 `{ "hidden": [...], "instructions": "..." }` 是**部分覆盖**：`hidden`（隐藏顾虑组）与 `instructions`（披露节奏）若给出则覆盖主值，未写字段沿用主值。
+
+- **目的**：同一学员复练同一场景时，患者「藏着什么顾虑、什么条件下才松口」每次不同，背答案就失效——这正是比「难度不够」更该防的分数通胀。
+- **选取是 `session_id` 的纯函数**（FNV-1a，与档位开场白同源）：同一会话每轮重算结果一致（患者人设不漂移）、不同会话看到不同变体；不落库、不依赖随机数。
+- **作用点只在 `POST /messages` 的患者回复**：隐藏顾虑与披露节奏只进患者提示词，不进任何落库字段，所以没有对应的响应字段。
+- 变体池**只存在于数据层**（`hidden_config.variants`），不需要改场景骨架。028 覆盖 2 条示范场景，029 铺满其余 8 条——**当前 10 条上架场景全部各有 2 组**。
+- 主管端可见性：`GET /supervisor/scenarios/manage` 的 `items` 附 `hasVariantPool`（布尔，`variants` ≥ 2 组才为 true），管理列表据此标注「未加变体池」；`POST`/`PUT /supervisor/scenarios` 的响应里，变体不足 2 组会带 `NO_VARIANT_POOL` 提醒（只提醒不拦——新场景先上架、后补变体是合理顺序）。
+- ⚠️ **编辑场景不会清空变体池**：`hiddenConfig` 在校验里是白名单重建的，`variants` 必须显式透传，且 `updateScenario` 会在请求体没带该键时从库里兜底补回（否则主管改个简介就会把变体静默抹掉）。
+- **主管端变体编辑器已做**（`pages/admin-scenarios` 表单的「复练变体池」区，最多 5 组）：每组逐条添加隐藏顾虑 + 可选披露节奏，提交时**显式下发** `hiddenConfig.variants`（含空数组——空数组 = 主管清空了变体池，语义明确；不带该键才是「保持不变」，那是给旧客户端的兼容路径）。结构校验走 `normalizedVariants`：每组 `hidden` 非空、`instructions` 可选（5-400 字）。
+- 新增两条保存提醒（只提醒不拦）：`VARIANT_DUPLICATE`（某组变体的隐藏顾虑与主值一字不差 = 等于没加，却让 `NO_VARIANT_POOL` 消失，比没有变体更糟）、`NO_DIMENSION_WEIGHTS`（见下）。
+
+### 维度侧重与编辑器的完整契约（迁移 `024_scenario_dimension_weights.sql`）
+
+`dimension_weights` 决定「学员按弱项复练时这条场景会不会被选中」：`retrainCandidates` 用 `dimension_weights ? $2` 过滤，**未标注的场景是直接消失，不是排在最后**——漏填不报错、页面上也看不出差别。
+
+- `GET /supervisor/plan-dimensions` 下发五维目录（`[{id, name}]`），中文名唯一来源是后端 `planDimensions()`；场景编辑页据此渲染五行权重输入，前端不另写映射副本。
+- 表单提交的是主管填的原始数值（填 `3` 与填 `0.6` 等价），归一化在服务端做，并在表单里实时显示折算百分比。
+- **维度目录加载失败时前端不下发该键**：发空对象会被归一化成「未标注」，而不发送走的是「保留原值」——两者恰好是这条场景还能不能被推荐选中的差别。
+
+### AI 生成场景骨架（迁移 `030_scenario_ai_draft.sql`）
+
+主管只提供「分类 + 想覆盖的顾虑 + 难度」，模型产出**教学骨架**。分工是这套接口的全部设计：
+
+| 谁写 | 写什么 |
+| --- | --- |
+| 模型 | 表面诉求与真实顾虑的落差、三条性质错开的隐藏顾虑、可判定的缓和条件、升级条件、施压式开场白、维度侧重 |
+| 主管 | **机构事实**：能不能退费、转交谁、多久答复（= `roleplayConfig.serviceGuidance`） |
+
+模型不知道本机构的真实流程，编出来的红线一旦被学员练成肌肉记忆，比没有红线更危险。所以提示词禁止模型填服务要点，`validateGeneratedDraft` 还会**再拒一次**非空的服务要点。
+
+- 走的是与知识库同一套生成队列（`knowledge_admin_jobs`，kind=`scenario_draft`）：幂等键 + 租约 + 重试 + 死信，不新开表也不新开进程。「候选结果隔离」由 `scenarios.generation_id` 承担（非空 = 该任务独占这行）。
+- **目标行在提交任务时预建**（`scenarios` 占位行，`is_active = FALSE`、`ai_draft = TRUE`）：任务表要求 `draft_id` 非空且稳定；生成失败（模型连错 3 次）时留下一条已下线空壳，主管一眼看得出「这条没生成出来」。`sort_order` 由服务端按 `MAX(非模板) + 1` 动态分配。
+- **生成成功一律 `is_active = FALSE`**：AI 产出未经主管审阅绝不能自动上架。`ai_draft` 是**来源标记、永久保留**（上架后仍为真）——它不表示「未审阅」，未审阅由 `is_active` 表达。
+- **生成中的场景不可编辑**（`PUT` 返回 409 `SCENARIO_GENERATING`）：占位内容本来就不满足校验，且放行会让主管刚改的内容被随后写入的 AI 结果覆盖。数据库侧还有 `scenarios_generating_not_active_check` 兜底（`generation_id IS NOT NULL` 的行不许 `is_active = TRUE`）。
+- **重新生成必须以当前草稿为输入**（`retry` 从 `scenarios` 行刷新 `currentDraft`），否则主管在编辑器里改过的内容会被一次重试悄悄丢掉；已上架的场景**拒绝重试**（409 `SCENARIO_PUBLISHED`），因为重试成功会强制下线。
+- 落库时走 `ReliableDatabase::validateScenarioPayload`——**与主管手工建场景同一套约束**，AI 不是绕过校验的例外通道。校验不过 → 事务回滚 → 任务记为失败并可重试。质量提醒（如 `NO_SERVICE_GUIDANCE`、`NO_VARIANT_POOL`）随 `result.warnings` 一并存档。
+- 未知 `kind` 一律拒绝执行：分发是显式枚举（`GenerationTarget` + `parseGenerationTarget`），不存在「不是 A 就是 B」的兜底（RAG 计划 §7.3 / 风险表 R09）。
 
 ### 消息幂等与回复租约
 
@@ -293,6 +347,11 @@ Content-Type: application/json
 | `GET` | `/learning/mistakes/{sessionId}/{mistakeKey}/context` | 错题「复现原回合」上下文：错题详情（含 `mastered`）+ 患者该回合提问原话（`patientQuestion`，取自 `messages` 表）+ 学员当时发言（`originalAnswer`）+ 场景画像与自定义画像。错题必须存在于该会话报告，否则 404 `LEARNING_MISTAKE_NOT_FOUND`；回合消息缺失 404 `MISTAKE_ROUND_NOT_FOUND` |
 | `POST` | `/learning/mistakes/{sessionId}/{mistakeKey}/retrain` | 单回合复练点评：`{answer}`（1—1000 字）→ 同步调用模型返回 `{passed, comment, recommendedRewrite}`。`passed` 缺失或非法按 `false` 处理；不给五维分数（单回合覆盖不了五维，避免偏离整场权重口径） |
 | `GET` | `/learning/profile` | 本人完成次数、平均分、首末分差、五维均值、最近 12 条趋势、练习重点和错题掌握数 |
+| `GET` | `/learning/retrain-candidates?dimension={五维key}` | 弱项定向复练的场景候选。**只返回该维度权重 > 0 的场景**（未标注的场景被排除，而不是排在最后——排进候选等于告诉学员「这条也能练」），按 `dimension_weights->>dimension` 降序、同权重按 `sort_order`。每项附 `dimensionWeight`、`dimensionFocus`（该场景整体练哪些维度，用于解释「为什么推荐它」）、`completedCount`、`avgDimensionScore`、`activeSession`。`dimension` 缺失或非法一律 400（静默返回空列表会把「调用方写错 key」掩盖成「系统没数据」） |
+
+**为什么这个排序不看学员的历史分**：候选顺序只由「该场景练这个维度的比重」决定。若把学员在该场景的历史分也掺进排序，同一份弱项对不同学员会给出不同顺序，主管和学员都问不出「为什么这条排前面」；而「这个场景重点练这个维度」是场景自身的属性，不该因谁在练而变。历史分只作展示：`avgDimensionScore` 为 `null` 表示**还没练过**，前端必须如实显示「还没练过」，不能显示 0 分（0 分会被读成「练过但很差」）。`activeSession` 非空时前端应引导「继续训练」而不是新建——同一场景的进行中会话有唯一约束，直接新建会被拒。
+
+未标注维度权重（`{}`）的场景不会出现在候选里，这是刻意的：无法判断它练不练该维度，就不能推荐。所以**新建场景若不填 `dimensionWeights`，将永远不会被「按弱项推荐」选中**（见上文场景 ↔ 维度映射）。
 | `GET` | `/learning/mine` | 本人签到积分、当月签到日历、连续天数、训练摘要和话术收藏数 |
 | `POST` | `/learning/checkins` | 每个中国时区自然日签到一次，固定奖励 +10 积分 |
 
@@ -336,9 +395,31 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/supervisor/dashboard?range=week\|month\|quarter\|all` | 本团队学员数、训练量、达标率、场景聚合、五维均值和趋势 |
-| `GET` | `/supervisor/members?limit=1..100` | 本团队成员学习摘要，按姓名展示，不按成绩排序；附 `totalTeamMembers`（不受 `limit` 影响的团队成员总数，用于判断列表是否被截断）与 `totalLearners`（全部在职学员数，含已归属其他主管的人） |
-| `GET` | `/supervisor/members/{memberId}` | 本团队单个成员的五维均值、弱项建议和最多 12 条训练分数趋势；非本团队成员返回 `MEMBER_NOT_FOUND` |
+| `GET` | `/supervisor/members?limit=1..100` | `admin` | 本团队成员学习摘要，按姓名展示，不按成绩排序；附 `totalTeamMembers`（不受 `limit` 影响的团队成员总数，用于判断列表是否被截断）与 `totalLearners`（全部在职学员数，含已归属其他主管的人）。分档字段（迁移 026）：`standardAvgScore` / `advancedAvgScore`（该档**没练过时为 `null`，前端须显示「未挑战」而不是 0**）与 `advancedCount` |
+| `GET` | `/supervisor/members/{memberId}` | `admin` | 本团队单个成员的五维均值、弱项建议和最多 12 条训练分数趋势；非本团队成员返回 `MEMBER_NOT_FOUND`。分档字段同上，另附 `advancedChallengeRate`（进阶完成数 / 已完成报告数，百分之一位；无已评分训练时为 `null`）；`trend` 每点带 `difficultyTier`（`standard`/`advanced`）——**混档趋势不可比，前端默认只画标准档** |
 | `GET` | `/supervisor/scenarios` | 场景目录（`id`、`name`、`category`、`difficulty`），供发布培训计划时选择适用场景 |
+| `GET` | `/supervisor/plan-dimensions` | `admin` | 训练计划可指定的目标维度目录（`id` 五维 key + `name` 中文名）。中文名的唯一来源是 `reliable_store.h` 的 `planDimensions()`，前端不得另建副本 |
+| `GET` | `/supervisor/scenarios/manage` | `admin` | 场景管理全量目录。`items` = 可运营场景（含已下架，便于重新上架；**不含任何模板行**），每项附 `dimensionWeights`（原始权重对象，供编辑表单回填）、`dimensionFocus`（同一份数据的展示形态 `[{key, name, weight}]`，已带中文名并按权重降序）与 `difficultyTiers`（**完整档位含 `openings`**，供编辑；学员端走 `/scenarios` 的 `tierSummaryForLearner` 只拿 `summary`，两处不要混用）；`templates` = 骨架模板（迁移 025），**返回完整字段**供前端预填整张表单，与 `items` 是两段互不重叠的数据 |
+| `POST` | `/supervisor/scenarios` | `admin` | 新建场景；`id` 选填（留空自动生成 `sc-<毫秒时间戳>`）。可选 `fromTemplateId`：指定骨架模板时先以模板字段为基底、再由请求体逐键覆盖，**模板的 `id` 与 `sortOrder` 一律丢弃**（否则会撞 id 与唯一索引）；模板不存在返回 `TEMPLATE_NOT_FOUND`。可选 `dimensionWeights`：只接受五维 key，非数字/零/负数丢弃，其余**归一化到 1.0** 后落库；全零或无有效项存为 `{}`（= 未标注）。可选 `difficultyTiers`（见下方「难度档位」）。响应含 `warnings` |
+| `PUT` | `/supervisor/scenarios/{id}` | `admin` | 编辑或上下架场景，只覆盖请求体里出现的键。`dimensionWeights`、`difficultyTiers` 不提交即保留原值；**`difficultyTiers` 提交 `{}` 是显式清掉进阶档**。`hiddenConfig.variants` 显式提交（空数组 = 清空变体池）。响应含 `warnings`（档位：`ADVANCED_OPENING_MISSING` / `ADVANCED_OPENING_DUPLICATE`；变体：`NO_VARIANT_POOL` / `VARIANT_DUPLICATE`；维度：`NO_DIMENSION_WEIGHTS`）。AI 生成中的场景返回 409 `SCENARIO_GENERATING` |
+| `POST` | `/supervisor/scenarios/ai-draft` | `admin` | 提交 AI 骨架生成任务（202）。请求体 `{category, difficulty, concerns[1..5], name?, brief?}` + `Idempotency-Key`（或 body 内 `idempotencyKey`）；返回任务对象，`draftId` 即预建的占位场景 id。未知 kind、无效分类/难度、空顾虑返回 400 |
+| `GET` | `/supervisor/scenarios/ai-draft/{jobId}` | `admin` | 轮询任务状态（`pending` / `running` / `retry_wait` / `succeeded` / `dead`）。`result` 含 `candidate`、`applied`、`scenarioId`、`warnings` |
+| `POST` | `/supervisor/scenarios/ai-draft/{jobId}/retry` | `admin` | 仅 `dead` 任务可重试（202）。**已上架的骨架返回 409 `SCENARIO_PUBLISHED`**——重试成功会强制下线，那等于把已发布场景撤下来 |
+
+**场景 ↔ 维度映射（迁移 024）**：`scenarios.dimension_weights` 记录「该场景主要练哪几个维度」，是「按弱项推荐场景」的前提——此前只有自由文本的 `focus`（如 `["需求挖掘","引导专业检查"]`），与五维 key 之间没有任何映射，任何形式的推荐都只能靠拍脑袋。
+
+- key 与 `planDimensions()` 同一套；中文名由后端经 `dimensionFocus[].name` 下发，**前端不得再维护一份 key→中文名映射**。
+- 权重表示「该场景在多大程度上练这个维度」，同一场景各值之和为 1.0，因此可跨场景比较（「这条场景 45% 在练合规」）。
+- **只写非零维度，不写 0、不补零。** 「空对象 `{}`」与「某维度权重为 0」是两种不同语义：前者是**尚未标注**，后者是**不练**。推荐逻辑必须**跳过** `{}`，既不能把未标注当成全维度均等，也不能把它排在最后充数。
+
+**场景质量软校验（迁移 025 一并落地）**：创建与编辑场景的响应带 `warnings: [{code, message}]`，内容是《训练场景设计规范》六条判据里**机器能判**的部分——`HIDDEN_COUNT`、`OPENING_IS_QUESTION`、`NO_RELIEF_CONDITION`、`NO_ESCALATION_CONDITION`、`NO_EVASION_RULE`、`NO_SERVICE_GUIDANCE`、`NO_RED_LINE`、`PLACEHOLDER_NOT_REPLACED`（实现在 `reliable_store.h` 的 `scenarioQualityWarnings()`）。
+
+- **只提醒、不拦截**：保存照常成功。判据 1（诉求与顾虑的落差）和判据 2 的「性质错开」需要语义理解，硬拦会把好场景挡在门外。
+- 前端**不要用 `showModal` 展示**：单条 message 有 60-100 字，弹窗会截断，而它们恰恰是最该被读完的内容。主管端改用列表页顶部的可关闭提示条。
+- `NO_RED_LINE` 是判据 6 的替代指标——机器判不出「有没有那个诱人的坑」，但**没写红线的场景必然没有坑**。
+- 回填范围：只回填 `is_active` 且非模板的场景；已下架场景与 `is_template` 模板行保持 `{}`（模板的维度倾向由主管「以此新建」时决定）。
+- 服务端归一化的原因：让「权重可跨场景比较」这个不变式不依赖调用方守规矩——主管填 `3/1/1` 与填 `0.6/0.2/0.2` 应当存成同一个东西。
+
 
 主管接口不会返回消息、原始患者内容、报告全文、错题或话术；不包含任务指派（培训计划见第 11 节）。
 
@@ -361,13 +442,32 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 | 方法 | 路径 | 角色 | 说明 |
 |---|---|---|---|
-| `POST` | `/supervisor/training-plans` | `admin` | 发布计划；请求体 `title`(1-100)、`period`(`week`/`month`)、`dueAt`、`requiredCount`(1-20)、`requiredPassRate`(0-100)、`description`(≤500)、`scenarioIds`（空数组=全部场景）、`targetUserIds`（空数组=全团队成员，最多 500 个去重 id）；返回新建计划、`assignmentCount`、`targeted`、`requestedCount`、`skippedCount` |
-| `GET` | `/supervisor/training-plans?status=all\|active\|expired` | `admin` | 本人发布的计划列表，附 `assignmentCount`、`doneCount`、`avgScore`（统计时按当前团队过滤一次，与成员列表口径一致） |
-| `GET` | `/supervisor/training-plans/{planId}` | `admin` | 计划详情与逐学员进度（`completedCount`、`avgScore`、`lastTrainingDate`、`done`） |
+| `POST` | `/supervisor/training-plans` | `admin` | 发布计划；请求体 `title`(1-100)、`period`(`week`/`month`)、`dueAt`、`requiredCount`(1-20)、`requiredPassRate`(0-100)、`description`(≤500)、`scenarioIds`（空数组=全部场景）、`targetUserIds`（空数组=全团队成员，最多 500 个去重 id）、`focusDimension`（选填，目标维度 key，空串=不限）、`maxPerScenario`（选填，0-10，**0=不限**，见下）；返回新建计划、`assignmentCount`、`targeted`、`requestedCount`、`skippedCount` |
+| `GET` | `/supervisor/training-plans?status=all\|active\|expired` | `admin` | 本人发布的计划列表，附 `assignmentCount`、`doneCount`、`avgScore`（统计时按当前团队过滤一次，与成员列表口径一致）、`focusDimension`/`focusDimensionLabel`、`focusAvgScore`、`maxPerScenario`、`scoreBasis`（`dimension`/`total`） |
+| `GET` | `/supervisor/training-plans/{planId}` | `admin` | 计划详情与逐学员进度（`completedCount`、`avgScore`（综合分）、`focusAvgScore`、`score`（判定实际用的分）、`scoreBasis`、`lastTrainingDate`、`done`）；`plan` 内附 `focusDimension`/`focusDimensionLabel` 与 `maxPerScenario`——页面必须据此说明判定依据，不能拿 `avgScore` 去核对结论 |
 | `POST` | `/supervisor/training-plans/{planId}/notify` | `admin` | 标记已提醒并回传未完成名单，供前端复制；当前无订阅消息通道 |
-| `GET` | `/learning/training-plans` | `learner` | 本人被指派计划的进度，附 `completedCount`、`avgScore`、`status`(`pending`/`done`/`expired`) 与 `pendingCount` |
+| `POST` | `/supervisor/training-plans/suggest` | `admin` | 按学员五维薄弱项让模型生成计划**草稿**（`status='draft'`，不写指派行、学员完全不可见）；请求体可选 `learnerIds`（空=全团队成员，单次上限 10 人）；返回 `generatedCount` 与 `skipped[{learnerId,reason}]`（单人失败不拖垮整批）。候选池喂 `id`/`name`/`category`/`summary`/`difficulty`/`focus`/`dimensionFocus`（**不含** `hidden_config` 患者剧本与 `roleplay_config` 参考答案）。**模型返回的 `focusDimension` 必须能在它所选的场景里练到**，否则该学员记入 `skipped` 并不产出草稿（见下） |
+| `GET` | `/supervisor/training-plan-drafts` | `admin` | 本人待审核的 AI 草稿列表，附 `focusDimension`/`focusDimensionLabel`、`rationale`、`scenarioIds`、`learnerName`、`dueAt` |
+| `POST` | `/supervisor/training-plans/{planId}/publish` | `admin` | 采纳草稿：`draft` → `published` 并写入指派行。请求体可带 `title`/`description`/`scenarioIds`/`requiredCount`/`requiredPassRate`/`dueAt`/`focusDimension`/`maxPerScenario` 覆盖字段，即「编辑后发布」；空对象即原样采纳 |
+| `POST` | `/supervisor/training-plans/{planId}/dismiss` | `admin` | 丢弃草稿：`draft` → `dismissed`（软删，保留采纳率审计） |
+| `GET` | `/learning/training-plans` | `learner` | 本人被指派计划的进度，附 `completedCount`、`avgScore`（综合分）、`focusDimension`/`focusDimensionLabel`、`focusAvgScore`、`score`（判定实际用的分）、`scoreBasis`、`maxPerScenario`、`status`(`pending`/`done`/`expired`) 与 `pendingCount` |
 
 进度口径：只统计**客服训练**（`sessions`）的完成次数与平均分，**不含患者模拟**（`roleplay_sessions` 无评分，无法参与「最低平均分」判定）。`scenarioIds` 非空时按 `scenario_id` 过滤训练记录。
+
+**达标判定按目标维度分流**：计划未指定 `focusDimension`（空串）时，用综合均分 `AVG(sessions.total_score)` 与 `requiredPassRate` 比较，与历史计划语义一致；指定了目标维度时，改用该维度均分 `AVG(evaluations.report->'dimensionScores'->>focusDimension)` 比较——目的是让「针对弱项的计划」真的按弱项达标，避免学员靠其他维度拉高加权总分蒙混过关。该维度**没有任何有效评分**（历史报告缺键等）时回退综合分，**绝不把缺失当 0 分**——否则会凭空造出不达标。四处判定（主管列表、计划详情、CSV 导出、学员端列表）共用同一段 SQL 与同一个分数选择函数，任一处单独改都会出现「主管看到达标、学员看到未达标」。响应里 `avgScore` 恒为综合分，判定实际用的分在 `score` 字段，前端展示与比较都必须用 `score`。
+
+**回退必须对主管可见**：四处响应都带 `scoreBasis`——`dimension` = 按目标维度判定；`total` = 该维度无有效评分、已回退综合分。回退本身是有意设计（缺失不当 0 分），但它不能让主管在「以为按 A 考、实际按 B 判」的情况下看到一切正常，因此主管列表、计划详情、CSV 导出与学员端四处**都必须下发该字段**，前端在 `total` 且计划指定了维度时要显式写出判定依据。
+
+**AI 草稿的目标维度必须与所选场景自洽**（堵住又一处静默回退）。`focusDimension` 决定达标判定口径；如果计划指定的维度在所选场景里根本练不到，该维度就永远不会有有效评分，判定会静默回退综合分——主管以为在考核目标维度，实际按综合分判。因此：
+
+- 候选池向模型下发每个场景的 `dimensionFocus`（`[{key,name,weight}]`），模型据此挑场景，不再从自由文本 `focus` 里猜「这个场景练不练某个维度」。
+- 模型返回后由服务端**校验**：非空的 `focusDimension` 必须出现在所选场景的 `dimensionFocus` 中（权重 > 0）。不满足时该学员记入 `skipped`（`reason` 写明该维度不可练、以及所选场景实际可练的维度），**不产出草稿**——既不静默改写维度、也不静默清空维度。
+- 校验放在**落库边界**（`createAiPlanDraft`，错误码 `PLAN_DIMENSION_NOT_TRAINABLE`）而不是模型网关内部：这样任何模型网关（含将来接入的微调模型）都绕不过去。写在某个网关实现里只会保护那一条路径。
+- 空的 `focusDimension` 是**合法降级**（= 不限维度、按综合分判定），不拦。提示词里明确告知模型这是允许的出路，否则它会为了满足约束而硬填一个练不到的维度。
+- 所选场景**尚未标注维度权重**（`{}`）时同样拒绝，`reason` 提示先去场景管理里标注——无法验证就不能假装已验证。
+- 这条约束以前只写在提示词里、**没有任何机制检查**，模型违反了也无人知晓；现在是服务端强制。
+
+**防刷分：同一场景最多计入 N 次**（`maxPerScenario`，迁移 023）。计划可以不指定场景、只给「目标维度 + 分数 + 次数」，学员因此可以反复练最容易的那一个场景，把完成次数与维度均分一起刷上去——计划看着闭环，训练量却没铺开。`maxPerScenario` 非 0 时，同一 `scenario_id` 只按**最早**的 N 次计入完成数与均分，其余次数必须靠其他场景补齐；`0` = 不限（存量计划全部为 0，语义不变）。取「最早」而不是「最近」是刻意的：取最近 N 次时，学员在已达标的场景上多练一次（且这次分数更低）就会把原来的好成绩顶出统计，计划可能由达标翻回未达标，等于惩罚额外训练；取最早 N 次则多练只是不计入，永不倒扣。该约束与达标判定同在四处共用的 `planProgressJoin()` 里实现，改一处即四处生效——但也因此必须逐处回归。CSV 导出（`scope=plan_members`）附「目标维度 / 判定分 / 判定依据 / 同场景次数上限 / 综合均分」列，判定分与「是否达标」同源。
 
 场景分类 `category` 的取值与中文名为 `consultation` 咨询解答、`price_negotiation` 价格异议、`complaint_handling` 投诉安抚、`recommendation` 项目推荐，与 `migrations/007` 的 CHECK 约束一致，也与学员端训练页展示的分类名一致。
 
