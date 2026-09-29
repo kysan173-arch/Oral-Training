@@ -81,6 +81,18 @@ $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\017_hint_per_round.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\018_scenario_reaction_rules.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\019_roleplay_free_template.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\020_conflict_scenarios.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\021_ai_training_plans.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\022_plan_focus_dimension.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\023_plan_scenario_cap.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\024_scenario_dimension_weights.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\025_scenario_templates.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\026_difficulty_tiers.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\027_advanced_tier_openings.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\028_scenario_variants.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\029_scenario_variants_bulk.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\030_scenario_ai_draft.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\031_plan_each_pass.sql
 ```
 
 > 生产或共享环境请使用更安全的密码；本地测试可用 `oral_training_pass`。请不要把真实密码提交到仓库。
@@ -189,6 +201,18 @@ $env:PGCLIENTENCODING='UTF8'
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\017_hint_per_round.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\018_scenario_reaction_rules.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\019_roleplay_free_template.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\020_conflict_scenarios.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\021_ai_training_plans.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\022_plan_focus_dimension.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\023_plan_scenario_cap.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\024_scenario_dimension_weights.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\025_scenario_templates.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\026_difficulty_tiers.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\027_advanced_tier_openings.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\028_scenario_variants.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\029_scenario_variants_bulk.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\030_scenario_ai_draft.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\031_plan_each_pass.sql
 ```
 
 说明：

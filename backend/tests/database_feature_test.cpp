@@ -165,6 +165,13 @@ int main() {
     require(mixed_dashboard["dimensionAverages"]["knowledgeAccuracy"] == 70 &&
                 mixed_dashboard["dimensionAverages"]["medicalCompliance"] == 76.7,
             "dimension averages did not use per-dimension non-null counts");
+    require(mixed_dashboard["scenarioStats"].size() > 0,
+            "learner dashboard returned no scenario statistics");
+    for (const auto& stat : mixed_dashboard["scenarioStats"]) {
+      /* 学员数据页按四大分类归并次数，依赖每项带 category（迁移 007 起 NOT NULL）。 */
+      require(stat.contains("category") && stat.value("category", std::string()).size() > 0,
+              "learner dashboard scenario stat omitted category");
+    }
     const auto mixed_profile = database.learningProfile(kEmptyLearnerId);
     require(mixed_profile["overall"]["totalCompleted"] == 3 &&
                 mixed_profile["overall"]["scoredCount"] == 2 &&
@@ -288,6 +295,9 @@ int main() {
       bool found_trained_scenario = false;
       for (const auto& stat : dashboard["scenarioStats"]) {
         if (stat.value("scenarioId", "") == "implant-basic") found_trained_scenario = true;
+        /* 主管端「分类通过率分布」按四大分类归并，依赖每项带 category。 */
+        require(stat.contains("category") && stat.value("category", std::string()).size() > 0,
+                "supervisor dashboard scenario stat omitted category");
       }
       require(found_trained_scenario, "supervisor aggregate omitted the trained scenario");
     }

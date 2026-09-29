@@ -138,6 +138,18 @@ $env:PGCLIENTENCODING='UTF8'
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\017_hint_per_round.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\018_scenario_reaction_rules.sql
 & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\019_roleplay_free_template.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\020_conflict_scenarios.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\021_ai_training_plans.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\022_plan_focus_dimension.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\023_plan_scenario_cap.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\024_scenario_dimension_weights.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\025_scenario_templates.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\026_difficulty_tiers.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\027_advanced_tier_openings.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\028_scenario_variants.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\029_scenario_variants_bulk.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\030_scenario_ai_draft.sql
+& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\031_plan_each_pass.sql
 ```
 
 说明：

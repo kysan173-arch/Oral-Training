@@ -1,10 +1,12 @@
 .roleplay-result-page { padding-bottom: 48rpx; background: var(--bg-grad, #F7F9FC); min-height: 100vh; box-sizing: border-box; }
 
-/* ── Hero 区（白底克制 + 浅蓝灰圆形图标） ── */
+/* ── Hero 区（白底克制，纯文字，不用图标） ──
+   原来有个 96rpx 的对勾圆标：整页定位是「不含数值评分」，对勾会给「我过了」的暗示，
+   与下方 notice 的声明自相矛盾；而且 kicker「患者模拟完成」、对勾、标题「学习复盘已生成」
+   三处在说同一件事。现在 kicker 只显示场景名、标题收短，去掉图标。 */
 .result-hero { position: relative; padding: 40rpx 24rpx 46rpx; color: var(--text-strong); background: #fff; text-align: center; border-bottom: 1rpx solid var(--color-border); }
-.result-kicker { position: relative; display: block; color: var(--text-secondary); font-size: 22rpx; font-weight: 400; letter-spacing: 2rpx; }
-.hero-icon { position: relative; display: flex; align-items: center; justify-content: center; width: 96rpx; height: 96rpx; margin: 28rpx auto 20rpx; border-radius: 50%; background: var(--color-primary-light); color: var(--color-primary); font-size: 40rpx; font-weight: 600; line-height: 1; }
-.hero-title { position: relative; display: block; font-size: 40rpx; font-weight: 600; letter-spacing: 1rpx; }
+.result-kicker { position: relative; display: block; color: var(--text-secondary); font-size: 22rpx; font-weight: 400; }
+.hero-title { position: relative; display: block; margin-top: 14rpx; font-size: 40rpx; font-weight: 600; letter-spacing: 1rpx; }
 .result-time { position: relative; display: block; margin-top: 16rpx; color: var(--text-muted); font-size: 22rpx; letter-spacing: .5rpx; }
 
 /* ── 提示条（中性弱化，与训练结果页一致） ── */
@@ -12,43 +14,62 @@
 .notice-icon { width: 30rpx; height: 30rpx; line-height: 30rpx; flex-shrink: 0; margin-right: 12rpx; border-radius: 50%; text-align: center; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; font-weight: 600; }
 
 /* ── 通用标题区 ── */
-.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 28rpx 14rpx; }
+/* 左右必须与卡片同为 24rpx：此前写 28rpx，而 app.wxss 的同名类还带 padding: 0 4rpx
+   （页面 wxss 没覆盖 padding，两个属性是叠加的），实际左边距 32rpx，标题与卡片对不齐。 */
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 24rpx 14rpx; padding: 0; }
 .section-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
 .section-caption { color: var(--text-secondary); font-size: 22rpx; }
 
 /* ── 卡片通用 ── */
-.summary-card, .list-card, .principle-card { padding: 28rpx; margin: 0 24rpx 26rpx; border-radius: 20rpx; background: #fff; border: 1rpx solid var(--color-border); }
+.summary-card, .list-card, .principle-list { padding: 28rpx; margin: 0 24rpx 26rpx; border-radius: 20rpx; background: #fff; border: 1rpx solid var(--color-border); }
 
-/* ── 整体接待总结（引用式，无装饰） ── */
-.summary-card { position: relative; }
-.summary-quote { display: block; color: var(--text-strong); font-size: 28rpx; font-weight: 600; line-height: 1.8; }
+/* ── 整体接待总结（左侧色条，不用引号） ──
+   此前用中文引号把整段总结括起来，读起来像「引用了某人的话」——而 pages/result 里的引号
+   恰恰是学员原话，语义完全不同。改用左侧色条表达「这是系统总结」。 */
+.summary-card { position: relative; border-left: 8rpx solid var(--color-primary); }
+/* 正文回常规字重。此前整页 font-weight 600 出现 10 次、400 只 1 次 —— 标题与内容同粗，
+   反而没有层次（每次单看一条都觉得「这条该突出」，累积起来就等于处处都不突出）。
+   .summary-quote / .topic-text / .principle-text 三处都是「内容」而非「标题」，一律 400；
+   600 只留给 section-title / hero-title / hero-icon / principle-index。 */
+.summary-quote { display: block; color: var(--text-strong); font-size: 28rpx; font-weight: 400; line-height: 1.6; }
 
 /* ── 已覆盖问题 / 后续建议 ── */
-.list-card { color: var(--text-body); font-size: 26rpx; line-height: 1.7; }
+.list-card { color: var(--text-body); font-size: 26rpx; line-height: 1.6; }
 .topic-item { display: flex; align-items: flex-start; padding: 8rpx 0; }
 .topic-item + .topic-item { border-top: 1rpx dashed var(--color-border); margin-top: 6rpx; padding-top: 16rpx; }
 .topic-dot { width: 14rpx; height: 14rpx; flex-shrink: 0; margin: 18rpx 18rpx 0 2rpx; border-radius: 50%; background: var(--color-primary); }
-.topic-dot-arrow { display: flex; align-items: center; justify-content: center; width: 34rpx; height: 34rpx; margin-top: 8rpx; border-radius: 12rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 26rpx; font-weight: 600; }
-.topic-text { flex: 1; color: var(--text-body); font-size: 26rpx; font-weight: 600; line-height: 1.8; }
+/* 补 margin-right 与 flex-shrink：原来只设了 margin-top，箭头方块与文字之间是 0 间距
+   （圆点 .topic-dot 有 18rpx，两者不一致，看着挤）；且没写 flex-shrink: 0，
+   文本一长就会把这个 34rpx 的方块压扁。 */
+.topic-dot-arrow { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 34rpx; height: 34rpx; margin: 8rpx 18rpx 0 0; border-radius: 12rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 26rpx; font-weight: 600; }
+.topic-text { flex: 1; color: var(--text-body); font-size: 26rpx; font-weight: 400; line-height: 1.6; }
 
-/* ── 关键服务原则 ── */
-.principle-card { display: flex; align-items: flex-start; padding: 26rpx 28rpx; }
+/* ── 关键服务原则（收进一张卡，与「已覆盖的问题」同为卡内列表） ──
+   此前 wx:for 挂在卡片上，每项一张独立卡 —— 同页并存两种列表模式，上半是卡内列表、
+   下半突然变成卡片堆，页面节奏不匀。 */
+.principle-item { display: flex; align-items: flex-start; padding: 14rpx 0; }
+.principle-item + .principle-item { border-top: 1rpx dashed var(--color-border); margin-top: 6rpx; padding-top: 18rpx; }
 .principle-index { display: flex; align-items: center; justify-content: center; width: 46rpx; height: 46rpx; flex-shrink: 0; margin-right: 18rpx; border-radius: 14rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 26rpx; font-weight: 600; }
-.principle-text { flex: 1; color: var(--text-body); font-size: 26rpx; font-weight: 600; line-height: 1.8; }
+.principle-text { flex: 1; color: var(--text-body); font-size: 26rpx; font-weight: 400; line-height: 1.6; }
 
 /* ── 后续练习建议（浅蓝底） ── */
-.practice-card { background: var(--color-primary-pale); }
+/* 与 notice-box 区分：两者原本同用 --color-primary-pale —— 一个是免责声明、一个是练习建议，
+   语义不同却同色。练习建议改用稍实一档的主色浅底（notice 保持原样，与训练结果页一致）。 */
+.practice-card { background: var(--color-primary-light); }
 .practice-card .topic-dot-arrow { background: var(--color-primary-light); color: var(--color-primary); }
 
 /* ── 操作按钮 ── */
 .result-actions { padding: 6rpx 24rpx 0; }
 .result-actions button { width: 100%; height: 78rpx; line-height: 78rpx; margin-bottom: 16rpx; padding: 0; font-size: 26rpx; }
 .action-button { border: 0; }
-.disclaimer { display: block; margin-top: 8rpx; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
 
 /* ── 加载态 ── */
-.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; background: var(--bg-grad, var(--color-bg)); }
-.loading-card { width: 100%; padding: 48rpx 32rpx; text-align: center; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
+/* 加载卡此前 width:100% 而容器没有左右 padding -> 卡片贴屏幕边，而全页其他卡片都是 24rpx 边距。
+   给容器补 padding 才治本（卡片是 flex item，光加 margin 会与 100% 抢宽度）。
+   卡片自身必须显式 box-sizing: border-box：它没继承 .page-shell 的 border-box，
+   content-box 下 100% + 64rpx padding 会横向溢出。 */
+.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; padding: 0 24rpx 40rpx; background: var(--bg-grad, var(--color-bg)); }
+.loading-card { width: 100%; box-sizing: border-box; padding: 48rpx 32rpx; text-align: center; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
 .loading-icon { width: 88rpx; height: 88rpx; line-height: 88rpx; margin: 0 auto 20rpx; border-radius: 50%; color: var(--color-primary); background: var(--color-primary-light); font-size: 32rpx; }
 .loading-title, .loading-text { display: block; }
 .loading-title { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }

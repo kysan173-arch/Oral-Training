@@ -63,7 +63,6 @@
       </view>
       <view class="wb-head">
         <text class="wb-title">今天要处理</text>
-        <text class="wb-caption">{{workbench.snapshot.rangeText}}</text>
       </view>
       <view class="wb-metrics">
         <view class="wb-metric" wx:for="{{workbench.metrics}}" wx:key="id">
@@ -118,12 +117,6 @@
       <view class="wb-candidate" wx:if="{{workbench.candidateCount}}" bindtap="openWorkbenchCandidates" hover-class="wb-row-hover">
         <text class="wb-candidate-text">有 {{workbench.candidateCount}} 名在职学员尚未加入团队</text>
         <text class="wb-candidate-link">去添加 ›</text>
-      </view>
-
-      <view class="wb-snapshot">
-        <text class="wb-snapshot-item">团队 {{workbench.snapshot.studentCount}} 人</text>
-        <text class="wb-snapshot-item">{{workbench.snapshot.rangeText}}训练 {{workbench.snapshot.totalSessions}} 次</text>
-        <text class="wb-snapshot-item">达标率 {{workbench.snapshot.passRateText}}</text>
       </view>
 
       <!-- 场景管理入口：新建 / 编辑 / 上下架训练场景 -->

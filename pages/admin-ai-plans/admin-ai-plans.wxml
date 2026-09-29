@@ -1,0 +1,62 @@
+<view class="page-shell ai-page">
+  <view class="loading-card card" wx:if="{{loading}}"><text>正在校验身份…</text></view>
+
+  <block wx:elif="{{isAdmin}}">
+    <view class="ai-hero card">
+      <text class="ai-hero-title">AI 训练建议</text>
+      <text class="ai-hero-desc">按学员最弱维度挑场景、定目标，生成的是草稿——发布后学员才可见。分数与理由由 AI 生成，仅作排课参考，不作为考核依据。</text>
+    </view>
+
+    <view class="ai-toolbar">
+      <view class="ai-generate-btn {{generating ? 'disabled' : ''}}" bindtap="generateSuggestions">{{generating ? '正在生成…' : '＋ 生成新建议'}}</view>
+      <text class="ai-toolbar-hint">按团队成员逐个生成，可能需要十几秒</text>
+    </view>
+
+    <view class="section-title-row">
+      <text class="section-title">待审核建议</text>
+      <text class="section-caption">共 {{drafts.length}} 条</text>
+    </view>
+
+    <block wx:if="{{drafts.length}}">
+      <view class="ai-card card" wx:for="{{drafts}}" wx:key="id">
+        <view class="ai-card-head">
+          <text class="ai-learner">{{item.learnerName}}</text>
+          <text class="tag-primary ai-source">AI 建议</text>
+        </view>
+
+        <text class="ai-title">{{item.title}}</text>
+
+        <!-- 目标维度决定达标看哪个分数，必须与标题同屏可见 -->
+        <text class="ai-focus" wx:if="{{item.hasFocus}}">{{item.focusText}}，达标按该维度均分判定</text>
+
+        <view class="ai-rationale-box">
+          <text class="ai-rationale-label">为什么这样安排</text>
+          <text class="ai-rationale">{{item.rationale}}</text>
+        </view>
+
+        <view class="ai-scene-row">
+          <text class="ai-scene-tag" wx:for="{{item.sceneNames}}" wx:for-item="scene" wx:key="*this">{{scene}}</text>
+        </view>
+
+        <text class="ai-requirement">{{item.periodText}} · {{item.requirementText}} · 截止 {{item.dueText}}</text>
+
+        <view class="ai-actions">
+          <view class="ai-btn ai-btn-primary {{item.publishing ? 'disabled' : ''}}" bindtap="publishDraft" data-id="{{item.id}}">{{item.publishing ? '发布中…' : '采纳并发布'}}</view>
+          <view class="ai-btn ai-btn-secondary" bindtap="editDraft" data-id="{{item.id}}">编辑后发布</view>
+        </view>
+
+        <!-- 丢弃单独一行、低权重：它是可逆性最差的动作，不该和主行动并排抢注意力 -->
+        <view class="ai-actions ai-actions-sub">
+          <view class="ai-btn ai-btn-ghost {{item.dismissing ? 'disabled' : ''}}" bindtap="dismissDraft" data-id="{{item.id}}">{{item.dismissing ? '丢弃中…' : '丢弃这条建议'}}</view>
+        </view>
+      </view>
+    </block>
+
+    <empty-state wx:elif="{{draftsFailed}}" title="建议列表加载失败" text="草稿都保存在服务器上，不受影响。点击重新加载即可。" actionText="重新加载" bind:action="retryDrafts"></empty-state>
+    <empty-state wx:else title="暂无待审核的建议" text="点「生成新建议」，模型会读取每位学员最近的五维评分，按最弱的维度挑场景、定目标，生成后在这里等你审核。" actionText="返回培训页" bind:action="backToTraining"></empty-state>
+
+    <text class="ai-note" wx:if="{{drafts.length}}">丢弃的建议不会删除记录，仅从列表隐藏——便于后续统计 AI 建议的采纳率。若某位学员的薄弱项与现有场景都不贴，建议直接用「发布计划」手动安排。</text>
+  </block>
+
+  <empty-state wx:else title="AI 训练建议面向主管开放" text="当前是学员身份。主管采纳后的训练计划，可在「训练」页顶部的计划入口查看。" actionText="返回培训页" bind:action="backToTraining"></empty-state>
+</view>

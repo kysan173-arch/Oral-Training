@@ -128,7 +128,7 @@ Page({
       title: '无法生成复盘',
       content: '该患者模拟已被放弃，请从历史记录选择其他已完成会话。',
       showCancel: false,
-      success: () => wx.switchTab({ url: '/pages/report/report' })
+      success: () => wx.redirectTo({ url: '/pages/report/report' })
     });
   },
 
@@ -138,7 +138,7 @@ Page({
       title: '无法打开复盘',
       content: '页面链接缺少会话信息，请从历史记录重新进入。',
       showCancel: false,
-      success: () => wx.switchTab({ url: '/pages/report/report' })
+      success: () => wx.redirectTo({ url: '/pages/report/report' })
     });
   },
 
@@ -179,9 +179,9 @@ Page({
       this.networkRetryIndex = 0;
       this.setData({ retryable: false, timedOut: false, loadingText: '正在重新生成学习复盘…' });
       this.pollSummary();
-    }).catch(error => wx.showToast({ title: error.message, icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message }));
   },
 
   viewScenes() { wx.switchTab({ url: '/pages/index/index' }); },
-  viewHistory() { wx.switchTab({ url: '/pages/report/report' }); }
+  viewHistory() { wx.navigateTo({ url: '/pages/report/report' }); }
 });

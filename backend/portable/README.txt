@@ -11,7 +11,11 @@
    009_legacy_report_totals.sql、010_knowledge_catalog.sql、011_roleplay_rag_mvp.sql、
    012_custom_patient_profile.sql、013_recommendation_scenario.sql、014_training_plans.sql、
    015_supervisor_team.sql、016_message_emotion.sql、017_hint_per_round.sql、
-   018_scenario_reaction_rules.sql、019_roleplay_free_template.sql。
+   018_scenario_reaction_rules.sql、019_roleplay_free_template.sql、
+   020_conflict_scenarios.sql、021_ai_training_plans.sql、022_plan_focus_dimension.sql、
+   023_plan_scenario_cap.sql、024_scenario_dimension_weights.sql、025_scenario_templates.sql、
+   026_difficulty_tiers.sql、027_advanced_tier_openings.sql、028_scenario_variants.sql、
+   029_scenario_variants_bulk.sql、030_scenario_ai_draft.sql、031_plan_each_pass.sql。
 4. 复制 backend.env.example 为 backend.env，并填写数据库、DeepSeek 和身份配置。
 5. 双击 start-backend.cmd。
 
@@ -42,14 +46,18 @@ X-Forwarded-For 和 X-Forwarded-Proto 会被接受；无效或降级配置会导
   $env:PGCLIENTENCODING='UTF8'
   $env:DATABASE_URL='postgresql://oral_training_app:oral_training_pass@127.0.0.1:5432/oral_training'
   & 'C:\Program Files\PostgreSQL\18\bin\psql.exe' $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\001_initial.sql
-  ...（002 ~ 019 同理，依次执行）
+  ...（002 ~ 029 同理，依次执行）
 
 迁移文件：001_initial、002_roleplay、003_reliability、004_identity、
 005_pair_and_state_repair、006_learner_insights、007_training_experience、
 008_supervisor_growth、009_legacy_report_totals、010_knowledge_catalog、
 011_roleplay_rag_mvp、012_custom_patient_profile、013_recommendation_scenario、
 014_training_plans、015_supervisor_team、016_message_emotion、017_hint_per_round、
-018_scenario_reaction_rules、019_roleplay_free_template。
+018_scenario_reaction_rules、019_roleplay_free_template、020_conflict_scenarios、
+021_ai_training_plans、022_plan_focus_dimension、023_plan_scenario_cap、
+024_scenario_dimension_weights、025_scenario_templates、026_difficulty_tiers、
+027_advanced_tier_openings、028_scenario_variants、029_scenario_variants_bulk、
+030_scenario_ai_draft、031_plan_each_pass。
 迁移可重复执行（幂等）。
 
 可选演示数据：若想立即看到主管端聚合/成员数据，可在迁移后执行：

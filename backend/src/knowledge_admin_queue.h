@@ -4,6 +4,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,8 +27,22 @@ struct KnowledgeAdminJob {
 
 class KnowledgeAdminQueue {
  public:
+  /* 场景骨架（scenario_draft）的落库策略由**调用方注入**。
+     为什么是回调而不是直接调用：knowledge 层不认识 scenarios 表，也不该认识——
+     它只负责排队、租约与任务状态。而场景的内容校验（长度、条数、情绪词表、
+     「服务要点必须为空」）只有 store 层那一份是权威的，在 knowledge 层复制一份
+     必然漂移成「AI 能存、主管存不进去」。
+     回调在队列的**事务内**执行，所以「写场景」与「任务置成功」仍然原子。
+     返回 {"applied": bool, "warnings": [...]}。 */
+  using ScenarioDraftWriter = std::function<json(pqxx::transaction_base&, const std::string&,
+                                                 const std::string&, const json&)>;
+
   explicit KnowledgeAdminQueue(std::shared_ptr<DatabasePool> database_pool)
       : database_pool_(std::move(database_pool)) {}
+
+  void setScenarioDraftWriter(ScenarioDraftWriter writer) {
+    scenario_draft_writer_ = std::move(writer);
+  }
 
   json create(const std::string& actor_id, const std::string& kind,
               const std::string& draft_id, const json& request,
@@ -48,6 +63,7 @@ class KnowledgeAdminQueue {
 
  private:
   std::shared_ptr<DatabasePool> database_pool_;
+  ScenarioDraftWriter scenario_draft_writer_;
 };
 
 }  // namespace oral_training::knowledge

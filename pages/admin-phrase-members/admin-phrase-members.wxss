@@ -7,12 +7,35 @@
 .phrase-hero-title { display: block; margin-top: 10rpx; font-size: 36rpx; font-weight: 600; color: var(--color-danger); }
 .phrase-hero-desc { display: block; margin-top: 12rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
 
-.member-item { display: flex; align-items: center; padding: 22rpx; margin-bottom: 14rpx; transition: transform .15s ease; }
+/* 外层改块级：卡片内现在是「摘要行 + 可展开的明细区」两层结构 */
+.member-item { display: block; padding: 22rpx; margin-bottom: 14rpx; transition: transform .15s ease; }
 .member-card-hover { transform: scale(.98); }
+.member-row { display: flex; align-items: center; }
 .member-avatar { width: 72rpx; height: 72rpx; line-height: 72rpx; flex-shrink: 0; border-radius: 22rpx; background: var(--color-danger-light); color: var(--color-danger); font-size: 28rpx; font-weight: 600; text-align: center; }
 .member-copy { flex: 1; min-width: 0; margin-left: 18rpx; }
 .member-name-row { display: flex; align-items: center; justify-content: space-between; gap: 10rpx; }
 .member-name { font-size: 26rpx; font-weight: 600; color: var(--text-body); }
 .member-count { flex-shrink: 0; font-size: 24rpx; font-weight: 600; color: var(--color-danger); }
 .member-scene { display: block; margin-top: 6rpx; font-size: 22rpx; line-height: 1.5; color: var(--text-secondary); }
-.warning-arrow { margin-left: 8rpx; font-size: 30rpx; color: var(--text-secondary); }
+
+/* 展开指示用 CSS 三角而非 ▸ 字形：字形粗细随字体变、部分机型与基线错位 */
+.member-caret { flex-shrink: 0; margin-left: 12rpx; width: 0; height: 0; border-left: 10rpx solid transparent; border-right: 10rpx solid transparent; border-top: 12rpx solid var(--text-muted); transition: transform .18s ease; }
+.member-caret-up { transform: rotate(180deg); }
+
+/* ── 违规明细（原地展开） ── */
+.entry-list { margin-top: 18rpx; padding-top: 6rpx; border-top: 1rpx solid var(--color-border); }
+.entry-item { padding: 16rpx 0; }
+.entry-item + .entry-item { border-top: 1rpx solid var(--color-border); }
+.entry-head { display: flex; align-items: center; gap: 10rpx; }
+.entry-round { flex-shrink: 0; font-size: 22rpx; font-weight: 600; color: var(--text-body); }
+.entry-meta { flex: 1; min-width: 0; font-size: 20rpx; color: var(--text-muted); }
+.entry-deduction { flex-shrink: 0; font-size: 22rpx; font-weight: 600; color: var(--color-danger); }
+
+/* 违规原话用危险色浅底：与头像同一套语义，一眼看出「这句是问题」 */
+.entry-quote { display: block; margin-top: 10rpx; padding: 12rpx 14rpx; border-radius: var(--radius-sm); background: var(--color-danger-light); color: var(--text-body); font-size: 23rpx; line-height: 1.5; }
+.entry-reason { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.55; color: var(--text-secondary); }
+.entry-rewrite { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.55; color: var(--color-primary); }
+
+.entry-empty { padding: 14rpx 0; font-size: 22rpx; color: var(--text-muted); }
+.entry-overflow { display: block; margin-top: 10rpx; font-size: 20rpx; color: var(--text-muted); }
+.entry-link { margin-top: 16rpx; padding-top: 16rpx; border-top: 1rpx solid var(--color-border); font-size: 23rpx; color: var(--color-primary); text-align: center; }

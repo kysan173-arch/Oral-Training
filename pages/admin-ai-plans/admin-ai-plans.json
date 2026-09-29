@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "AI 训练建议",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

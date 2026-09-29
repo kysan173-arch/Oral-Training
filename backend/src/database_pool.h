@@ -117,8 +117,28 @@ class DatabasePool {
   friend class PooledConnection;
 
   void release(std::unique_ptr<pqxx::connection> connection) noexcept {
+    bool usable = connection && connection->is_open();
+    if (usable) {
+      /* 归还前必须把残留的打开事务清掉。
+         异常路径跳出的 pqxx::work **不会自动回滚**（libpqxx 7.10 的 work 析构
+         不发 ROLLBACK）：写事务中途抛异常（校验失败、排序号冲突……）时，连接
+         会带着打开的事务与行锁回池——后续对同一行的 FOR UPDATE 将永久等锁。
+         已在隔离库实测复现：一次 400 的 PUT 之后，合法 PUT 卡死 20 秒以上，
+         pg_stat_activity 显示一个 idle in transaction 持锁、一个 Lock 等待。
+         connection::exec 是 private 的，所以用公开的 nontransaction 发 ROLLBACK：
+         它不发 BEGIN；连接本就 idle 时 ROLLBACK 只是返回一条 no-in-progress
+         警告结果，无副作用。 */
+      try {
+        pqxx::nontransaction cleanup(*connection);
+        cleanup.exec("ROLLBACK");
+        cleanup.commit(); /* no-op；显式调用避免析构再走一次 abort 路径 */
+      } catch (...) {
+        /* 连接状态未知：丢弃而不是复用，避免把坏连接发给下一个请求。 */
+        usable = false;
+      }
+    }
     std::lock_guard<std::mutex> lock(mutex_);
-    if (connection && connection->is_open()) {
+    if (usable) {
       idle_.push_back(std::move(connection));
     } else if (open_ > 0) {
       --open_;

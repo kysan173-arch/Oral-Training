@@ -51,7 +51,8 @@ for (const [pagePath, expectedUrl] of missingSessionCases) {
   let destination = null;
   global.wx = {
     showModal: options => { modal = options; },
-    switchTab: options => { destination = options.url; }
+    switchTab: options => { destination = options.url; },
+    redirectTo: options => { destination = options.url; }
   };
   const page = instantiatePage(loadPage(pagePath));
   page.onLoad({});
@@ -81,21 +82,12 @@ const verifyRequestTimeouts = async () => {
   await api.getScenarios();
   await api.sendMessage('session-1', 'message-1', '测试消息');
   await api.sendRoleplayMessage('session-2', 'message-2', '测试问题');
-  await api.publishAdminService('service-1', 2, 'publish-idempotency-1');
-  await api.createKnowledgeGenerationJob({
-    kind: 'service_draft', draftId: 'draft-1', brief: '', count: 1,
-    idempotencyKey: 'generation-idempotency-1'
-  });
   assert.deepStrictEqual(observedTimeouts, [
     DEFAULT_REQUEST_TIMEOUT,
     DEFAULT_REQUEST_TIMEOUT,
     MODEL_REQUEST_TIMEOUT,
-    MODEL_REQUEST_TIMEOUT,
-    DEFAULT_REQUEST_TIMEOUT,
-    DEFAULT_REQUEST_TIMEOUT
+    MODEL_REQUEST_TIMEOUT
   ]);
-  assert.strictEqual(observedHeaders[4]['Idempotency-Key'], 'publish-idempotency-1');
-  assert.strictEqual(observedHeaders[5]['Idempotency-Key'], 'generation-idempotency-1');
 
   let evaluationPolls = 0;
   let evaluationRepairs = 0;
@@ -140,29 +132,6 @@ const verifyRequestTimeouts = async () => {
   assert.strictEqual(summaryPolls, 2);
 };
 
-const verifyKnowledgeEditors = () => {
-  global.wx = {};
-  const servicePage = instantiatePage(loadPage('pages/service-editor/service-editor.js'));
-  servicePage.data.form.name = '模拟服务';
-  const servicePayload = servicePage.buildPayload();
-  assert.strictEqual(servicePayload.dataOrigin, 'synthetic');
-  assert.deepStrictEqual(servicePayload.price, { status: 'unknown', reason: '尚未录入' });
-  assert.strictEqual(servicePayload.appointment.status, 'unknown');
-  servicePage.pollTimer = setTimeout(() => {}, 10000);
-  servicePage.onHide();
-  assert.strictEqual(servicePage.pollTimer, null);
-
-  const knowledgePage = instantiatePage(loadPage('pages/knowledge-editor/knowledge-editor.js'));
-  const metadata = knowledgePage.metadata();
-  assert.strictEqual(metadata.origin, 'synthetic');
-  assert.strictEqual(metadata.verification, 'unverified');
-  assert.strictEqual(metadata.trainingScope, 'demo');
-  assert.strictEqual(metadata.sourceUrl, null);
-  knowledgePage.pollTimer = setTimeout(() => {}, 10000);
-  knowledgePage.onUnload();
-  assert.strictEqual(knowledgePage.pollTimer, null);
-};
-
 const verifyHistorySummaryRefresh = async () => {
   const api = require('../../utils/api.js');
   for (const status of ['generating', 'failed', 'not_started']) {
@@ -191,7 +160,7 @@ const verifyHistorySummaryRefresh = async () => {
   }
 };
 
-verifyRequestTimeouts().then(verifyHistorySummaryRefresh).then(verifyKnowledgeEditors).then(() => {
+verifyRequestTimeouts().then(verifyHistorySummaryRefresh).then(() => {
   console.log('client recovery tests passed');
 }).catch(error => {
   console.error(error);

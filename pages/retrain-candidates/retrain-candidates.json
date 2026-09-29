@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "弱项复练",
+  "usingComponents": {
+    "empty-state": "/components/empty-state/empty-state"
+  }
+}

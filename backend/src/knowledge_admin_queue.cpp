@@ -5,11 +5,14 @@
 #include <windows.h>
 #include <bcrypt.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <iomanip>
 #include <optional>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace oral_training::knowledge {
 namespace {
@@ -34,6 +37,64 @@ void requireAdmin(pqxx::transaction_base& tx, const std::string& actor_id) {
   const auto rows = tx.exec_params(
       "SELECT 1 FROM users WHERE id = $1 AND role = 'admin' AND status = 'active'", actor_id);
   if (rows.empty()) throw KnowledgeStoreError(403, "ROLE_FORBIDDEN", "仅管理员可管理生成任务");
+}
+
+/* ── 场景骨架草稿（迁移 030）的请求校验 ────────────────────────────────────
+   主管只提供「分类 + 想覆盖的顾虑 + 难度」，教学骨架的其余部分交给模型。
+   这里卡住的是**输入**；模型**产出**的字段约束在落库时由调用方注入的
+   ScenarioDraftWriter 统一执行（最终走 ReliableDatabase 与手工建场景同一套校验），
+   所以这里不必、也不应该复制长度/条数细则。
+   长度上限按字节给宽松上界，精确口径仍在入库校验。 */
+const std::vector<std::string>& sceneCategories() {
+  static const std::vector<std::string> categories = {
+      "consultation", "price_negotiation", "complaint_handling", "recommendation"};
+  return categories;
+}
+
+void validateScenarioDraftRequest(const json& request) {
+  const auto category = request.value("category", std::string());
+  const auto& categories = sceneCategories();
+  if (std::find(categories.begin(), categories.end(), category) == categories.end()) {
+    throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "场景分类无效");
+  }
+  const auto difficulty = request.value("difficulty", std::string());
+  if (difficulty != "basic" && difficulty != "advanced") {
+    throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "难度只能是 basic 或 advanced");
+  }
+  if (!request.contains("concerns") || !request["concerns"].is_array() ||
+      request["concerns"].empty()) {
+    throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "请至少填写 1 条想覆盖的顾虑");
+  }
+  if (request["concerns"].size() > 5) {
+    throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "想覆盖的顾虑最多 5 条");
+  }
+  for (const auto& item : request["concerns"]) {
+    if (!item.is_string() || item.get<std::string>().empty() ||
+        item.get<std::string>().size() > 180) {
+      throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "想覆盖的顾虑每条需 1-60 个字");
+    }
+  }
+  if (request.value("name", std::string()).size() > 90) {
+    throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "场景名称需 30 个字以内");
+  }
+}
+
+/* 占位场景的 id。必须满足场景 id 白名单（小写字母/数字/连字符、2-60 位），
+   用随机十六进制而不是毫秒时间戳：骨架任务可能被连点两次，时间戳会撞 id。
+   randomId("ai") 形如 `ai-<24 位十六进制>`，整体拼成 `sc-ai-<hex>`（30 位）。
+   `sc-ai-` 这个前缀同时是清理脚本/测试识别「AI 生成」的锚点，别改成别的形状。 */
+std::string makeScenarioDraftId() {
+  return "sc-" + randomId("ai");
+}
+
+/* 排序号动态分配：排除骨架模板（模板占 9xx 保留区，写死或直接 MAX+1 都可能
+   撞上模板的保留号）。与迁移 025 里新增场景用的是同一条规则。 */
+int nextScenarioSortOrder(pqxx::transaction_base& tx) {
+  const auto row = tx.exec(R"(
+    SELECT COALESCE(MAX(sort_order) FILTER (WHERE NOT is_template), 0) + 1 AS next_order
+    FROM scenarios
+  )")[0];
+  return row["next_order"].as<int>();
 }
 
 json parseJsonField(const pqxx::field& field) {
@@ -90,11 +151,19 @@ json KnowledgeAdminQueue::create(const std::string& actor_id, const std::string&
                                  const std::string& idempotency_key,
                                  const std::string& request_digest,
                                  const std::string& request_id) const {
-  if (kind != "service_draft" && kind != "knowledge_draft") {
+  /* 显式分发：未知 kind 在**入库之前**就被拒绝。原实现是「不是 service_draft
+     就当 knowledge_draft」，未知类型会拿 draft_id 去锁 knowledge_drafts，
+     然后在成功时写错表——不报错，只是数据落到别处（R09 风险表第一条）。 */
+  const auto target = parseGenerationTarget(kind);
+  if (!target.has_value()) {
     throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "生成任务 kind 无效");
   }
-  if (draft_id.empty() || draft_id.size() > 200 || !request.is_object() ||
-      idempotency_key.empty() || idempotency_key.size() > 200 || request_digest.size() != 64) {
+  /* scenario_draft 的 draft_id 由服务端生成：草稿行（scenarios 占位行）在本事务里
+     才创建，调用方不可能预先给出 id。因此「draft_id 非空」这条通用规则不能套它。 */
+  const bool server_side_draft = *target == GenerationTarget::ScenarioDraft;
+  if ((!server_side_draft && draft_id.empty()) || draft_id.size() > 200 ||
+      !request.is_object() || idempotency_key.empty() || idempotency_key.size() > 200 ||
+      request_digest.size() != 64) {
     throw KnowledgeStoreError(400, "INVALID_ARGUMENT", "生成任务参数无效");
   }
   if (request.contains("count") && !request["count"].is_number_integer()) {
@@ -120,8 +189,12 @@ json KnowledgeAdminQueue::create(const std::string& actor_id, const std::string&
     WHERE created_by = $1 AND idempotency_key = $2
   )", actor_id, idempotency_key);
   if (!replay.empty()) {
-    if (std::string(replay[0]["kind"].c_str()) != kind ||
-        std::string(replay[0]["draft_id"].c_str()) != draft_id ||
+    /* 重放校验要按「调用方真的提供了什么」来判断。scenario_draft 的 draft_id 是
+       服务端生成的，重放请求里必然是空的——拿库里那个生成的 id 去比，会把
+       一个合法的重放判成 409 冲突。kind 与 request_digest 已经足够区分请求。 */
+    const bool same_target = server_side_draft ||
+        std::string(replay[0]["draft_id"].c_str()) == draft_id;
+    if (std::string(replay[0]["kind"].c_str()) != kind || !same_target ||
         std::string(replay[0]["request_digest"].c_str()) != request_digest) {
       throw KnowledgeStoreError(409, "IDEMPOTENCY_CONFLICT", "幂等键对应不同生成请求");
     }
@@ -130,12 +203,23 @@ json KnowledgeAdminQueue::create(const std::string& actor_id, const std::string&
 
   pqxx::result draft_rows;
   json model_input = request;
-  if (kind == "service_draft") {
+  auto resolved_draft_id = draft_id;
+  int base_version = 1;
+  auto prompt_version = std::string("knowledge-draft-v1");
+  // 仅 scenario_draft 用：本事务预建的占位场景。job_id 先算出来，好让占位行
+  // 直接带上 generation_id，省掉一次 UPDATE，也让「这个占位行归哪个任务」在
+  // 插入那一刻就是原子的。
+  auto placeholder_insert = json::object();
+  auto job_id = std::string();
+
+  if (*target == GenerationTarget::ServiceDraft) {
     draft_rows = tx.exec_params(
         "SELECT id, draft_version, payload FROM service_drafts WHERE id = $1 FOR UPDATE", draft_id);
     if (draft_rows.empty()) throw KnowledgeStoreError(404, "SERVICE_NOT_FOUND", "服务草稿不存在");
     model_input["currentDraft"] = parseJsonField(draft_rows[0]["payload"]);
-  } else {
+    base_version = draft_rows[0]["draft_version"].as<int>();
+    prompt_version = "service-draft-v1";
+  } else if (*target == GenerationTarget::KnowledgeDraft) {
     draft_rows = tx.exec_params(R"(
       SELECT d.id, d.draft_version, d.title, d.body, d.metadata, e.topic, e.scope
       FROM knowledge_drafts d JOIN knowledge_entries e ON e.id = d.entry_id
@@ -147,23 +231,57 @@ json KnowledgeAdminQueue::create(const std::string& actor_id, const std::string&
         {"metadata", parseJsonField(draft_rows[0]["metadata"])},
         {"topic", draft_rows[0]["topic"].c_str()}, {"scope", draft_rows[0]["scope"].c_str()},
     };
+    base_version = draft_rows[0]["draft_version"].as<int>();
+  } else {
+    /* 场景骨架（迁移 030）：与两类草稿相反——目标行还不存在，由本事务创建。
+       为什么要预建一条占位场景，而不是等生成成功再 INSERT：
+         · 任务表要求 draft_id 非空且稳定，生成期间主管端还要能看到「正在生成」；
+         · 生成失败（模型连错 3 次）时留下一条已下线的空壳，主管一眼看得出
+           「这条没生成出来」，比什么都不留更容易排查；
+         · 与 service_drafts / knowledge_drafts 的形态一致：目标行先存在，
+           AI 只负责往里填内容。 */
+    validateScenarioDraftRequest(request);
+    job_id = randomId("knowledge-job");
+    resolved_draft_id = makeScenarioDraftId();
+    placeholder_insert = {{"category", request.value("category", std::string())},
+                          {"difficulty", request.value("difficulty", std::string())},
+                          {"sortOrder", nextScenarioSortOrder(tx)}};
+    prompt_version = "scenario-draft-v1";
+    /* 占位内容刻意写成「明显不是成品」：万一主管在生成完成前打开它，
+       看到的是「AI 生成中」而不是一段半截的假场景。 */
+    const auto draft_name = request.value("name", std::string());
+    const auto brief = request.value("brief", std::string());
+    tx.exec_params(R"(
+      INSERT INTO scenarios(id, name, category, summary, difficulty, focus, dimension_weights,
+        patient_profile, hidden_config, roleplay_config, max_rounds, sort_order, is_active,
+        is_template, difficulty_tiers, ai_draft, generation_id)
+      VALUES ($1, $2, $3, $4, $5, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+              '{"suggestedQuestions":[],"serviceGuidance":[]}'::jsonb, 10, $6, FALSE, FALSE,
+              '{}'::jsonb, TRUE, $7)
+    )", resolved_draft_id,
+        draft_name.empty() ? std::string("AI 骨架生成中…") : draft_name,
+        placeholder_insert["category"].get<std::string>(),
+        brief.empty() ? std::string("AI 正在生成教学骨架，完成后请补充机构红线") : brief,
+        placeholder_insert["difficulty"].get<std::string>(),
+        placeholder_insert["sortOrder"].get<int>(), job_id);
   }
   model_input["contentPolicy"] = "synthetic_unverified_only";
-  const auto base_version = draft_rows[0]["draft_version"].as<int>();
-  const auto job_id = randomId("knowledge-job");
+  if (job_id.empty()) job_id = randomId("knowledge-job");
   tx.exec_params(R"(
     INSERT INTO knowledge_admin_jobs
       (id, kind, draft_id, base_draft_version, idempotency_key, request_digest, request,
        prompt_version, created_by)
     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
-  )", job_id, kind, draft_id, base_version, idempotency_key, request_digest,
-      model_input.dump(), kind == "service_draft" ? "service-draft-v1" : "knowledge-draft-v1",
-      actor_id);
-  if (kind == "service_draft") {
-    tx.exec_params("UPDATE service_drafts SET generation_id = $2 WHERE id = $1", draft_id, job_id);
-  } else {
-    tx.exec_params("UPDATE knowledge_drafts SET generation_id = $2 WHERE id = $1", draft_id, job_id);
+  )", job_id, kind, resolved_draft_id, base_version, idempotency_key, request_digest,
+      model_input.dump(), prompt_version, actor_id);
+  if (*target == GenerationTarget::ServiceDraft) {
+    tx.exec_params("UPDATE service_drafts SET generation_id = $2 WHERE id = $1",
+                   resolved_draft_id, job_id);
+  } else if (*target == GenerationTarget::KnowledgeDraft) {
+    tx.exec_params("UPDATE knowledge_drafts SET generation_id = $2 WHERE id = $1",
+                   resolved_draft_id, job_id);
   }
+  // scenario_draft 不需要这一步：占位行插进去时就带着 generation_id。
   writeAudit(tx, actor_id, "generation_requested", job_id, request_id);
   const auto result = jobJson(selectJob(tx, job_id)[0]);
   tx.commit();
@@ -189,8 +307,10 @@ json KnowledgeAdminQueue::retry(const std::string& actor_id, const std::string& 
     FROM knowledge_admin_jobs WHERE id = $1 FOR UPDATE
   )", job_id);
   if (rows.empty()) throw KnowledgeStoreError(404, "GENERATION_JOB_NOT_FOUND", "生成任务不存在");
-  if (std::string(rows[0]["kind"].c_str()) != "service_draft" &&
-      std::string(rows[0]["kind"].c_str()) != "knowledge_draft") {
+  /* 类型从库里读出来的那一刻就显式解析：未知类型拒绝重试，不再「猜成
+     knowledge_draft」去刷新输入（那会把 A 的输入喂给 B 的草稿）。 */
+  const auto target = parseGenerationTarget(std::string(rows[0]["kind"].c_str()));
+  if (!target.has_value()) {
     throw KnowledgeStoreError(409, "GENERATION_JOB_STATE_CONFLICT", "生成任务类型无效");
   }
   if (std::string(rows[0]["status"].c_str()) != "dead") {
@@ -203,11 +323,15 @@ json KnowledgeAdminQueue::retry(const std::string& actor_id, const std::string& 
   const auto draft_id = std::string(rows[0]["draft_id"].c_str());
   pqxx::result draft;
   auto updated_request = parseJsonField(rows[0]["request"]);
-  if (kind == "service_draft") {
+  int base_version = 1;
+  if (*target == GenerationTarget::ServiceDraft) {
     draft = tx.exec_params(
         "SELECT draft_version, payload FROM service_drafts WHERE id = $1 FOR UPDATE", draft_id);
-    if (!draft.empty()) updated_request["currentDraft"] = parseJsonField(draft[0]["payload"]);
-  } else {
+    if (!draft.empty()) {
+      updated_request["currentDraft"] = parseJsonField(draft[0]["payload"]);
+      base_version = draft[0]["draft_version"].as<int>();
+    }
+  } else if (*target == GenerationTarget::KnowledgeDraft) {
     draft = tx.exec_params(R"(
       SELECT d.draft_version, d.title, d.body, d.metadata, e.topic, e.scope
       FROM knowledge_drafts d JOIN knowledge_entries e ON e.id = d.entry_id
@@ -219,6 +343,34 @@ json KnowledgeAdminQueue::retry(const std::string& actor_id, const std::string& 
           {"metadata", parseJsonField(draft[0]["metadata"])},
           {"topic", draft[0]["topic"].c_str()}, {"scope", draft[0]["scope"].c_str()},
       };
+      base_version = draft[0]["draft_version"].as<int>();
+    }
+  } else {
+    /* 场景骨架：重新生成必须以**当前**草稿为输入，否则主管在编辑器里改过的内容
+       会被一次重试悄悄丢掉。已上架的骨架则不允许重试——重试成功会强制下线
+       （AI 产出未经审阅不能自动上架），那等于把一条已经发布的场景撤下来。 */
+    draft = tx.exec_params(R"(
+      SELECT sort_order, is_active, name, category, summary, difficulty, focus,
+        dimension_weights, patient_profile, hidden_config, roleplay_config, max_rounds
+      FROM scenarios WHERE id = $1 FOR UPDATE
+    )", draft_id);
+    if (!draft.empty()) {
+      if (draft[0]["is_active"].as<bool>()) {
+        throw KnowledgeStoreError(409, "SCENARIO_PUBLISHED",
+                                  "这条场景已经上架，重新生成会把它下线；请先下线再重试");
+      }
+      updated_request["currentDraft"] = {
+          {"name", draft[0]["name"].c_str()}, {"category", draft[0]["category"].c_str()},
+          {"summary", draft[0]["summary"].c_str()},
+          {"difficulty", draft[0]["difficulty"].c_str()},
+          {"focus", parseJsonField(draft[0]["focus"])},
+          {"dimensionWeights", parseJsonField(draft[0]["dimension_weights"])},
+          {"patientProfile", parseJsonField(draft[0]["patient_profile"])},
+          {"hiddenConfig", parseJsonField(draft[0]["hidden_config"])},
+          {"roleplayConfig", parseJsonField(draft[0]["roleplay_config"])},
+          {"maxRounds", draft[0]["max_rounds"].as<int>()},
+      };
+      base_version = 1;
     }
   }
   if (draft.empty()) throw KnowledgeStoreError(404, "DRAFT_NOT_FOUND", "目标草稿不存在");
@@ -228,11 +380,14 @@ json KnowledgeAdminQueue::retry(const std::string& actor_id, const std::string& 
       attempt_token = NULL, attempts = 0, available_at = NOW(), result = NULL,
       result_applied = NULL, model_version = NULL, error_type = NULL, error_message = NULL,
       request = $3::jsonb, updated_at = NOW(), finished_at = NULL WHERE id = $1
-  )", job_id, draft[0]["draft_version"].as<int>(), updated_request.dump());
-  if (kind == "service_draft") {
+  )", job_id, base_version, updated_request.dump());
+  if (*target == GenerationTarget::ServiceDraft) {
     tx.exec_params("UPDATE service_drafts SET generation_id = $2 WHERE id = $1", draft_id, job_id);
-  } else {
+  } else if (*target == GenerationTarget::KnowledgeDraft) {
     tx.exec_params("UPDATE knowledge_drafts SET generation_id = $2 WHERE id = $1", draft_id, job_id);
+  } else {
+    // 重新武装占位行：succeed 用 generation_id 做乐观并发闸门，不清空就写不进去。
+    tx.exec_params("UPDATE scenarios SET generation_id = $2 WHERE id = $1", draft_id, job_id);
   }
   writeAudit(tx, actor_id, "generation_retried", job_id, request_id);
   const auto result = jobJson(selectJob(tx, job_id)[0]);
@@ -309,8 +464,18 @@ bool KnowledgeAdminQueue::succeed(const KnowledgeAdminJob& job, const json& cand
   )", job.id, job.generation, job.attempt_token);
   if (active.empty()) return false;
 
+  /* 显式分发。job.kind 来自数据库，未知类型**什么都不写**就返回 false：
+     猜一个目标表去写，正是 R09 风险表里「队列新增类型落到错误目标表」的成因。 */
+  const auto target = parseGenerationTarget(job.kind);
+  if (!target.has_value()) {
+    tx.commit();
+    return false;
+  }
+
   pqxx::result applied;
-  if (job.kind == "service_draft") {
+  json stored_extra = json::object();
+  bool applied_ok = false;
+  if (*target == GenerationTarget::ServiceDraft) {
     applied = tx.exec_params(R"(
       UPDATE service_drafts SET payload = $4::jsonb, draft_version = draft_version + 1,
         generation_id = NULL, updated_by = $5, updated_at = NOW()
@@ -318,14 +483,15 @@ bool KnowledgeAdminQueue::succeed(const KnowledgeAdminJob& job, const json& cand
       RETURNING service_id, draft_version
     )", job.draft_id, job.id, job.base_draft_version, candidate.dump(),
         active[0]["created_by"].c_str());
-    if (!applied.empty()) {
+    applied_ok = !applied.empty();
+    if (applied_ok) {
       tx.exec_params(R"(
         UPDATE clinic_services SET name = $2, category = $3, updated_at = NOW()
         WHERE id = $1
       )", applied[0]["service_id"].c_str(), candidate["name"].get<std::string>(),
           candidate["category"].get<std::string>());
     }
-  } else {
+  } else if (*target == GenerationTarget::KnowledgeDraft) {
     applied = tx.exec_params(R"(
       UPDATE knowledge_drafts SET title = $4, body = $5, metadata = $6::jsonb,
         draft_version = draft_version + 1, generation_id = NULL,
@@ -335,16 +501,42 @@ bool KnowledgeAdminQueue::succeed(const KnowledgeAdminJob& job, const json& cand
     )", job.draft_id, job.id, job.base_draft_version,
         candidate["title"].get<std::string>(), candidate["body"].get<std::string>(),
         candidate["metadata"].dump(), active[0]["created_by"].c_str());
+    applied_ok = !applied.empty();
+  } else {
+    /* 场景骨架（迁移 030）。三步都在本事务里，缺一不可：
+         1. 校验并写入由**注入的回调**完成——它复用主管手工建场景那套
+            validateScenarioPayload，是 AI 内容进入 scenarios 表的最后一道闸门；
+            校验不过就抛异常 → 事务整体回滚 → worker 记为失败并可重试。
+         2. 回调同时也拦住了两种不该写的情况：占位行已被主管上架、
+            或 generation_id 已不再属于这个任务（stale）。那时返回
+            applied=false，候选结果照样存档，只是不落库。
+         3. 生成的骨架一律 is_active = FALSE：AI 产出未经主管审阅绝不能自动上架。 */
+    if (!scenario_draft_writer_) {
+      throw KnowledgeStoreError(500, "SCENARIO_WRITER_MISSING",
+                                "服务未配置场景骨架的落库逻辑");
+    }
+    const auto outcome = scenario_draft_writer_(tx, job.draft_id, job.id, candidate);
+    applied_ok = outcome.value("applied", false);
+    if (outcome.contains("warnings")) stored_extra["warnings"] = outcome["warnings"];
   }
-  json stored_result = {{"candidate", candidate}, {"applied", !applied.empty()}};
-  if (!applied.empty()) stored_result["draftVersion"] = applied[0]["draft_version"].as<int>();
+  json stored_result = {{"candidate", candidate}, {"applied", applied_ok}};
+  if (*target == GenerationTarget::ScenarioDraft) {
+    stored_result["scenarioId"] = job.draft_id;
+    for (auto it = stored_extra.begin(); it != stored_extra.end(); ++it) {
+      stored_result[it.key()] = it.value();
+    }
+  } else if (applied_ok) {
+    /* RETURNING 的列按目标表而不同：草稿类给 draft_version，场景骨架给 sort_order。
+       按列名读一个不存在的列在 pqxx 里是抛异常（不是返回空值），所以必须显式分派。 */
+    stored_result["draftVersion"] = applied[0]["draft_version"].as<int>();
+  }
   tx.exec_params(R"(
     UPDATE knowledge_admin_jobs SET status = 'succeeded', result = $4::jsonb,
       result_applied = $5, model_version = $6, lease_until = NULL, worker_id = NULL,
       attempt_token = NULL,
       error_type = NULL, error_message = NULL, updated_at = NOW(), finished_at = NOW()
     WHERE id = $1 AND generation = $2 AND attempt_token = $3
-  )", job.id, job.generation, job.attempt_token, stored_result.dump(), !applied.empty(),
+  )", job.id, job.generation, job.attempt_token, stored_result.dump(), applied_ok,
       model_version);
   tx.commit();
   return true;

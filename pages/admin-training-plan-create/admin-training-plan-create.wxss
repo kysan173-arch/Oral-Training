@@ -21,9 +21,17 @@
 .stepper-value { min-width: 60rpx; font-size: 32rpx; font-weight: 600; color: var(--text-strong); text-align: center; }
 
 .form-slider { margin: 0 8rpx; }
+/* 字段级说明：把「这个值意味着什么」写在字段下方，避免主管靠猜 */
+.form-hint { display: block; font-size: 20rpx; line-height: 1.6; color: var(--text-muted); }
 
 .plan-scene-title { margin-top: 8rpx; }
 .scene-select { padding: 24rpx 26rpx; margin-bottom: 24rpx; }
+
+/* 场景范围是可折叠的高级约束：默认收起，把注意力留给指标 */
+.scene-advanced-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.scene-advanced-title { font-size: 26rpx; font-weight: 600; color: var(--text-strong); }
+.scene-advanced-state { flex-shrink: 0; font-size: 21rpx; color: var(--color-primary); }
+.scene-advanced-body { margin-top: 22rpx; }
 
 /* 发布对象：结构与「适用场景」保持一致，复用 segment / scene-state / foot 样式 */
 .target-select { padding: 24rpx 26rpx; margin-bottom: 24rpx; }

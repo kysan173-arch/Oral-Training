@@ -46,6 +46,13 @@ class IModelGateway {
                                    const std::string& new_answer) const {
     return json::object();
   }
+
+  // 个性化训练计划草稿：按学员五维薄弱项，在候选场景池内挑场景并给出计划参数。
+  // 模型只负责「选哪些场景、目标定多少」，最终数值边界仍由 store 层再 clamp 一次。
+  virtual json trainingPlanDraft(const json& learner_profile,
+                                 const json& scenario_candidates) const {
+    return json::object();
+  }
 };
 
 }  // namespace oral_training

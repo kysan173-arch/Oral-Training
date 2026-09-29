@@ -28,9 +28,21 @@
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\017_hint_per_round.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\018_scenario_reaction_rules.sql
    & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\019_roleplay_free_template.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\020_conflict_scenarios.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\021_ai_training_plans.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\022_plan_focus_dimension.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\023_plan_scenario_cap.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\024_scenario_dimension_weights.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\025_scenario_templates.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\026_difficulty_tiers.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\027_advanced_tier_openings.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\028_scenario_variants.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\029_scenario_variants_bulk.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\030_scenario_ai_draft.sql
+   & $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\031_plan_each_pass.sql
    ```
 
-   `003` 会完整归档历史重复轮次后建立唯一索引，回填回复状态，并为已有 `generating` 记录补任务。`004` 保留所有旧记录并归属到 `demo-user-001`。`005` 按“最新回复 + 其之前最近一次输入”修复被拆开的历史问答，并补建完成会话缺失的报告或任务；被替换的消息、报告和任务状态都会归档。迁移本身不会调用模型，执行 `005` 至 `019` 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务、知识、不可变版本、发布审计及独立草稿生成队列；`011` 增加角色互换 RAG 快照、证据 trace 和消息引用。`012` 至 `019` 依次为自定义患者画像、推荐场景、培训计划与指派、主管团队归属、消息情绪、轮次内提示唯一键、场景反应规则与自由模拟模板。
+   `003` 会完整归档历史重复轮次后建立唯一索引，回填回复状态，并为已有 `generating` 记录补任务。`004` 保留所有旧记录并归属到 `demo-user-001`。`005` 按“最新回复 + 其之前最近一次输入”修复被拆开的历史问答，并补建完成会话缺失的报告或任务；被替换的消息、报告和任务状态都会归档。迁移本身不会调用模型，执行 `005` 至 `022` 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务、知识、不可变版本、发布审计及独立草稿生成队列；`011` 增加角色互换 RAG 快照、证据 trace 和消息引用。`012` 至 `022` 依次为自定义患者画像、推荐场景、培训计划与指派、主管团队归属、消息情绪、轮次内提示唯一键、场景反应规则、自由模拟模板、冲突类场景、AI 计划草稿（`021` 给 `training_plans` 加 `source` / `status` / `origin_learner_id` / `rationale`，存量行落回 supervisor / published），以及计划目标维度（`022` 给 `training_plans` 加 `focus_dimension`，空串=按综合分达标、保持存量计划语义，非空时改用该维度均分判定）。
 
 3. 构建并启动：
 
@@ -90,12 +102,11 @@ ctest --test-dir build-msvc -C Release --output-on-failure
 .\tests\state_machine.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 ```
 
-知识目录、存储与管理 API 使用一次性 schema 验证，不会清理未核对范围的数据库：
+知识目录与存储 API 使用一次性 schema 验证，不会清理未核对范围的数据库：
 
 ```powershell
 .\tests\knowledge_catalog_migration.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 .\tests\knowledge_store_database.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
-.\tests\knowledge_admin_api.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 ```
 
 迁移测试要求一次性数据库名包含 `test` 或 `ci`：

@@ -9,7 +9,6 @@
 .hero-content { position: relative; z-index: 1; }
 .hero-eyebrow { display: block; font-size: 22rpx; letter-spacing: 2rpx; opacity: .8; color: var(--text-secondary); }
 .hero-title { display: block; margin-top: 12rpx; font-size: 40rpx; font-weight: 600; color: var(--text-strong); }
-.hero-desc { display: block; margin-top: 10rpx; font-size: 24rpx; line-height: 1.55; opacity: .78; color: var(--text-secondary); }
 
 /* ── 标题：与数据页一致的主色竖条 ── */
 .section-title-row { margin: 0 4rpx 20rpx; }
@@ -24,8 +23,6 @@
 .plan-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 18rpx; }
 .plan-status-row { flex: 1; margin-top: 0; }
 .plan-create-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 30rpx; color: #fff; background: var(--color-primary); font-size: 24rpx; font-weight: 600; }
-.plan-note { display: block; margin: 6rpx 8rpx 0; font-size: 20rpx; line-height: 1.6; color: var(--text-muted); }
-
 /* ── 培训计划卡 ── */
 .plan-card { padding: 24rpx; margin-bottom: 16rpx; transition: transform .15s ease; }
 .plan-card-hover { transform: scale(.98); box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, .04); }
@@ -51,5 +48,7 @@
 .loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
 
 .plan-toolbar-actions { display: flex; align-items: center; gap: 14rpx; flex-shrink: 0; }
-.plan-export-btn { flex-shrink: 0; padding: 12rpx 26rpx; border-radius: 30rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 24rpx; font-weight: 600; }
-.plan-export-btn.disabled { opacity: 0.5; }
+/* 「⋯」用描边而非实心：次级入口，不与「＋ 发布计划」抢主行动位。
+   AI 建议 / 导出 CSV 已收进 openPlanMore() 的动作面板——原先 3 个按钮 + 3 个筛选胶囊
+   挤在同一行会超宽约 104rpx，把「已到期」顶到第二行。 */
+.plan-more-btn { flex-shrink: 0; padding: 12rpx 20rpx; border-radius: 30rpx; border: 1rpx solid var(--color-primary); color: var(--color-primary); background: transparent; font-size: 24rpx; font-weight: 600; line-height: 1; }

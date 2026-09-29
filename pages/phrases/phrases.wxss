@@ -34,10 +34,12 @@
 .patient-text { color: var(--text-secondary); font-size: 24rpx; line-height: 1.55; }
 .phrase-label { color: var(--color-primary); font-weight: 600; }
 .phrase-text { color: var(--text-body); font-size: 26rpx; }
-.reason-text { display: block; margin-top: 15rpx; color: var(--text-muted); font-size: 22rpx; line-height: 1.55; }
+/* 推荐理由原本是 muted/22rpx —— 比「第 N 轮」这个装饰性元数据还弱，
+   但它是内容（学员能学到什么），不该在最弱一档。提到 secondary/24rpx，
+   并用项目既有的 6rpx 左侧竖条给它一个「注解」锚点（同 result 违规卡 / member-detail 弱项卡）。 */
+.reason-text { display: block; margin-top: 15rpx; padding-left: 18rpx; border-left: 6rpx solid var(--text-muted); color: var(--text-secondary); font-size: 24rpx; line-height: 1.6; }
 .phrase-actions { margin-top: 20rpx; font-size: 22rpx; }
 .phrase-action-right { display: flex; align-items: center; gap: 24rpx; }
 .copy-action { color: var(--color-primary); font-weight: 600; }
 .favorite-action { color: var(--text-secondary); }
 .favorite-action.active { color: var(--color-warning); }
-.train-action { color: var(--text-secondary); }

@@ -49,8 +49,7 @@
 .char-count { display: block; margin-top: 4rpx; color: var(--text-muted); font-size: 20rpx; text-align: right; }
 .send-button { width: 128rpx; height: 72rpx; line-height: 72rpx; padding: 0; border-radius: 36rpx; color: #fff; background: var(--color-primary); font-size: 26rpx; }
 .send-button[disabled] { background: var(--color-border); }
-.roleplay-footer { display: flex; flex-direction: column; align-items: center; padding: 14rpx 22rpx 22rpx; background: #fff; }
-.leave-link { padding: 12rpx 8rpx 0; color: var(--text-secondary); font-size: 22rpx; }
+.roleplay-footer { display: flex; align-items: center; justify-content: center; padding: 14rpx 22rpx 22rpx; background: #fff; }
 .finish-button { width: 300rpx; height: 64rpx; line-height: 64rpx; padding: 0; border: 1rpx solid var(--color-border); border-radius: 32rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 26rpx; text-align: center; font-weight: 600; }
 .finish-button.is-disabled { color: var(--text-muted); border-color: var(--color-border); background: var(--color-bg); }
 

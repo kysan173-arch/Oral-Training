@@ -48,7 +48,7 @@ Page({
       this.setData({ loading: false, isAdmin: true }, () => this.loadTrainingPlans());
     }).catch(error => {
       this.setData({ loading: false });
-      wx.showToast({ title: error.message || '登录状态获取失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '登录状态获取失败' });
     });
   },
 
@@ -64,7 +64,7 @@ Page({
       /* 一并清空旧列表：失败时若留着上一次筛选的结果，会显示与当前
          筛选条件不符的数据，比留白更误导。 */
       this.setData({ plans: [], trainingLoading: false, plansFailed: true });
-      wx.showToast({ title: error.message || '培训计划加载失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '培训计划加载失败' });
     });
   },
 
@@ -84,12 +84,39 @@ Page({
     wx.navigateTo({ url: '/pages/admin-training-plan-create/admin-training-plan-create' });
   },
 
+  /* 「AI 建议」「导出 CSV」都是低频操作，收进动作面板；顶栏只留主行动「＋发布计划」。
+     原先 3 个按钮 + 3 个筛选胶囊挤在一行会超宽约 104rpx，把「已到期」顶到第二行。
+     面板写法与 pages/roleplay 对齐；用户取消是正常交互，不提示。 */
+  openPlanMore() {
+    wx.showActionSheet({
+      itemList: ['AI 建议', '导出 CSV'],
+      success: result => {
+        if (result.tapIndex === 0) this.openAiPlans();
+        else if (result.tapIndex === 1) this.exportPlanMembersCsv();
+      },
+      fail: error => {
+        if (error && /cancel/i.test(error.errMsg || '')) return;
+        api.showCenterNotice({ title: '面板打开失败，请重试' });
+      }
+    });
+  },
+
+  /* AI 建议独立成页：草稿数量不定、每条都要展开推荐理由，塞进本页会把
+     进行中的计划挤下去，主管反而看不到最该盯的进度。 */
+  openAiPlans() {
+    wx.navigateTo({ url: '/pages/admin-ai-plans/admin-ai-plans' });
+  },
+
   /* 导出全部计划的学员进度明细 CSV。
      小程序无法直接下载：后端返回 JSON 包裹的 CSV 文本，前端补 UTF-8 BOM
      写入用户目录后转发文件；转发不可用时降级为复制到剪贴板。 */
   exportPlanMembersCsv() {
     if (this.data.exporting) return;
+    /* 收进动作面板后按钮文案不再变化，改由 loading 承担「正在导出」的反馈——
+       否则从点击到 shareFileMessage 弹出的这几秒完全没有反馈，读起来像「点了没反应」。
+       exporting 仍保留作防重入标志。 */
     this.setData({ exporting: true });
+    wx.showLoading({ title: '正在导出…', mask: true });
     api.exportSupervisorReport({ scope: 'plan_members' }).then(data => {
       const csv = `\uFEFF${data.csv || ''}`;
       const filePath = `${wx.env.USER_DATA_PATH}/${data.filename || 'plan-members.csv'}`;
@@ -99,6 +126,7 @@ Page({
         data: csv,
         encoding: 'utf8',
         success: () => {
+          wx.hideLoading();
           wx.shareFileMessage({
             filePath,
             fileName: data.filename || 'plan-members.csv',
@@ -107,19 +135,21 @@ Page({
               this.setData({ exporting: false });
               wx.setClipboardData({
                 data: data.csv || '',
-                success: () => wx.showToast({ title: '已复制 CSV 内容（转发不可用）', icon: 'none' })
+                success: () => api.showCenterNotice({ title: '已复制 CSV 内容（转发不可用）' })
               });
             }
           });
         },
         fail: () => {
+          wx.hideLoading();
           this.setData({ exporting: false });
-          wx.showToast({ title: '文件写入失败，请重试', icon: 'none' });
+          api.showCenterNotice({ title: '文件写入失败', duration: 1800 });
         }
       });
     }).catch(error => {
+      wx.hideLoading();
       this.setData({ exporting: false });
-      wx.showToast({ title: error.message || '导出失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '导出失败' });
     });
   },
 
@@ -138,18 +168,18 @@ Page({
       wx.hideLoading();
       const pending = data.pendingLearners || [];
       if (!pending.length) {
-        wx.showToast({ title: '该计划已全部完成', icon: 'none' });
+        api.showCenterNotice({ title: '该计划已全部完成' });
         return;
       }
       const lines = pending.map((item, index) => `${index + 1}. ${item.displayName}`).join('\n');
       wx.setClipboardData({
         data: lines,
         success: () => wx.showToast({ title: `已复制 ${pending.length} 人名单`, icon: 'none' }),
-        fail: () => wx.showToast({ title: '复制失败，请重试', icon: 'none' })
+        fail: () => api.showCenterNotice({ title: '复制失败，请重试' })
       });
     }).catch(error => {
       wx.hideLoading();
-      wx.showToast({ title: error.message || '名单获取失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '名单获取失败' });
     });
   },
 

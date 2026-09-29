@@ -12,7 +12,6 @@
 .header-title-row { display: flex; align-items: flex-start; justify-content: space-between; }
 .eyebrow { display: block; color: var(--text-secondary); font-size: 22rpx; letter-spacing: 2rpx; }
 .page-title { display: block; margin-top: 12rpx; font-size: 40rpx; font-weight: 600; color: var(--text-strong); }
-.page-intro { display: block; margin-top: 12rpx; color: var(--text-secondary); font-size: 24rpx; line-height: 1.6; }
 
 /* ── 模式切换（滑块动效） ── */
 .mode-switch { position: relative; display: flex; padding: 6rpx; margin: -4rpx 0 22rpx; border-radius: 20rpx; background: var(--color-primary-light); }
@@ -76,7 +75,6 @@
 .category-icon { display: flex; align-items: center; justify-content: center; width: 76rpx; height: 76rpx; flex-shrink: 0; border-radius: 20rpx; font-size: 32rpx; font-weight: 600; color: var(--color-primary); background: var(--color-primary-light); }
 .category-header-text { flex: 1; overflow: hidden; }
 .category-name { display: block; font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
-.category-desc { display: block; margin-top: 4rpx; color: var(--text-secondary); font-size: 22rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .category-header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8rpx; flex-shrink: 0; margin-left: 16rpx; }
 .category-progress { padding: 4rpx 16rpx; border-radius: 20rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; font-weight: 600; white-space: nowrap; }
 .category-arrow { color: var(--text-secondary); font-size: 22rpx; transition: transform .25s; }
@@ -153,6 +151,8 @@
 .scenario-actions { display: flex; flex-direction: column; align-items: stretch; margin-top: 22rpx; }
 .scenario-button { width: 100%; height: 76rpx; line-height: 1.2; font-size: 26rpx; }
 .restart-link { align-self: center; margin-top: 16rpx; color: var(--text-secondary); font-size: 22rpx; line-height: 1.5; text-align: center; }
+/* 挑战进阶档：用警示色与「重新开始」区分——它是加压入口，不是修复入口 */
+.advanced-link { align-self: center; margin-top: 16rpx; padding: 10rpx 26rpx; border-radius: 999rpx; background: var(--color-warning-light); color: var(--color-warning); font-size: 22rpx; font-weight: 600; line-height: 1.5; }
 
 /* ── 从 master 并入：下列选择器的类名在 app.wxss 与本页 wxss 里都不存在，追加不会覆盖任何既有规则 ──*/
 .service-picker { margin: 18rpx 0; padding: 22rpx; }

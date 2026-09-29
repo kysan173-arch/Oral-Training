@@ -6,7 +6,6 @@
 .hero-content { position: relative; z-index: 1; }
 .hero-eyebrow { display: block; font-size: 22rpx; letter-spacing: 2rpx; opacity: .8; color: var(--text-secondary); }
 .hero-title { display: block; margin-top: 12rpx; font-size: 40rpx; font-weight: 600; color: var(--text-strong); }
-.hero-desc { display: block; margin-top: 10rpx; font-size: 24rpx; line-height: 1.55; opacity: .78; color: var(--text-secondary); }
 
 /* 时间筛选（嵌在头部内，分段控件） */
 .hero-time-row { display: flex; gap: 10rpx; margin-top: 22rpx; padding: 6rpx; border-radius: 14rpx; background: var(--color-primary-light); }
@@ -131,7 +130,6 @@
 .filter-chip { padding: 8rpx 18rpx; border-radius: 18rpx; font-size: 22rpx; color: var(--color-primary); background: var(--color-primary-light); }
 .filter-chip.selected { color: #fff; background: var(--color-primary); font-weight: 600; }
 .filter-summary { display: block; margin-top: 16rpx; font-size: 22rpx; color: var(--text-secondary); }
-.filter-note { display: block; margin-top: 4rpx; font-size: 20rpx; color: var(--text-muted); }
 .filter-link { display: block; margin-top: 16rpx; font-size: 24rpx; color: var(--color-primary); }
 
 /* ── 违规词统计（「培训运营」样式已随功能迁至 pages/admin-training） ── */
@@ -223,7 +221,6 @@
 .history-banner-arrow { font-size: 32rpx; color: var(--text-secondary); }
 
 /* ── 通用 ── */
-.disclaimer { display: block; padding: 24rpx 12rpx 0; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
 .loading-card { padding: 48rpx 28rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; }
 
 /* 场景统计（学习者模式用） */
@@ -231,10 +228,3 @@
 .learner-scene-head { justify-content: space-between; gap: 14rpx; }
 .learner-scene-head > text:first-child { flex-shrink: 0; }
 .scene-fill-learner { background: var(--color-primary); }
-
-/* ── 从 master 并入：下列选择器的类名在 app.wxss 与本页 wxss 里都不存在，追加不会覆盖任何既有规则 ──*/
-.knowledge-entry { display: flex; align-items: center; justify-content: space-between; margin: 18rpx 0 24rpx; padding: 24rpx; color: #5966b3; }
-.knowledge-entry view text { display: block; }
-.knowledge-entry view text:first-child { font-size: 28rpx; font-weight: 700; }
-.knowledge-entry view text:last-child { margin-top: 8rpx; color: #8b91a8; font-size: 21rpx; }
-.knowledge-entry > text { font-size: 38rpx; }

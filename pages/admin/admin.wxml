@@ -7,20 +7,10 @@
       <view class="hero-content">
         <text class="hero-eyebrow">主管数据看板</text>
         <text class="hero-title">团队训练概览</text>
-        <text class="hero-desc">覆盖团队洞察、成员管理与数据报表；仅呈现聚合指标，不含原始对话内容。分数为 AI 辅助评估（演示口径），建议作为训练参考，不作为考核依据。</text>
         <view class="hero-time-row" wx:if="{{activeTab === 'overview'}}">
           <text wx:for="{{timeFilters}}" wx:key="id" class="hero-time {{timeRange === item.id ? 'selected' : ''}}" bindtap="selectTimeRange" data-id="{{item.id}}">{{item.name}}</text>
         </view>
       </view>
-    </view>
-
-    <!-- 知识与服务管理入口（master 独有，页面已注册在 app.json） -->
-    <view class="knowledge-entry card" bindtap="goKnowledgeAdmin">
-      <view>
-        <text>知识与服务管理</text>
-        <text>维护模拟服务、专业知识、发布版本与生成任务</text>
-      </view>
-      <text>›</text>
     </view>
 
     <!-- 四个模块分段导航，与文档 3.2 一一对应 -->
@@ -44,7 +34,7 @@
       <!-- 1.2 训练趋势 -->
       <view class="section-title-row"><text class="section-title">训练趋势</text><text class="section-caption">最近 12 天</text></view>
       <view class="chart-card card">
-        <trend-chart wx:if="{{trendLabels.length}}" labels="{{trendLabels}}" series="{{trendSeries}}" height="{{200}}" bind:tappoint="onTrendTap"></trend-chart>
+        <trend-chart wx:if="{{trendLabels.length}}" labels="{{trendLabels}}" series="{{trendSeries}}" height="{{200}}" left-unit="次" right-unit="分" bind:tappoint="onTrendTap"></trend-chart>
         <empty-state wx:else title="暂无趋势数据" text="团队完成训练后，这里会展示每日训练次数与平均分走势。"></empty-state>
         <view class="trend-point" wx:if="{{trendPoint}}">
           <text class="trend-point-date">{{trendPoint.date}}</text>
@@ -53,7 +43,7 @@
       </view>
 
       <!-- 1.3 五维聚合表现 -->
-      <view class="section-title-row"><text class="section-title">五维聚合表现</text><text class="section-caption">已完成报告均值</text></view>
+      <view class="section-title-row"><text class="section-title">五维聚合表现</text></view>
       <view class="dimension-card card">
         <view class="dimension-row" wx:for="{{supervisor.dimensionAverages}}" wx:key="key">
           <view class="dimension-head"><text>{{item.name}}</text><text class="dim-score">{{item.valueText}}</text></view>
@@ -61,13 +51,13 @@
         </view>
       </view>
 
-      <!-- 1.4 场景通过率分布 + 薄弱场景预警 -->
-      <view class="section-title-row"><text class="section-title">场景通过率分布</text><text class="section-caption">达标线 60 分 · AI 辅助评估</text></view>
+      <!-- 1.4 分类通过率分布 + 薄弱场景预警（按四大分类归并，与学员数据页同口径） -->
+      <view class="section-title-row"><text class="section-title">分类通过率分布</text></view>
       <view class="chart-card card">
-        <view class="scene-stat" wx:for="{{supervisor.scenarioStats}}" wx:key="scenarioId">
+        <view class="scene-stat" wx:for="{{supervisor.scenarioStats}}" wx:key="id">
           <view class="scene-stat-head">
             <view class="scene-name-wrap">
-              <text>{{item.scenarioName}}</text>
+              <text>{{item.name}}</text>
               <text class="scene-weak-tag" wx:if="{{item.weak}}">需重点训练</text>
             </view>
             <view class="scene-stat-meta">
@@ -75,15 +65,15 @@
               <text class="scene-sep">·</text>
               <text>{{item.total}} 次</text>
               <text class="scene-sep">·</text>
-              <text class="{{item.passRate >= 60 ? 'pass-ok' : 'pass-warn'}}">达标 {{item.passRateText}}</text>
+              <text class="{{item.passRateClass}}">达标 {{item.passRateText}}</text>
             </view>
           </view>
-          <view class="scene-bar scene-bar-pass"><view class="scene-fill" style="width:{{item.passRate}}%;"></view></view>
+          <view class="scene-bar scene-bar-pass"><view class="scene-fill" style="width:{{item.barWidth}}%;"></view></view>
         </view>
       </view>
 
       <!-- 2.3 薄弱项预警：团队级 + 个人级 -->
-      <view class="section-title-row"><text class="section-title">薄弱项预警</text><text class="section-caption">按聚合数据生成</text></view>
+      <view class="section-title-row"><text class="section-title">薄弱项预警</text></view>
       <view class="suggestion-card card {{item.severity}}" wx:for="{{teamWarnings}}" wx:key="title">
         <view class="suggestion-body">
           <view class="suggestion-title-row">
@@ -109,7 +99,7 @@
 
     <!-- ══════════ 第二模块：成员管理 ══════════ -->
     <block wx:elif="{{activeTab === 'member'}}">
-      <view class="section-title-row"><text class="section-title">成员列表</text><text class="section-caption">全量累计，不随时间维度变化</text></view>
+      <view class="section-title-row"><text class="section-title">成员列表</text></view>
       <view class="filter-card card">
         <view class="filter-search-row">
           <input class="filter-input" placeholder="搜索成员姓名" placeholder-class="filter-input-placeholder" value="{{memberKeyword}}" bindinput="onMemberKeyword" confirm-type="search"></input>
@@ -124,7 +114,6 @@
           <text class="filter-chip {{memberFilter === item.id ? 'selected' : ''}}" wx:for="{{memberFilters}}" wx:key="id" bindtap="selectMemberFilter" data-id="{{item.id}}">{{item.name}}</text>
         </view>
         <text class="filter-summary">{{memberCountText}}</text>
-        <text class="filter-note">待辅导判定：连续 7 天未训练，或平均分低于 60 分。场景管理入口已移至首页工作台。</text>
       </view>
 
       <view class="member-card card" wx:for="{{members}}" wx:key="id" bindtap="openMember" data-id="{{item.id}}" hover-class="member-card-hover">
@@ -137,7 +126,7 @@
             <text class="member-level">{{item.levelText}}</text>
             <text class="member-warn-tag" wx:if="{{item.needCoaching}}">待辅导</text>
           </view>
-          <text class="member-meta-line1">累计训练 {{item.totalSessions}} 次 · 平均 {{item.averageScoreText}} 分</text>
+          <text class="member-meta-line1">累计训练 {{item.totalSessions}} 次 · {{item.scoreLine}}</text>
           <text class="member-meta">{{item.latestText}}</text>
         </view>
         <view class="member-side"><text>{{item.passRateText}}%</text><text>详情 ›</text></view>
@@ -147,10 +136,7 @@
 
     <!-- ══════════ 第三模块：数据报表（「培训运营」已拆为独立 Tab 页 pages/admin-training） ══════════ -->
     <block wx:else>
-      <view class="section-title-row">
-        <text class="section-title">违规词统计</text>
-        <text class="section-caption">来源：已完成报告的模型输出</text>
-      </view>
+      <view class="section-title-row"><text class="section-title">违规词统计</text></view>
 
       <view class="filter-card card">
         <view class="filter-chip-row">
@@ -184,10 +170,7 @@
           <text class="phrase-hint" wx:if="{{phrases.length}}">点击任意一类可查看涉及的成员明细。</text>
         </view>
 
-        <view class="section-title-row">
-          <text class="section-title">团队排行榜</text>
-          <text class="section-caption">仅用于正向激励</text>
-        </view>
+        <view class="section-title-row"><text class="section-title">团队排行榜</text></view>
         <view class="board-card card">
           <view class="filter-chip-row board-dimension-row">
             <text class="filter-chip {{leaderboardDimension === item.id ? 'selected' : ''}}" wx:for="{{leaderboardDimensions}}" wx:key="id" bindtap="selectLeaderboardDimension" data-id="{{item.id}}">{{item.name}}</text>
@@ -216,7 +199,6 @@
       <view class="hero-content">
         <text class="hero-eyebrow">个人训练数据</text>
         <text class="hero-title">我的训练概况</text>
-        <text class="hero-desc">你的训练数据仅供本人复盘，不用于排名或正式考核。</text>
       </view>
     </view>
 
@@ -244,7 +226,7 @@
       </view>
     </view>
 
-    <!-- 场景训练分布 -->
+    <!-- 场景训练分布：按四大分类归并（逐场景粒度太细） -->
     <view class="section-title-row"><text class="section-title">各场景训练</text></view>
     <view class="chart-card card">
       <view class="scene-stat" wx:for="{{personal.sceneStats}}" wx:key="id">
@@ -257,10 +239,7 @@
     </view>
 
     <!-- 五维能力图（带弱项提示） -->
-    <view class="section-title-row">
-      <text class="section-title">五维能力</text>
-      <text class="section-caption">仅已完成的训练</text>
-    </view>
+    <view class="section-title-row"><text class="section-title">五维能力</text></view>
     <view class="dimension-card card">
       <view wx:if="{{personal.dimensionSummaryText}}" class="dimension-summary-text">
         <text>{{personal.dimensionSummaryText}}</text>
@@ -311,6 +290,4 @@
     </view>
     <text class="history-banner-arrow">›</text>
   </view>
-
-  <text class="disclaimer">训练数据仅用于学习复盘与必要的主管辅导。</text>
 </view>

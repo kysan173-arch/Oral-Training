@@ -1,0 +1,208 @@
+/* AI 训练建议：沿用培训页的克制白底风格——细边框、无阴影堆叠、无渐变，
+   主色只用于「采纳并发布」这一个主行动按钮。
+
+   ⚠️ 颜色一律取 app.wxss 已定义的 token：--text-strong / --text-secondary / --text-muted / --color-border。
+   不要写 --text-primary / --text-tertiary / --border-color —— 这三个变量在项目里**不存在**，
+   失效后标题会跟正文同色、标签和按钮会丢边框，整张卡看起来「没做设计」。 */
+
+.ai-page {
+  padding-bottom: 40rpx;
+}
+
+.loading-card {
+  margin: 24rpx 24rpx 0;
+  padding: 32rpx;
+  color: var(--text-secondary);
+  font-size: 26rpx;
+}
+
+/* ── 头部说明 ── */
+.ai-hero {
+  margin: 24rpx 24rpx 0;
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.ai-hero-title {
+  font-size: 34rpx;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.ai-hero-desc {
+  font-size: 25rpx;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* ── 生成按钮行 ── */
+.ai-toolbar {
+  margin: 24rpx 24rpx 0;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  flex-wrap: wrap;
+}
+
+.ai-generate-btn {
+  padding: 16rpx 32rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  font-size: 26rpx;
+}
+
+.ai-generate-btn.disabled {
+  opacity: 0.5;
+}
+
+.ai-toolbar-hint {
+  font-size: 23rpx;
+  color: var(--text-muted);
+}
+
+/* ── 建议卡片 ── */
+.ai-card {
+  margin: 20rpx 24rpx 0;
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.ai-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 成员名比标题轻、比辅助文字重，且用 600 与其他文字拉开：
+   主管扫列表时先认出「这条派给谁」，再读训练主题。 */
+.ai-learner {
+  font-size: 27rpx;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.ai-source {
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+}
+
+.ai-title {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--text-strong);
+  line-height: 1.5;
+}
+
+/* 目标维度：达标口径的说明，弱于标题、强于辅助文字 */
+.ai-focus {
+  font-size: 24rpx;
+  color: var(--color-primary);
+  line-height: 1.5;
+}
+
+/* 推荐理由是主管判断「采不采纳」的核心依据，用左侧竖线做视觉锚点 */
+.ai-rationale-box {
+  padding: 20rpx 24rpx;
+  border-left: 6rpx solid var(--color-primary);
+  background: var(--color-bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.ai-rationale-label {
+  font-size: 22rpx;
+  color: var(--text-muted);
+}
+
+.ai-rationale {
+  font-size: 25rpx;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.ai-scene-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+/* 场景标签：浅底 + 细边。只描边时这些标签在白卡上几乎是「飘」着的几个词，
+   补一层底色才有块感，也才读得出「这是一组可选场景」。 */
+.ai-scene-tag {
+  padding: 8rpx 18rpx;
+  border-radius: var(--radius-sm);
+  border: 1rpx solid var(--color-border);
+  background: var(--color-bg);
+  font-size: 23rpx;
+  color: var(--text-secondary);
+}
+
+/* 达标要求与上方场景标签之间加分隔：这行数字密度高，紧贴 chips 会被读成同一个信息块 */
+.ai-requirement {
+  padding-top: 18rpx;
+  border-top: 1rpx solid var(--color-border);
+  font-size: 24rpx;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── 卡片动作 ── */
+.ai-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 4rpx;
+}
+
+.ai-btn {
+  flex: 1;
+  padding: 18rpx 0;
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: 26rpx;
+  border: 1rpx solid var(--color-border);
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.ai-btn-primary {
+  flex: 2;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #FFFFFF;
+}
+
+/* 次要动作：同为主色但只描边，与实心的主行动区分开 */
+.ai-btn-secondary {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.ai-actions-sub {
+  margin-top: 12rpx;
+}
+
+.ai-btn-ghost {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.ai-btn.disabled {
+  opacity: 0.5;
+}
+
+.ai-note {
+  display: block;
+  margin: 28rpx 40rpx 0;
+  font-size: 23rpx;
+  line-height: 1.7;
+  color: var(--text-muted);
+}

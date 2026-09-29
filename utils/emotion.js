@@ -3,7 +3,7 @@
 
    后端在每条 AI 患者回复上带一个 emotion 字段（messages.emotion，
    迁移 012_message_emotion.sql）。两种来源：
-   - 模型生成的回复：必属白名单「平静 / 犹豫 / 焦虑 / 缓和」
+   - 模型生成的回复：必属白名单「平静 / 犹豫 / 焦虑 / 缓和 / 不满 / 愤怒」
      （main.cpp normalizePatientReply 的 allowed_emotions）
    - 开场白：可能来自学员在「自定义患者画像」里手填的情绪，是自由文本
      （如「烦躁」「担心」），不限于上述 4 值。
@@ -20,7 +20,11 @@ const EMOTION_TONES = {
   '平静': 'tag-neutral',
   '犹豫': 'tag-warning',
   '焦虑': 'tag-danger',
-  '缓和': 'tag-success'
+  '缓和': 'tag-success',
+  /* 冲突类场景（投诉、索赔、逼承诺）的两档初始情绪：不满与犹豫同为轻警，
+     愤怒与焦虑同为重警。复用既有 token，不新增颜色。 */
+  '不满': 'tag-warning',
+  '愤怒': 'tag-danger'
 };
 
 const DEFAULT_EMOTION_TONE = 'tag-neutral';

@@ -60,9 +60,24 @@ const normalizePlan = raw => {
   const completedCount = Number(plan.completedCount) || 0;
   const requiredPassRate = Number(plan.requiredPassRate) || 0;
   const avgScore = Number(plan.avgScore) || 0;
+  /* 判定分必须用后端下发的 score：计划指定了目标维度时它是该维度均分，而 avgScore
+     恒为综合分。拿 avgScore 比较会得出「主管看到达标、学员看到未达标」的两种结论。
+     只有后端没给 score（老数据）时才退回综合分。 */
+  const judgeScore = plan.score === null || plan.score === undefined
+    ? avgScore : Number(plan.score);
+  const focusLabel = plan.focusDimensionLabel || '';
+  /* 防刷分上限：0 = 不限（迁移 023）。它是补充约束，不塞进 requirementText。 */
+  const maxPerScenario = Math.max(0, Number(plan.maxPerScenario) || 0);
+  /* 逐次达标（迁移 031）：打开时后端判定分取窗口内最低分而非均分。
+     文案必须跟着变，否则会写成「均分 >= X」而实际按最低分判，结论对不上。 */
+  const requireEachPass = plan.requireEachPass === true;
+  /* 判定依据的措辞：打开时判的是「每次」，关闭时是「均分」 */
+  const judgeBasisLabel = focusLabel
+    ? (requireEachPass ? `${focusLabel}每次` : `${focusLabel}均分`)
+    : (requireEachPass ? '每次' : '平均');
   const status = resolveStatus(plan);
   const countDone = completedCount >= requiredCount;
-  const scoreDone = avgScore >= requiredPassRate;
+  const scoreDone = judgeScore >= requiredPassRate;
   return {
     id: plan.id,
     title: plan.title || '',
@@ -71,6 +86,14 @@ const normalizePlan = raw => {
     completedCount,
     requiredPassRate,
     avgScore,
+    judgeScore,
+    judgeScoreText: fmt1(judgeScore),
+    /* 目标维度 key 必须透传：调用方要按维度筛计划（例如「该弱项是否已被某个计划覆盖」）。
+       只给 focusLabel 中文名不够——中文名不能拿来做等值比较。 */
+    focusDimension: plan.focusDimension || '',
+    focusLabel,
+    maxPerScenario,
+    requireEachPass,
     dueAt: plan.dueAt,
     dueMs: parseDueMs(plan.dueAt),
     dueText: formatDue(plan.dueAt),
@@ -84,7 +107,7 @@ const normalizePlan = raw => {
     progressText: `${completedCount}/${requiredCount} 次`,
     progressPercent: Math.max(0, Math.min(100, Math.round(completedCount / requiredCount * 100))),
     avgScoreText: fmt1(avgScore),
-    requirementText: `完成 ≥ ${requiredCount} 次 · 平均 ≥ ${requiredPassRate} 分`,
+    requirementText: `完成 ≥ ${requiredCount} 次 · ${judgeBasisLabel} ≥ ${requiredPassRate} 分`,
     ruleSummary: buildRuleSummary(countDone, scoreDone, Math.max(0, requiredCount - completedCount))
   };
 };

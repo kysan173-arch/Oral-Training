@@ -30,6 +30,7 @@
         <text class="plan-status plan-status-{{plan.statusKey}}">{{plan.statusText}}</text>
       </view>
       <text class="plan-requirement">{{plan.requirementText}}</text>
+      <text class="plan-focus" wx:if="{{plan.hasFocus}}">本计划针对「{{plan.focusLabel}}」补强</text>
       <text class="detail-desc" wx:if="{{plan.description}}">{{plan.description}}</text>
       <view class="detail-meta-row">
         <view class="detail-meta">
@@ -37,8 +38,8 @@
           <text class="detail-meta-label">完成次数</text>
         </view>
         <view class="detail-meta">
-          <text class="detail-meta-value">{{plan.avgScoreText}}</text>
-          <text class="detail-meta-label">我的均分</text>
+          <text class="detail-meta-value">{{plan.scoreMetaValue}}</text>
+          <text class="detail-meta-label">{{plan.scoreLabel}}</text>
         </view>
         <view class="detail-meta">
           <text class="detail-meta-value">{{plan.dueText}}</text>
@@ -59,7 +60,7 @@
         <view class="rule-icon {{plan.countDone ? 'ok' : ''}}">{{plan.countDone ? '✓' : '·'}}</view>
         <view class="rule-copy">
           <text class="rule-name">完成训练次数</text>
-          <text class="rule-hint">计划期内、命中适用场景的已完成训练</text>
+          <text class="rule-hint">{{plan.countHint}}</text>
         </view>
         <view class="rule-value">
           <text class="rule-value-main {{plan.countDone ? 'ok' : 'pending'}}">{{plan.countText}}</text>
@@ -70,8 +71,8 @@
       <view class="rule-row">
         <view class="rule-icon {{plan.scoreDone ? 'ok' : ''}}">{{plan.scoreDone ? '✓' : '·'}}</view>
         <view class="rule-copy">
-          <text class="rule-name">平均得分</text>
-          <text class="rule-hint">取计划期内上述训练的平均分</text>
+          <text class="rule-name">{{plan.scoreName}}</text>
+          <text class="rule-hint">{{plan.scoreHint}}</text>
         </view>
         <view class="rule-value">
           <text class="rule-value-main {{plan.scoreDone ? 'ok' : 'pending'}}">{{plan.scoreText}}</text>

@@ -21,7 +21,9 @@
 /* 免责提示条（中性弱化，不占用警示语义） */
 .notice-box { display: flex; align-items: flex-start; margin: 22rpx 24rpx 30rpx; padding: 20rpx; border-radius: 16rpx; color: var(--text-secondary); background: var(--color-primary-pale); font-size: 22rpx; line-height: 1.55; }
 .notice-icon { width: 30rpx; height: 30rpx; line-height: 30rpx; flex-shrink: 0; margin-right: 12rpx; border-radius: 50%; text-align: center; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; font-weight: 600; }
-.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 28rpx 14rpx; }
+/* 同 roleplay-result：28rpx 会与 app.wxss 同名类的 padding: 0 4rpx 叠加成 32rpx，
+   与卡片 24rpx 对不齐。两个报告页必须一起改，否则刚统一的规范又分叉。 */
+.section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 24rpx 14rpx; padding: 0; }
 .section-title { font-size: 32rpx; font-weight: 600; color: var(--text-strong); }
 .section-caption { color: var(--text-secondary); font-size: 22rpx; }
 .dimensions-card, .violation-card, .round-card, .phrase-card, .empty-card { padding: 26rpx; margin: 0 24rpx 26rpx; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
@@ -68,7 +70,34 @@
 .round-badge { display: inline-block; padding: 5rpx 16rpx; border-radius: 10rpx; background: var(--color-primary-light); }
 .round-label { color: var(--color-primary); font-size: 22rpx; font-weight: 600; }
 .round-quote { display: block; margin-top: 12rpx; color: var(--text-strong); font-size: 26rpx; line-height: 1.55; font-weight: 400; }
-.round-comment { display: block; margin-top: 12rpx; color: var(--text-body); font-size: 22rpx; line-height: 1.55; }
+/* 对比建议：此前只是一行灰字，学员容易当成附注略过。改成「标签 + 警示色」，
+   明确它是「你的原话 vs 建议话术」对比之后得出的结论。
+   用 --color-warning 而不是 --color-danger：这段文字常含正面评价（「方向正确，但……」），
+   而 danger 在本项目专表「违规」（见 .round-flag），两者同色会让「该轮含违规」失去区分度。 */
+.round-comment-row { display: flex; align-items: flex-start; gap: 10rpx; margin-top: 16rpx; }
+.round-comment-tag { flex-shrink: 0; margin-top: 4rpx; padding: 4rpx 14rpx; border-radius: 8rpx; color: var(--color-warning); background: var(--color-warning-light); font-size: 20rpx; font-weight: 600; }
+.round-comment { flex: 1; color: var(--color-warning); font-size: 24rpx; line-height: 1.6; }
+
+/* 对照区：学员原话 与 模型建议 紧邻排列，方便逐轮对照。
+   刻意用「上下两栏」而不是左右分栏——375px 窄屏下左右各分不到 160px，放不下
+   20–100 字的完整话术，会被折成两个细长条，比原来的堆叠更难读。
+   左侧色条区分身份：灰=学员原话，主色=建议说法。 */
+.round-head { display: flex; align-items: center; justify-content: space-between; }
+.round-flag { padding: 4rpx 14rpx; border-radius: 8rpx; color: var(--color-danger); background: var(--color-danger-light); font-size: 20rpx; }
+.compare-pane { padding: 16rpx 18rpx; margin-top: 14rpx; border-radius: 14rpx; border-left: 6rpx solid transparent; }
+/* 两个框必须一眼分得开。前一版用 --color-primary-pale(#F5F8FC) 与 --color-primary-light
+   (#EEF2F8) 作底色 —— 那是两个**相邻色阶**，亮度差极小，看起来是同一个蓝灰，等于没区分。
+   现在拉开三层：底色（白 vs 主色浅底）、左条（细灰 vs 粗主色）、正文色（次要灰 vs 主色深蓝）。
+   改回相近的浅色会再次丢失区分度，别改。 */
+.compare-you { background: #FFFFFF; border: 1rpx solid var(--color-border); border-left: 6rpx solid var(--text-muted); }
+.compare-better { background: var(--color-primary-light); border-left: 8rpx solid var(--color-primary); }
+.pane-label { display: block; margin-bottom: 6rpx; font-size: 20rpx; font-weight: 600; }
+.compare-you .pane-label { color: var(--text-secondary); }
+.compare-better .pane-label { color: var(--color-primary); }
+.pane-text { display: block; font-size: 25rpx; line-height: 1.55; }
+.compare-you .pane-text { color: var(--text-body); }
+.compare-better .pane-text { color: var(--color-primary); }
+
 .phrase-patient, .phrase-copy, .phrase-reason { display: block; }
 .phrase-patient { color: var(--text-secondary); font-size: 22rpx; line-height: 1.5; }
 .phrase-copy { margin-top: 10rpx; color: var(--color-primary); font-size: 26rpx; line-height: 1.6; font-weight: 400; }
@@ -80,8 +109,10 @@
 .result-link-row { display: flex; align-items: center; justify-content: center; padding: 16rpx 0 24rpx; }
 .text-button { color: var(--text-secondary); background: transparent; font-size: 26rpx; padding: 12rpx; }
 .disclaimer { display: block; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
-.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; background: var(--bg-grad, var(--color-bg)); }
-.loading-card { width: 100%; padding: 48rpx 32rpx; text-align: center; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
+/* 同 roleplay-result：width:100% 的卡片在没有左右 padding 的容器里会贴屏幕边。
+   两者必须一起改，否则两个报告页的加载态又分叉。 */
+.loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; padding: 0 24rpx 40rpx; background: var(--bg-grad, var(--color-bg)); }
+.loading-card { width: 100%; box-sizing: border-box; padding: 48rpx 32rpx; text-align: center; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
 .loading-title { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
 .loading-text { display: block; margin-top: 16rpx; color: var(--text-secondary); font-size: 26rpx; line-height: 1.6; }
 .retry-button { width: 100%; margin-top: 30rpx; }

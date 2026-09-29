@@ -47,6 +47,8 @@
   background: rgba(0, 0, 0, 0.04); color: var(--text-muted);
 }
 .scenario-chip.chip-category { background: var(--color-primary-light); color: var(--color-primary); }
+/* 未加变体池（P1-2）：提示复练会通胀。用警示色，但不做成报错态——它是建议而非缺陷 */
+.scenario-chip.chip-warn { background: rgba(185, 122, 30, 0.12); color: #B97A1E; }
 .scenario-summary { display: block; margin-top: 14rpx; font-size: 25rpx; line-height: 1.6; color: var(--text-body); }
 .scenario-foot {
   display: flex; align-items: center; justify-content: space-between;
@@ -101,6 +103,10 @@
 .form-row .form-label-col + .form-picker { flex: 0 0 300rpx; margin-left: 0; }
 .form-row .form-label-col + .form-input-wide { flex: 1 1 auto; margin-left: 0; }
 .form-input-narrow { flex: 0 0 160rpx; margin-left: 0; }
+/* 文本类输入改左对齐。.form-input 的 text-align: right 是给数值字段
+   （年龄 / 轮数 / 排序号）设计的——右对齐时短数字一眼看清；
+   但长文本右对齐会把开头推出可视区，只剩末尾可见。 */
+.form-input-text { text-align: left; }
 .form-textarea {
   width: 100%; min-height: 120rpx; padding: 16rpx 20rpx; box-sizing: border-box;
   border-radius: 12rpx; background: var(--color-bg);
@@ -122,7 +128,10 @@
 .chip-text { flex: 1; min-width: 0; font-size: 24rpx; line-height: 1.5; color: var(--text-body); }
 .chip-remove { flex-shrink: 0; margin-left: 16rpx; padding: 6rpx 12rpx; font-size: 22rpx; color: #d5453c; }
 .chip-add-row { display: flex; align-items: center; gap: 14rpx; }
-.chip-input { flex: 1; margin-left: 0; text-align: left; }
+/* 隐藏顾虑每条限 60 字，原来用单行 input 同样看不全，已改 textarea；
+   这里要覆盖 .form-textarea 的 width:100%（在 flex 行里宽度该由 flex 决定）
+   和偏高的 min-height（这里两行就够）。 */
+.chip-input { flex: 1; width: auto; margin-left: 0; min-height: 76rpx; max-height: 220rpx; text-align: left; }
 .chip-add-btn {
   flex-shrink: 0; padding: 12rpx 28rpx; border-radius: 12rpx;
   background: var(--color-primary-light); color: var(--color-primary);
@@ -133,3 +142,66 @@
 .form-footer { display: flex; gap: 20rpx; margin-top: 30rpx; }
 .form-cancel { flex: 1; }
 .form-submit { flex: 2; margin-top: 0; }
+
+/* ── 保存后的质量提醒（可关闭） ──
+   用警示色而非错误色：这些是「建议确认」不是「保存失败」，保存本身已经成功。
+   文案可能较长（每条 60-100 字），所以不做单行截断，让它换行读完。 */
+.quality-notice { margin-bottom: 20rpx; padding: 22rpx 24rpx; border-radius: var(--radius-lg); background: var(--color-warning-light); border: 1rpx solid var(--color-warning); }
+.quality-notice-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 10rpx; }
+.quality-notice-title { flex: 1; min-width: 0; font-size: 26rpx; font-weight: 600; color: #8A6E4B; }
+.quality-notice-close { flex-shrink: 0; font-size: 24rpx; color: #8A6E4B; }
+.quality-notice-item { display: block; margin-top: 8rpx; font-size: 23rpx; line-height: 1.6; color: #8A6E4B; }
+
+/* ── 模板入口（模板列表本身在独立页面，见 pages/scenario-templates） ── */
+.tpl-entry { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; padding: 24rpx 26rpx; margin-bottom: 24rpx; }
+.tpl-entry-hover { opacity: 0.85; }
+.tpl-entry-copy { flex: 1; min-width: 0; }
+.tpl-entry-title { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.tpl-entry-desc { display: block; margin-top: 6rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
+.tpl-entry-arrow { flex-shrink: 0; font-size: 32rpx; color: var(--text-secondary); }
+
+/* ── 从模板新建时的来源提示（表单页顶部） ── */
+.tpl-origin { margin-bottom: 20rpx; padding: 20rpx 24rpx; border-radius: var(--radius-md); background: var(--color-primary-light); }
+.tpl-origin-text { display: block; font-size: 23rpx; line-height: 1.6; color: var(--color-primary); }
+
+/* ── 页头双按钮（P1-3：AI 生成骨架 + 新建场景） ── */
+.list-head-actions { display: flex; align-items: center; gap: 14rpx; flex-shrink: 0; }
+.list-ai-btn {
+  padding: 14rpx 24rpx; border-radius: 999rpx; border: 1rpx solid var(--color-primary);
+  color: var(--color-primary); font-size: 25rpx; font-weight: 600;
+}
+
+/* ── 列表标记：AI 骨架（来源）与生成中（临时） ── */
+.scenario-chip.chip-ai { background: var(--color-primary-light); color: var(--color-primary); }
+.scenario-chip.chip-generating { background: rgba(185, 122, 30, 0.12); color: #B97A1E; }
+.scenario-btn.disabled { opacity: 0.45; }
+
+/* ── 变体池（P1-2 后半段） ── */
+.variant-card {
+  margin-top: 16rpx; padding: 20rpx 22rpx;
+  border-radius: var(--radius-md); background: var(--color-bg);
+}
+.variant-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14rpx; }
+.variant-title { font-size: 25rpx; font-weight: 600; color: var(--text-strong); }
+.variant-remove { flex-shrink: 0; padding: 6rpx 12rpx; font-size: 22rpx; color: #d5453c; }
+/* 披露节奏：留空则沿用主值，所以刻意比隐藏顾虑输入更轻——它常被留空 */
+.variant-instructions { margin-top: 12rpx; min-height: 96rpx; }
+.variant-add { display: inline-block; margin-top: 18rpx; }
+
+/* ── 维度侧重（迁移 024） ── */
+.weight-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14rpx 0; border-bottom: 1rpx solid var(--color-border);
+}
+.weight-name { font-size: 25rpx; color: var(--text-body); }
+.weight-row:last-of-type { border-bottom: 0; }
+
+/* ── AI 骨架来源说明：用强调底色区别于模板来源提示 ── */
+.ai-origin { background: var(--color-warning-light); border: 1rpx solid var(--color-warning); }
+.ai-origin .tpl-origin-text { color: #8A6E4B; }
+
+/* ── AI 生成等待页 ── */
+.ai-wait { padding: 36rpx 28rpx; text-align: center; }
+.ai-wait-stage { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
+.ai-wait-hint { display: block; margin-top: 14rpx; font-size: 23rpx; line-height: 1.6; color: var(--text-muted); }
+.ai-wait-actions { margin-top: 26rpx; display: flex; justify-content: center; }

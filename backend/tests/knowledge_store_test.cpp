@@ -67,6 +67,26 @@ int main() {
       return 1;
     }
 
+    /* scenarioIds 会被逐条 INSERT 进 service_scenarios（两列均 NOT NULL）。
+       非字符串或空串必须在入口就被拒，否则会以 SQL NULL 绑定，
+       退化成 `null value in column "scenario_id"` 这种看不出根因的约束错误。 */
+    auto null_scenario = service;
+    null_scenario["scenarioIds"] = json::array({nullptr});
+    auto empty_scenario = service;
+    empty_scenario["scenarioIds"] = json::array({""});
+    auto nested_scenario = service;
+    nested_scenario["scenarioIds"] = json::array({json::array({"a", "b"})});
+    auto non_array_scenario = service;
+    non_array_scenario["scenarioIds"] = "implant-basic";
+    if (!rejected(null_scenario) || !rejected(empty_scenario) ||
+        !rejected(nested_scenario) || !rejected(non_array_scenario)) {
+      std::cerr << "invalid scenarioIds reached the service_scenarios insert\n";
+      return 1;
+    }
+    auto empty_list_service = service;
+    empty_list_service["scenarioIds"] = json::array();
+    oral_training::knowledge::validateServiceDraft(empty_list_service);
+
     const json synthetic_metadata = {
         {"origin", "synthetic"}, {"verification", "unverified"},
         {"sourceTitle", ""}, {"sourceUrl", nullptr}, {"sourceLocator", ""},

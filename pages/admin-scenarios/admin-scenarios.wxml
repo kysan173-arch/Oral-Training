@@ -14,12 +14,35 @@
     </view>
 
     <block wx:else>
+      <!-- 刚保存的场景有质量提醒。刻意不用 showModal：单条文案很长会被截断，
+           而它们恰恰是最该被读完的内容 -->
+      <view class="quality-notice" wx:if="{{qualityNotice}}">
+        <view class="quality-notice-head">
+          <text class="quality-notice-title">「{{qualityNotice.name}}」有 {{qualityNotice.items.length}} 项质量提醒</text>
+          <text class="quality-notice-close" bindtap="dismissQualityNotice">关闭</text>
+        </view>
+        <text class="quality-notice-item" wx:for="{{qualityNotice.items}}" wx:key="code">· {{item.message}}</text>
+      </view>
+
       <view class="list-head">
         <view class="list-head-copy">
           <text class="list-title">训练场景</text>
           <text class="list-caption">共 {{items.length}} 个 · 按序号排列 · 含已下线</text>
         </view>
-        <view class="list-create-btn" bindtap="startCreate">＋ 新建场景</view>
+        <view class="list-head-actions">
+          <view class="list-ai-btn" bindtap="startAiDraft">AI 生成骨架</view>
+          <view class="list-create-btn" bindtap="startCreate">＋ 新建场景</view>
+        </view>
+      </view>
+
+      <!-- 模板选择独立成页：8 条模板会把场景列表挤出首屏，
+           而「挑一条改」与「看现在有哪些场景」是两种不同意图 -->
+      <view class="tpl-entry card" wx:if="{{templates.length}}" bindtap="openTemplates" hover-class="tpl-entry-hover">
+        <view class="tpl-entry-copy">
+          <text class="tpl-entry-title">按模板新建</text>
+          <text class="tpl-entry-desc">从 {{templates.length}} 个骨架里挑一个起点，改比重写快；机构红线仍需你填</text>
+        </view>
+        <text class="tpl-entry-arrow">›</text>
       </view>
 
       <empty-state
@@ -40,14 +63,23 @@
           <text class="scenario-chip">{{item.difficultyText}}</text>
           <text class="scenario-chip">{{item.maxRounds}} 轮</text>
           <text class="scenario-chip">序号 {{item.sortOrder}}</text>
+          <text class="scenario-chip chip-warn" wx:if="{{item.hasVariantPool === false}}">未加变体池</text>
+          <!-- AI 骨架（迁移 030）：来源标记，永久保留；「生成中」是临时状态 -->
+          <text class="scenario-chip chip-ai" wx:if="{{item.aiDraft}}">AI 骨架</text>
+          <text class="scenario-chip chip-generating" wx:if="{{item.generating}}">生成中</text>
         </view>
         <text class="scenario-summary">{{item.summary}}</text>
         <view class="scenario-foot">
           <text class="scenario-id">{{item.id}}</text>
           <view class="scenario-actions">
-            <text class="scenario-btn" data-id="{{item.id}}" bindtap="startEdit">编辑</text>
+            <text
+              class="scenario-btn {{item.generating ? 'disabled' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="startEdit"
+            >编辑</text>
             <text
               class="scenario-btn {{item.isActive ? 'warn' : 'primary'}}"
+              wx:if="{{!item.generating}}"
               data-id="{{item.id}}"
               data-active="{{item.isActive}}"
               bindtap="toggleActive"
@@ -59,13 +91,24 @@
   </block>
 
   <!-- ══ 新建 / 编辑模式 ══ -->
-  <block wx:else>
+  <block wx:elif="{{mode === 'form'}}">
     <view class="list-head">
       <view class="list-head-copy">
         <text class="list-title">{{editingId === null ? '新建场景' : '编辑场景'}}</text>
         <text class="list-caption" wx:if="{{editingId !== null}}">{{editingId}}</text>
       </view>
       <view class="list-back-btn" bindtap="backToList">返回列表</view>
+    </view>
+
+    <!-- 从模板新建时的来源说明：不替换占位符就上架，等于把骨架当成成品 -->
+    <view class="tpl-origin" wx:if="{{form.fromTemplateId}}">
+      <text class="tpl-origin-text">已按骨架模板预填。请替换所有【…】占位内容，并补上服务要点——机构红线是模板给不了的那一半。场景名称与标识需要你自己取。</text>
+    </view>
+
+    <!-- AI 骨架来源说明。分工是这张提示词的全部设计：模型给教学方法论，主管给机构事实。
+         所以这里的重点不是「AI 生成了什么」，而是「还差哪一半」。 -->
+    <view class="tpl-origin ai-origin" wx:if="{{form.aiDraft}}">
+      <text class="tpl-origin-text">这条场景的教学骨架由 AI 生成：诉求落差、三条隐藏顾虑、缓和条件与开场白可以直接用，也可以改。但「服务要点」是你们机构的红线——能不能退费、转交谁、多久答复，模型无从得知，必须由你填写后才能上架。</text>
     </view>
 
     <!-- 基础信息 -->
@@ -79,21 +122,23 @@
           <text class="form-label">场景标识<text class="form-optional">（选填）</text></text>
           <text class="form-helper">留空自动生成，无需填写；自定义仅限小写字母、数字、连字符，创建后不可修改。</text>
         </view>
-        <input class="form-input" placeholder="留空自动生成" value="{{form.id}}" bindinput="onFieldInput" data-field="id" />
+        <input class="form-input form-input-text" placeholder="留空自动生成" value="{{form.id}}" bindinput="onFieldInput" data-field="id" />
       </view>
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">场景名称<text class="form-required">*</text></text>
           <text class="form-helper">2-30 个字，示例：儿童牙科恐惧安抚</text>
         </view>
-        <input class="form-input form-input-wide" maxlength="30" placeholder="输入场景名称" value="{{form.name}}" bindinput="onFieldInput" data-field="name" />
+        <input class="form-input form-input-wide form-input-text" maxlength="30" placeholder="输入场景名称" value="{{form.name}}" bindinput="onFieldInput" data-field="name" />
       </view>
-      <view class="form-row">
-        <view class="form-label-col">
+      <!-- 简介 60 字，单行 input 放不下（可见的只有末尾几个字），改多行 textarea -->
+      <view class="form-col">
+        <view class="form-label-row">
           <text class="form-label">简介<text class="form-required">*</text></text>
-          <text class="form-helper">2-60 个字，一句话说明训练目标</text>
+          <text class="form-label-hint">2-60 个字，一句话说明训练目标</text>
         </view>
-        <input class="form-input form-input-wide" maxlength="60" placeholder="输入简介" value="{{form.summary}}" bindinput="onFieldInput" data-field="summary" />
+        <textarea class="form-textarea" auto-height maxlength="60" placeholder="一句话说明这条场景练什么"
+          value="{{form.summary}}" bindinput="onFieldInput" data-field="summary" />
       </view>
       <view class="form-row">
         <text class="form-label">分类</text>
@@ -132,11 +177,14 @@
           <view class="form-picker">{{genderNames[genderIndex]}}</view>
         </picker>
       </view>
-      <view class="form-row">
-        <view class="form-label-col">
+      <!-- 描述同样限 60 字，单行 input 放不下，改多行 -->
+      <view class="form-col">
+        <view class="form-label-row">
           <text class="form-label">描述<text class="form-required">*</text></text>
+          <text class="form-label-hint">2-60 个字</text>
         </view>
-        <input class="form-input form-input-wide" maxlength="60" placeholder="如：缺失一颗后牙，平静但谨慎" value="{{form.patientDescription}}" bindinput="onFieldInput" data-field="patientDescription" />
+        <textarea class="form-textarea" auto-height maxlength="60" placeholder="如：缺失一颗后牙，平静但谨慎，主要担心价格"
+          value="{{form.patientDescription}}" bindinput="onFieldInput" data-field="patientDescription" />
       </view>
     </view>
 
@@ -164,8 +212,8 @@
           <text class="chip-remove" data-index="{{index}}" bindtap="removeHiddenItem">删除</text>
         </view>
         <view class="chip-add-row" wx:if="{{form.hiddenItems.length < 5}}">
-          <input class="form-input chip-input" maxlength="60" confirm-type="done"
-            placeholder="输入一条隐藏顾虑"
+          <textarea class="form-textarea chip-input" auto-height maxlength="60" confirm-type="done"
+            placeholder="输入一条隐藏顾虑（≤60 字）"
             value="{{form.hiddenInput}}" bindinput="onFieldInput" data-field="hiddenInput"
             bindconfirm="addHiddenItem" />
           <text class="chip-add-btn" bindtap="addHiddenItem">添加</text>
@@ -207,6 +255,141 @@
       </view>
     </view>
 
+    <!-- 复练变体池（P1-2 后半段）。变体是隐藏剧本的平行组：同一场景骨架、
+         换一组顾虑与松口条件。没有它，学员练到第三次就把答案背下来了，
+         那个分不再代表能力——而分数通胀比「难度不够」更难察觉。 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">复练变体池（可选）</text>
+        <text class="form-section-hint">同一场景，换一组隐藏顾虑</text>
+      </view>
+      <text class="form-helper form-helper-warn" wx:if="{{form.variants.length < 2}}">还没凑够 2 组。学员复练到第三次很可能已经把隐藏顾虑背下来了，建议补到 2 组以上：同一场景骨架，换一组顾虑组合（仍要分情绪型/证据型/意愿型）、换一个松口条件。</text>
+
+      <view class="variant-card" wx:for="{{form.variants}}" wx:for-item="group" wx:for-index="gi" wx:key="key">
+        <view class="variant-head">
+          <text class="variant-title">变体 {{gi + 1}}</text>
+          <text class="variant-remove" data-group="{{gi}}" bindtap="removeVariant">删除这组</text>
+        </view>
+        <view class="chip-item" wx:for="{{group.hidden}}" wx:for-item="concern" wx:for-index="hi" wx:key="*this">
+          <text class="chip-index">{{hi + 1}}</text>
+          <text class="chip-text">{{concern}}</text>
+          <text class="chip-remove" data-group="{{gi}}" data-index="{{hi}}" bindtap="removeVariantHidden">删除</text>
+        </view>
+        <view class="chip-add-row" wx:if="{{group.hidden.length < 5}}">
+          <textarea class="form-textarea chip-input" auto-height maxlength="60" confirm-type="done"
+            placeholder="输入这一组的隐藏顾虑（≤60 字）"
+            value="{{group.input}}" data-group="{{gi}}" bindinput="onVariantInput"
+            bindconfirm="addVariantHidden" />
+          <text class="chip-add-btn" data-group="{{gi}}" bindtap="addVariantHidden">添加</text>
+        </view>
+        <text class="form-helper" wx:else>这组已达 5 条上限。</text>
+        <textarea class="form-textarea variant-instructions" auto-height maxlength="400"
+          placeholder="披露节奏（可留空，留空沿用上面的患者行为规则）"
+          value="{{group.instructions}}" data-group="{{gi}}" bindinput="onVariantInstructions" />
+      </view>
+
+      <view class="chip-add-btn variant-add" wx:if="{{form.variants.length < 5}}" bindtap="addVariant">＋ 添加一组变体</view>
+      <text class="form-helper" wx:else>已达 5 组上限。</text>
+    </view>
+
+    <!-- 进阶档（迁移 026）：学员在场景卡上显式点选，系统不偷偷调难度。
+         提供了进阶档、却没有单独开场白时，后端会在保存响应里提醒——
+         台词照旧会让学员以为档位没生效。 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">进阶档（可选）</text>
+        <switch checked="{{form.tierEnabled}}" bindchange="onTierEnabledChange" color="#1F3864" />
+      </view>
+      <block wx:if="{{form.tierEnabled}}">
+        <text class="form-helper form-helper-warn">开启后学员会在场景卡看到「挑战进阶档」。进阶成绩不计入计划达标判定，只进成长趋势——额外挑战不该反噬学员。</text>
+        <view class="form-row">
+          <view class="form-label-col">
+            <text class="form-label">进阶初始情绪</text>
+            <text class="form-helper">比标准档更强，开场即对抗</text>
+          </view>
+          <picker range="{{emotionNames}}" value="{{tierEmotionIndex}}" bindchange="onTierEmotionChange">
+            <view class="form-picker">{{emotionNames[tierEmotionIndex]}}</view>
+          </picker>
+        </view>
+        <view class="form-row">
+          <view class="form-label-col">
+            <text class="form-label">进阶情绪强度</text>
+            <text class="form-helper">-2（很强）到 2（缓和）</text>
+          </view>
+          <input class="form-input form-input-narrow" type="number" value="{{form.tierEmotionLevel}}" bindinput="onTierEmotionLevelInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label-col">
+            <text class="form-label">进阶初始信任度</text>
+            <text class="form-helper">建议比标准档低 10-20</text>
+          </view>
+          <input class="form-input form-input-narrow" type="number" value="{{form.tierTrustLevel}}" bindinput="onTierTrustLevelInput" />
+        </view>
+        <view class="form-col">
+          <view class="form-label-row">
+            <text class="form-label">进阶开场白</text>
+            <text class="form-label-hint">每行一句，最多 3 句，每句 5-200 字</text>
+          </view>
+          <textarea class="form-textarea form-textarea-tall" auto-height maxlength="620"
+            placeholder="留空则沿用标准档开场白——但患者第一句话和普通档一样，学员会以为档位没生效。"
+            value="{{form.tierOpeningsText}}" bindinput="onFieldInput" data-field="tierOpeningsText" />
+          <text class="form-helper form-helper-example">示例：一万八我一分不少交的，结果做成这样。少跟我提再修复一次——你们我不信了，现在就把钱退我。</text>
+          <text class="form-helper form-helper-warn" wx:if="{{!form.tierOpeningsText}}">没有单独开场白，进阶档学员看到的第一句话会和标准档一字不差。</text>
+        </view>
+      </block>
+    </view>
+
+    <!-- 服务要点与快捷提问（roleplay_config）。迁移 025 之前这张表单完全没有它们的入口，
+         主管自建场景的 serviceGuidance 因此恒为空——学员拿不到机构红线，
+         合规维度也就永远测不出区分度 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">服务要点与快捷提问</text>
+        <text class="form-section-hint">机构红线必须先写清，否则这条场景测不出合规</text>
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">服务要点</text>
+          <text class="form-label-hint">每行一条，最多 6 条，每条 ≤100 字</text>
+        </view>
+        <textarea class="form-textarea form-textarea-tall" auto-height maxlength="700"
+          placeholder="每条一行。写清这条场景里客服不能承诺什么、该转交给谁、多久答复。"
+          value="{{form.serviceGuidanceText}}" bindinput="onFieldInput" data-field="serviceGuidanceText" />
+        <text class="form-helper form-helper-example">示例：不得承诺具体金额或退费；不得承诺疗效或疼痛程度；涉及治疗判断时说明需由医生结合检查评估。</text>
+        <text class="form-helper form-helper-warn" wx:if="{{!form.serviceGuidanceText}}">留空的话学员拿不到红线，这条场景的合规分只会虚高，也无法用于弱项识别。</text>
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">快捷提问</text>
+          <text class="form-label-hint">每行一条，最多 6 条，每条 ≤60 字</text>
+        </view>
+        <textarea class="form-textarea" auto-height maxlength="500"
+          placeholder="每条一行。学员在这条场景里可以怎么问，作为训练时的提问提示。"
+          value="{{form.suggestedQuestionsText}}" bindinput="onFieldInput" data-field="suggestedQuestionsText" />
+      </view>
+    </view>
+
+    <!-- 维度侧重（迁移 024）。这张表决定「学员按弱项复练时，这条场景会不会被选中」。
+         未标注的场景不会排到最后，而是**直接消失**——主管在页面上看不出任何差别，
+         所以这里必须把后果写清楚，而不是只给五个输入框。 -->
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">维度侧重</text>
+        <text class="form-section-hint">决定会被哪种弱项推荐选中</text>
+      </view>
+      <block wx:if="{{dimensionCatalog.length}}">
+        <text class="form-helper">按这条场景实际练到什么，给 1-3 个维度填权重即可（填 3 和填 0.6 等价，服务端按比例折算）。</text>
+        <view class="weight-row" wx:for="{{dimensionRows}}" wx:key="key">
+          <text class="weight-name">{{item.name}}</text>
+          <input class="form-input form-input-narrow" type="digit" placeholder="0"
+            value="{{item.value}}" data-key="{{item.key}}" bindinput="onDimensionWeightInput" />
+        </view>
+        <text class="form-helper" wx:if="{{dimensionPreviewText}}">{{dimensionPreviewText}}</text>
+        <text class="form-helper form-helper-warn" wx:if="{{dimensionEmpty}}">全部为空 = 未标注：这条场景不会出现在任何维度的弱项推荐里（不是排在最后，是直接不出现）。</text>
+      </block>
+      <text class="form-helper form-helper-warn" wx:else>维度目录加载失败，本区暂不可编辑。保存不会改动现有侧重。</text>
+    </view>
+
     <!-- 发布设置 -->
     <view class="card form-section">
       <view class="form-section-head">
@@ -242,6 +425,104 @@
       <button class="btn btn-primary form-submit" bindtap="submitForm" disabled="{{submitting}}">
         {{submitting ? '保存中…' : (editingId === null ? '创建场景' : '保存修改')}}
       </button>
+    </view>
+  </block>
+
+  <!-- ══ AI 骨架生成：填写需求（mode=ai）══ -->
+  <block wx:elif="{{mode === 'ai'}}">
+    <view class="list-head">
+      <view class="list-head-copy">
+        <text class="list-title">AI 生成骨架</text>
+        <text class="list-caption">模型写教学结构，机构红线你来填</text>
+      </view>
+      <view class="list-back-btn" bindtap="backToList">返回列表</view>
+    </view>
+
+    <view class="tpl-origin">
+      <text class="tpl-origin-text">你只需提供「分类 + 想覆盖的顾虑 + 难度」。模型会产出教学骨架：表面诉求与真实顾虑的落差、三条性质错开的隐藏顾虑、可判定的缓和条件、升级条件与施压式开场白。它不会、也不该编造本机构的价格、退费政策、答复时限或转交对象——那是服务要点，留给你填。</text>
+    </view>
+
+    <view class="card form-section">
+      <view class="form-section-head">
+        <text class="form-section-title">生成需求</text>
+        <text class="form-section-hint">越具体越贴合你们的真实场景</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">分类</text>
+        <picker range="{{categoryNames}}" value="{{aiCategoryIndex}}" bindchange="onAiCategoryChange">
+          <view class="form-picker">{{categoryNames[aiCategoryIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">难度</text>
+        <picker range="{{difficultyNames}}" value="{{aiDifficultyIndex}}" bindchange="onAiDifficultyChange">
+          <view class="form-picker">{{difficultyNames[aiDifficultyIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">想覆盖的顾虑<text class="form-required">*</text></text>
+          <text class="form-label-hint">逐条添加，最多 5 条，每条 ≤60 字</text>
+        </view>
+        <view class="chip-item" wx:for="{{aiForm.concerns}}" wx:key="*this">
+          <text class="chip-index">{{index + 1}}</text>
+          <text class="chip-text">{{item}}</text>
+          <text class="chip-remove" data-index="{{index}}" bindtap="removeAiConcern">删除</text>
+        </view>
+        <view class="chip-add-row" wx:if="{{aiForm.concerns.length < 5}}">
+          <textarea class="form-textarea chip-input" auto-height maxlength="60" confirm-type="done"
+            placeholder="如：担心被推销、怕疼、要退费"
+            value="{{aiForm.input}}" data-field="input" bindinput="onAiFieldInput"
+            bindconfirm="addAiConcern" />
+          <text class="chip-add-btn" bindtap="addAiConcern">添加</text>
+        </view>
+        <text class="form-helper" wx:else>已达 5 条上限，可先删除再添加。</text>
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">场景名称<text class="form-optional">（选填）</text></text>
+          <text class="form-label-hint">留空由模型取，2-30 字</text>
+        </view>
+        <input class="form-input form-input-text form-input-wide" maxlength="30" placeholder="留空也可以，生成后仍可改"
+          value="{{aiForm.name}}" data-field="name" bindinput="onAiFieldInput" />
+      </view>
+      <view class="form-col">
+        <view class="form-label-row">
+          <text class="form-label">补充说明<text class="form-optional">（选填）</text></text>
+          <text class="form-label-hint">≤500 字</text>
+        </view>
+        <textarea class="form-textarea" auto-height maxlength="500"
+          placeholder="这条场景你们实际遇到过什么情况，或者希望学员练到什么。"
+          value="{{aiForm.brief}}" data-field="brief" bindinput="onAiFieldInput" />
+      </view>
+    </view>
+
+    <view class="form-footer">
+      <button class="btn btn-secondary form-cancel" bindtap="backToList" disabled="{{aiSubmitting}}">取消</button>
+      <button class="btn btn-primary form-submit" bindtap="submitAiDraft" disabled="{{aiSubmitting}}">
+        {{aiSubmitting ? '提交中…' : '开始生成'}}
+      </button>
+    </view>
+    <text class="form-helper" wx:if="{{aiStageText}}">{{aiStageText}}</text>
+  </block>
+
+  <!-- ══ AI 骨架生成：等待与结果（mode=aiWait）══ -->
+  <block wx:else>
+    <view class="list-head">
+      <view class="list-head-copy">
+        <text class="list-title">生成中</text>
+        <text class="list-caption">可以离开这一页，任务不会中断</text>
+      </view>
+      <view class="list-back-btn" bindtap="backToList">返回列表</view>
+    </view>
+
+    <view class="card ai-wait">
+      <text class="ai-wait-stage">{{aiStageText}}</text>
+      <text class="ai-wait-hint" wx:if="{{aiJob.status !== 'dead'}}">生成通常需要 20-60 秒。完成后会自动进入编辑器，届时请补齐「服务要点」再上架。</text>
+      <text class="ai-wait-hint" wx:else>{{aiJob.errorMessage}}</text>
+      <view class="ai-wait-actions" wx:if="{{aiJob.status === 'dead'}}">
+        <view class="list-ai-btn" bindtap="retryAiDraft">重试生成</view>
+      </view>
     </view>
   </block>
 </view>

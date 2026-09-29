@@ -99,7 +99,7 @@ Page({
           });
         }
       });
-    }).catch(error => wx.showToast({ title: error.message || '患者模拟加载失败', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '患者模拟加载失败' }));
   },
 
   onInputChange(e) { this.setData({ inputValue: e.detail.value }); },
@@ -124,7 +124,7 @@ Page({
         content: facts.concat(passages, missing).join('\n') || '本轮没有命中可引用资料。',
         showCancel: false
       });
-    }).catch(error => wx.showToast({ title: error.message || '依据读取失败', icon: 'none' }));
+    }).catch(error => api.showCenterNotice({ title: error.message || '依据读取失败' }));
   },
 
   sendMessage(e) {
@@ -132,11 +132,11 @@ Page({
     const fromInput = e && e.detail && e.detail.value ? e.detail.value : this.data.inputValue;
     const content = (fromInput || '').trim();
     if (!content) {
-      wx.showToast({ title: '请先输入患者想咨询的问题', icon: 'none' });
+      api.showCenterNotice({ title: '请先输入要咨询的问题' });
       return;
     }
     if (this.data.currentRound >= this.data.maxRounds) {
-      wx.showToast({ title: '已达到最大轮数，正在生成复盘', icon: 'none' });
+      api.showCenterNotice({ title: '已达最大轮数，生成复盘中' });
       return;
     }
     const clientMessageId = this.data.pendingClientMessageId || `roleplay-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -220,7 +220,7 @@ Page({
       }
       if (Date.now() - startedAt >= 30000) {
         this.setData({ sending: false, pendingClientMessageId: clientMessageId, inputValue: content });
-        wx.showToast({ title: '回复仍在生成，原问题已保留，可稍后回来查看', icon: 'none' });
+        api.showCenterNotice({ title: '回复仍在生成，原问题已保留，可稍后回来查看' });
         return;
       }
       this.pendingPollTimer = setTimeout(
@@ -228,7 +228,7 @@ Page({
     }).catch(() => {
       if (Date.now() - startedAt >= 30000) {
         this.setData({ sending: false, pendingClientMessageId: clientMessageId, inputValue: content });
-        wx.showToast({ title: '网络异常，进度已保存，原问题已保留', icon: 'none' });
+        api.showCenterNotice({ title: '网络异常，进度已保存，原问题已保留' });
         return;
       }
       this.pendingPollTimer = setTimeout(
@@ -236,17 +236,57 @@ Page({
     });
   },
 
-  finishRoleplay() {
-    if (this.data.currentRound < 1) {
-      wx.showToast({ title: '至少完成1轮提问后才能生成复盘', icon: 'none' });
-      return;
-    }
+  /* 底部只留一个「结束训练」入口：把「生成复盘 / 暂存并退出」收敛到操作面板里 */
+  exitRoleplay() {
     if (this.data.sending) {
-      wx.showToast({ title: '标准客服正在回复，请稍候', icon: 'none' });
+      api.showCenterNotice({ title: '客服回复中，请稍候' });
       return;
     }
     if (this.data.pendingClientMessageId) {
-      wx.showToast({ title: '请先重试尚未生成回复的原问题', icon: 'none' });
+      api.showCenterNotice({ title: '请先重试未回复的原问题' });
+      return;
+    }
+    if (this.data.finishing) return;
+    /* 一轮都没完成时，后端必然以 MIN_ROUNDS_NOT_REACHED 拒绝生成复盘，
+       所以这里只保留「暂存并退出」——不给一个点了必然失败、还会卡住的入口。
+       「已放弃」动作在学员端列表页提供，不放在对练仓底部。 */
+    if (this.data.currentRound < 1) {
+      wx.showActionSheet({
+        itemList: ['暂存并退出'],
+        success: () => this.leaveRoleplay(),
+        fail: error => {
+          if (error && /cancel/i.test(error.errMsg || '')) return;
+          api.showCenterNotice({ title: '面板打开失败，请重试' });
+        }
+      });
+      return;
+    }
+    wx.showActionSheet({
+      itemList: ['结束并生成复盘', '暂存并退出'],
+      success: result => {
+        if (result.tapIndex === 0) this.finishRoleplay();
+        else if (result.tapIndex === 1) this.leaveRoleplay();
+      },
+      fail: error => {
+        // 用户点空白处/返回键取消是正常交互，不提示
+        if (error && /cancel/i.test(error.errMsg || '')) return;
+        api.showCenterNotice({ title: '面板打开失败，请重试' });
+      }
+    });
+  },
+
+  finishRoleplay() {
+    if (this.data.currentRound < 1) {
+      // exitRoleplay 已按轮数收窄过选项，正常路径到不了这里；留作兜底
+      api.showCenterNotice({ title: '至少完成 1 轮提问' });
+      return;
+    }
+    if (this.data.sending) {
+      api.showCenterNotice({ title: '客服回复中，请稍候' });
+      return;
+    }
+    if (this.data.pendingClientMessageId) {
+      api.showCenterNotice({ title: '请先重试未回复的原问题' });
       return;
     }
     if (this.data.finishing) return;
@@ -255,7 +295,7 @@ Page({
       content: '结束后将根据完整问答生成学习复盘，结束后不能继续提问。',
       confirmText: '生成复盘',
       success: result => { if (result.confirm) this.completeRoleplay(); },
-      fail: () => wx.showToast({ title: '确认框打开失败，请重试', icon: 'none' })
+      fail: () => api.showCenterNotice({ title: '弹窗打开失败，请重试' })
     });
   },
 
@@ -264,8 +304,11 @@ Page({
     api.finishRoleplaySession(this.sessionId).then(() => {
       wx.redirectTo({ url: `/pages/roleplay-result/roleplay-result?sessionId=${this.sessionId}` });
     }).catch(error => {
+      /* 失败必须复位 finishing，否则按钮文案停在「生成复盘中…」且不再响应，
+         看起来就是「卡在结算界面、没任何回复」。这次后端拒绝了请求（如轮数不足），
+         要给用户看得见的原因 + 一条出路。 */
       this.setData({ finishing: false });
-      wx.showToast({ title: error.message || '结束患者模拟失败', icon: 'none' });
+      api.showCenterNotice({ title: error.message || '结束患者模拟失败' });
     });
   },
 

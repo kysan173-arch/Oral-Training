@@ -44,7 +44,6 @@
     <button class="send-button" bindtap="sendMessage" disabled="{{sending || finishing}}">{{sending ? '发送中' : '提问'}}</button>
   </view>
   <view class="roleplay-footer">
-    <view class="finish-button {{sending || finishing || currentRound < 1 ? 'is-disabled' : ''}}" bindtap="finishRoleplay" aria-role="button">{{finishing ? '生成复盘中…' : '结束并复盘'}}</view>
-    <text class="leave-link" bindtap="leaveRoleplay">暂存并退出</text>
+    <view class="finish-button {{sending || finishing ? 'is-disabled' : ''}}" bindtap="exitRoleplay" aria-role="button" aria-label="结束训练，本轮不足时可暂存并退出">{{finishing ? '生成复盘中…' : (currentRound < 1 ? '结束训练（可暂存退出）' : '结束训练')}}</view>
   </view>
 </view>

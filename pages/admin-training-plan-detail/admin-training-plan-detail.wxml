@@ -11,6 +11,7 @@
         <text class="plan-status plan-status-{{plan.statusKey}}">{{plan.statusText}}</text>
       </view>
       <text class="plan-requirement">{{plan.requirementText}}</text>
+      <text class="detail-desc" wx:if="{{plan.scenarioCapText}}">{{plan.scenarioCapText}}</text>
       <text class="detail-desc" wx:if="{{plan.description}}">{{plan.description}}</text>
       <view class="plan-progress">
         <view class="plan-progress-bar"><view class="plan-progress-fill {{progressPercent >= 100 ? 'full' : ''}}" style="width:{{progressPercent}}%;"></view></view>
@@ -38,6 +39,7 @@
         </view>
         <text class="assignment-meta">完成 {{item.progressText}} 次 · 平均 {{item.avgScoreText}} 分</text>
         <text class="assignment-meta">{{item.lastText}}</text>
+        <text class="assignment-meta" wx:if="{{item.basisText}}">{{item.basisText}}</text>
       </view>
       <text class="warning-arrow">›</text>
     </view>
