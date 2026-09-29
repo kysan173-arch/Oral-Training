@@ -7,8 +7,9 @@
     <text class="retrain-desc">按该维度在各场景里的训练比重排序。比重越高，在这条场景里越容易被看出这一维度上的问题。</text>
   </view>
 
-  <!-- 该维度恰好被进行中的主管计划覆盖：说明练这些同时推进计划，不是说「别练了」 -->
-  <view class="plan-banner" wx:if="{{planBanner}}" bindtap="openPlan" hover-class="plan-banner-hover">
+  <!-- 该维度恰好被进行中的主管计划覆盖：只做提示，不给跳转入口 ——
+       学员来这页是为了决定「练哪个场景」，把他送走会打断这个决定。 -->
+  <view class="plan-banner" wx:if="{{planBanner}}">
     <view class="plan-banner-main">
       <view class="plan-banner-head">
         <text class="plan-banner-eyebrow">这个维度在你的培训计划里</text>
@@ -21,7 +22,6 @@
       </view>
       <view class="plan-banner-bar"><view class="plan-banner-fill" style="width:{{planBanner.progressPercent}}%;"></view></view>
     </view>
-    <text class="plan-banner-arrow">›</text>
   </view>
 
   <!-- 加载失败必须给重试出口：只空着会让学员读成「系统没有这个维度的场景」 -->

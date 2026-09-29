@@ -116,7 +116,6 @@ Page({
       }
       this.setData({
         planBanner: {
-          id: matched.id,
           title: matched.title,
           countdownText: matched.countdownText,
           /* 与训练中心横幅同一口径（ruleSummary），不另造文案 */
@@ -127,14 +126,6 @@ Page({
     }).catch(() => {
       /* 横幅是增强信息，拉不到就不显示，不打断主流程 */
       this.setData({ planBanner: null });
-    });
-  },
-
-  openPlan() {
-    const banner = this.data.planBanner;
-    if (!banner || !banner.id) return;
-    wx.navigateTo({
-      url: `/pages/training-plan-detail/training-plan-detail?id=${encodeURIComponent(banner.id)}`
     });
   },
 

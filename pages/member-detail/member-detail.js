@@ -12,8 +12,12 @@ const DIMENSIONS = [
   { key: 'serviceEtiquette', name: '服务礼仪' }
 ];
 
-/* 成长曲线五条线的颜色，全部取自 app.wxss 既有调色板，不引入新色 */
-const DIMENSION_COLORS = ['#1F3864', '#B97A1E', '#2E8B6C', '#6B7A93', '#9AA6B8'];
+/* 成长曲线五条线的颜色，全部取自 app.wxss 既有调色板，不引入新色。
+   末位原为 #9AA6B8（弱灰），白底上几乎看不见，换成同属既有色的 #8B6E4B。 */
+const DIMENSION_COLORS = ['#1F3864', '#B97A1E', '#2E8B6C', '#6B7A93', '#8B6E4B'];
+/* 相邻维度线型交替（实 / 虚）：五条线全是实线时，只靠颜色区分并不可靠（色觉障碍尤其难），
+   虚线是颜色之外的第二个区分维度——组件已支持 dashed，图例也会跟着画成虚线。 */
+const DIMENSION_DASHED = [false, true, false, true, false];
 
 /* 数值格式化：整数原样显示，小数保留一位 */
 const fmt1 = value => {
@@ -41,7 +45,17 @@ Page({
       { id: 'standard', name: '只看标准档' },
       { id: 'all', name: '含进阶档' }
     ],
-    growthEmptyText: ''
+    growthEmptyText: '',
+    /* 成长曲线要显示的维度（默认全选，取消勾选即隐藏该线，避免五条线互相缠绕）。
+       WXML 里不能调 indexOf —— 对数据路径调函数会让依赖追踪失效、setData 后不重算且不报错。
+       所以「是否选中」在这里预算成布尔字段，模板只做属性访问。 */
+    dimensionChips: DIMENSIONS.map(item => ({ key: item.key, name: item.name, selected: true })),
+    /* 两个长列表区块的展开态：默认收起以省纵向空间，
+       区块头的计数 / 说明与箭头仍常驻，需要时点开。 */
+    sections: { growth: false, inspect: false },
+    /* 收起时至少露出几条：整块只留标题会看不出内容，
+       露 3 条 + 「还有 N 条」既能扫一眼又不占纵向空间。 */
+    previewRows: 3
   },
 
   memberId: '',
@@ -158,16 +172,24 @@ Page({
     const tierFiltered = source.filter(item =>
       this.data.tierFilter === 'all' || item.difficultyTier !== 'advanced');
     const labels = tierFiltered.map(item => datetime.formatMonthDay(item.date));
-    const series = DIMENSIONS.map((item, dimIndex) => ({
-      name: item.name,
-      type: 'line',
-      color: DIMENSION_COLORS[dimIndex],
-      axis: 'right',
-      values: tierFiltered.map(point => {
-        const score = point && point.scores ? point.scores[item.key] : null;
-        return Number.isFinite(Number(score)) ? Number(score) : null;
-      })
-    }));
+    /* 只画被勾选的维度：五条线全上会互相缠绕，单条趋势根本看不出来。
+       颜色 / 线型按维度在 DIMENSIONS 里的**原始下标**取，
+       所以取消勾选再勾回来时颜色不会串到别的维度上。 */
+    const series = DIMENSIONS
+      .map((item, dimIndex) => ({ item, dimIndex }))
+      .filter(entry => this.data.dimensionChips.some(
+        chip => chip.key === entry.item.key && chip.selected))
+      .map(entry => ({
+        name: entry.item.name,
+        type: 'line',
+        color: DIMENSION_COLORS[entry.dimIndex],
+        dashed: DIMENSION_DASHED[entry.dimIndex],
+        axis: 'right',
+        values: tierFiltered.map(point => {
+          const score = point && point.scores ? point.scores[entry.item.key] : null;
+          return Number.isFinite(Number(score)) ? Number(score) : null;
+        })
+      }));
     /* 时间线在档位过滤之上再叠加场景筛选 */
     const timeline = this.data.selectedScenarioId === 'all'
       ? tierFiltered
@@ -194,6 +216,28 @@ Page({
     const tierFilter = e.currentTarget.dataset.id;
     if (!tierFilter || tierFilter === this.data.tierFilter) return;
     this.setData({ tierFilter }, () => this.refreshTrend());
+  },
+
+  /* 成长曲线维度显隐。至少保留一个维度——全关掉图会变成空白，
+     而那看起来像「数据丢了」，不如直接拦住并说明原因。
+     key 走 DIMENSIONS 白名单校验，不用 dataset 拼任何数据路径。 */
+  toggleDimension(e) {
+    const key = e.currentTarget.dataset.key;
+    if (!DIMENSIONS.some(item => item.key === key)) return;
+    const next = this.data.dimensionChips.map(chip =>
+      (chip.key === key ? Object.assign({}, chip, { selected: !chip.selected }) : chip));
+    if (!next.some(chip => chip.selected)) {
+      api.showCenterNotice({ title: '至少保留一个维度' });
+      return;
+    }
+    this.setData({ dimensionChips: next }, () => this.refreshTrend());
+  },
+
+  /* 区块收起 / 展开。key 限定白名单，避免用 dataset 拼出意料之外的 setData 路径。 */
+  toggleSection(e) {
+    const key = e.currentTarget.dataset.key;
+    if (key !== 'growth' && key !== 'inspect') return;
+    this.setData({ [`sections.${key}`]: !this.data.sections[key] });
   },
 
   openInspect(e) {

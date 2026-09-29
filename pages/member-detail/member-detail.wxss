@@ -3,10 +3,9 @@
 .member-hero { display: flex; align-items: center; padding: 28rpx; margin-bottom: 18rpx; }
 .hero-avatar { width: 88rpx; height: 88rpx; line-height: 88rpx; flex-shrink: 0; border-radius: 26rpx; color: #fff; background: var(--color-primary); font-size: 32rpx; font-weight: 600; text-align: center; }
 .hero-copy { min-width: 0; margin-left: 18rpx; }
-.hero-name, .hero-meta, .hero-note { display: block; }
+.hero-name, .hero-meta { display: block; }
 .hero-name { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
 .hero-meta { margin-top: 7rpx; color: var(--text-secondary); font-size: 22rpx; }
-.hero-note { margin-top: 9rpx; color: var(--text-muted); font-size: 22rpx; line-height: 1.45; }
 .stat-grid { display: flex; gap: 14rpx; margin-bottom: 28rpx; }
 .stat-card { flex: 1; padding: 21rpx 7rpx; text-align: center; }
 /* 四卡布局：分档均分多了一列，字号略收保持单行 */
@@ -19,9 +18,31 @@
 .tier-strip { padding: 22rpx 26rpx; margin-bottom: 28rpx; }
 .tier-strip-title { display: block; color: var(--text-strong); font-size: 26rpx; font-weight: 600; }
 .tier-strip-sub { display: block; margin-top: 8rpx; color: var(--text-secondary); font-size: 22rpx; line-height: 1.6; }
-.section-heading { display: flex; justify-content: space-between; margin: 0 5rpx 14rpx; }
-.section-heading text:first-child { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
-.section-heading text:last-child { color: var(--text-muted); font-size: 22rpx; }
+/* 子选择器（>）限定直接子元素：折叠头里多包了一层 .section-toggle-tail，
+   若沿用后代选择器，text:first-child 会把尾部计数误判成标题而放大加粗。 */
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 5rpx 14rpx; }
+.section-heading > text:first-child { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
+.section-heading > text:last-child { color: var(--text-muted); font-size: 22rpx; }
+
+/* ── 可收起区块头（最近成长记录 / 训练记录抽查） ── */
+/* 纵向加一点内边距，把标题行的触控热区从 ~50rpx 抬到 ~58rpx；
+   不加 padding 的话这行看着像纯文字，实际很难点中。 */
+.section-toggle { padding: 4rpx 0; }
+.section-toggle-hover { opacity: .6; }
+.section-toggle-tail { flex-shrink: 0; display: flex; align-items: center; gap: 12rpx; }
+.section-toggle-tail > text { color: var(--text-muted); font-size: 22rpx; }
+
+/* 展开指示：圆形浅底 + 纯 CSS 三角。
+   不用 ▸ / ▾ 字符——那类字形粗细随字体变，部分机型还会跟基线错位，看着「脏」。 */
+.toggle-badge { width: 40rpx; height: 40rpx; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-primary-light); }
+.chev { width: 0; height: 0; border-left: 8rpx solid transparent; border-right: 8rpx solid transparent; }
+.chev-down { border-top: 10rpx solid var(--color-primary); }
+.chev-up { border-bottom: 10rpx solid var(--color-primary); }
+
+/* 卡片底部操作行：「还有 N 条」与「收起」共用同一套视觉（浅底胶囊），
+   两者互斥出现，位置都在卡内最下方——长列表滚到底也能直接收起，不必回到顶部。 */
+.list-action { display: flex; align-items: center; justify-content: center; gap: 10rpx; margin: 14rpx 0 6rpx; padding: 16rpx; border-radius: 14rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 22rpx; }
+.list-action-hover { opacity: .7; }
 .dimensions-card { padding: 26rpx; margin-bottom: 28rpx; }
 /* 五维横条（统一主色） */
 .dimension-row { margin-bottom: 20rpx; }
@@ -51,6 +72,9 @@
 .chart-card { padding: 26rpx 24rpx; margin-bottom: 24rpx; }
 .filter-chip-row { display: flex; flex-wrap: wrap; gap: 10rpx; padding: 6rpx 18rpx; }
 .card-filter { margin: -10rpx 5rpx 14rpx; padding: 14rpx 18rpx; border-radius: 14rpx; background: var(--color-primary-light); }
+/* 档位筛选与维度筛选两排相邻时补回间距：card-filter 自身的 -10rpx 上边距是为了贴紧标题，
+   两排之间再叠负边距就会糊在一起。 */
+.card-filter + .card-filter { margin-top: 10rpx; }
 .filter-chip { padding: 8rpx 18rpx; border-radius: 18rpx; font-size: 22rpx; color: var(--color-primary); background: #fff; }
 .filter-chip.selected { color: #fff; background: var(--color-primary); font-weight: 600; }
 

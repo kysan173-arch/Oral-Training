@@ -16,7 +16,6 @@
         <text class="page-title">{{trainingMode === 'patient_simulation' ? '患者模拟训练' : '选择训练场景'}}</text>
       </view>
     </view>
-    <text class="page-intro">{{trainingMode === 'patient_simulation' ? '自由描述场景，模拟真实工作中遇到的各种患者情况' : '4 大场景分类，覆盖口腔客服核心沟通能力'}}</text>
   </view>
 
   <!-- 模式切换 -->
@@ -29,8 +28,10 @@
   <view class="boundary-tip"><text class="boundary-icon">i</text><text>{{trainingMode === 'patient_simulation' ? '标准客服会展示答复思路与合规边界；不提供诊断、治疗承诺或未经确认的价格信息。' : '患者隐藏信息不会直接展示，训练中请通过提问逐步了解。'}}</text></view>
 
   <!-- 培训计划提醒：最紧急的待办计划摘要（标题 / 剩余时间 / 达标差额 / 进度），
-       主体点击进该计划明细，右上角「全部 N 个」进列表看全量 -->
-  <view class="plan-banner {{planNotice.urgent ? 'is-urgent' : ''}}" wx:if="{{planNotice}}" bindtap="openUrgentPlan" hover-class="plan-banner-hover">
+       主体点击进该计划明细，右上角「全部 N 个」进列表看全量。
+       只在「客服训练」模式展示：计划只统计 sessions（客服训练）里 standard 档的已完成报告，
+       患者模拟走 roleplay_sessions，一次都不计入达标 —— 在这里展示会误导学员刷这个页面。 -->
+  <view class="plan-banner {{planNotice.urgent ? 'is-urgent' : ''}}" wx:if="{{planNotice && trainingMode !== 'patient_simulation'}}" bindtap="openUrgentPlan" hover-class="plan-banner-hover">
     <view class="plan-banner-main">
       <view class="plan-banner-head">
         <text class="plan-banner-eyebrow">待完成培训计划</text>
@@ -137,7 +138,6 @@
           <text class="category-icon">{{item.icon}}</text>
           <view class="category-header-text">
             <text class="category-name">{{item.name}}</text>
-            <text class="category-desc">{{item.description}}</text>
           </view>
         </view>
         <view class="category-header-right">

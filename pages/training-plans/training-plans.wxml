@@ -4,7 +4,6 @@
     <text class="my-plan-title" wx:if="{{pendingCount > 0}}">你有 {{pendingCount}} 个计划待完成</text>
     <text class="my-plan-title" wx:elif="{{total > 0}}">全部计划已达标</text>
     <text class="my-plan-title" wx:else>暂无进行中的计划</text>
-    <text class="my-plan-desc">计划由主管发布，进度按你完成的训练自动统计，无需手动打卡。</text>
   </view>
 
   <view class="loading-card card" wx:if="{{loading}}"><text>正在加载计划…</text></view>

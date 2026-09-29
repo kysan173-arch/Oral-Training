@@ -5,7 +5,6 @@
 .my-plan-hero { padding: 32rpx 30rpx; margin-bottom: 24rpx; }
 .my-plan-eyebrow { display: block; font-size: 22rpx; letter-spacing: 2rpx; color: var(--text-secondary); }
 .my-plan-title { display: block; margin-top: 12rpx; font-size: 38rpx; font-weight: 600; color: var(--text-strong); }
-.my-plan-desc { display: block; margin-top: 12rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
 
 .my-plan-card { padding: 24rpx; margin-bottom: 16rpx; transition: transform .15s ease; }
 .my-plan-card-hover { transform: scale(.98); }

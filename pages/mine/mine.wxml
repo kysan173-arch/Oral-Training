@@ -106,7 +106,6 @@
         <view class="hero-name-row">
           <text class="hero-name">{{displayName}}</text>
         </view>
-        <text class="hero-subtitle">已完成 {{mine.stats.totalCompleted}} 次训练 · 平均 {{mine.stats.averageScore}} 分</text>
         <view class="hero-footer">
           <view class="hero-points">
             <text class="hero-points-val">{{mine.points}}</text>
@@ -146,7 +145,7 @@
     </scroll-view>
 
     <!-- 学习工具（置顶：训练相关入口优先） -->
-    <view class="section-heading"><view><text>学习工具</text><text>全部基于本人记录</text></view></view>
+    <view class="section-heading"><view><text>学习工具</text></view></view>
     <view class="tool-card card" bindtap="goTrainingPlans">
       <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/train.png" mode="aspectFit"></image></view>
       <view class="tool-body">

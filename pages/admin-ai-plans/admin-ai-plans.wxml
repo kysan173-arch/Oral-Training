@@ -4,7 +4,7 @@
   <block wx:elif="{{isAdmin}}">
     <view class="ai-hero card">
       <text class="ai-hero-title">AI 训练建议</text>
-      <text class="ai-hero-desc">模型按学员的五维薄弱项挑选场景并给出训练目标，生成的是草稿：只有你发布后，学员才会在待办中看到。可以「采纳并发布」原样下发，也可以「编辑后发布」先改场景、达标要求或目标维度。建议中的分数与理由由 AI 生成，仅作排课参考，不作为考核依据。</text>
+      <text class="ai-hero-desc">按学员最弱维度挑场景、定目标，生成的是草稿——发布后学员才可见。分数与理由由 AI 生成，仅作排课参考，不作为考核依据。</text>
     </view>
 
     <view class="ai-toolbar">

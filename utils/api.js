@@ -299,57 +299,6 @@ module.exports = {
   ),
   exportSupervisorReport: params => request(`/supervisor/reports/export?${query(params || {})}`),
 
-  // ── 知识管理后台（RAG 语料与诊所服务） ──
-  getAdminServices: () => request('/admin/services'),
-  createAdminService: payload => request('/admin/services', {
-    method: 'POST', data: { payload }
-  }),
-  getAdminServiceDraft: serviceId => request(`/admin/services/${encodeURIComponent(serviceId)}/draft`),
-  saveAdminServiceDraft: (serviceId, draftVersion, payload) => request(
-    `/admin/services/${encodeURIComponent(serviceId)}/draft`,
-    { method: 'PUT', data: { draftVersion, payload } }
-  ),
-  publishAdminService: (serviceId, draftVersion, idempotencyKey) => request(
-    `/admin/services/${encodeURIComponent(serviceId)}/publish`,
-    { method: 'POST', data: { draftVersion }, header: { 'Idempotency-Key': idempotencyKey } }
-  ),
-  archiveAdminService: serviceId => request(
-    `/admin/services/${encodeURIComponent(serviceId)}/archive`, { method: 'POST', data: {} }
-  ),
-  getAdminServiceRevisions: serviceId => request(
-    `/admin/services/${encodeURIComponent(serviceId)}/revisions`
-  ),
-  getAdminKnowledge: () => request('/admin/knowledge'),
-  createAdminKnowledge: payload => request('/admin/knowledge', { method: 'POST', data: payload }),
-  getAdminKnowledgeDraft: entryId => request(`/admin/knowledge/${encodeURIComponent(entryId)}/draft`),
-  saveAdminKnowledgeDraft: (entryId, payload) => request(
-    `/admin/knowledge/${encodeURIComponent(entryId)}/draft`,
-    { method: 'PUT', data: payload }
-  ),
-  publishAdminKnowledge: (entryId, draftVersion, idempotencyKey) => request(
-    `/admin/knowledge/${encodeURIComponent(entryId)}/publish`,
-    { method: 'POST', data: { draftVersion }, header: { 'Idempotency-Key': idempotencyKey } }
-  ),
-  archiveAdminKnowledge: entryId => request(
-    `/admin/knowledge/${encodeURIComponent(entryId)}/archive`, { method: 'POST', data: {} }
-  ),
-  getAdminKnowledgeRevisions: entryId => request(
-    `/admin/knowledge/${encodeURIComponent(entryId)}/revisions`
-  ),
-  createKnowledgeGenerationJob: payload => request('/admin/knowledge/generation-jobs', {
-    method: 'POST', data: payload, header: { 'Idempotency-Key': payload.idempotencyKey }
-  }),
-  getKnowledgeGenerationJob: jobId => request(
-    `/admin/knowledge/generation-jobs/${encodeURIComponent(jobId)}`
-  ),
-  retryKnowledgeGenerationJob: jobId => request(
-    `/admin/knowledge/generation-jobs/${encodeURIComponent(jobId)}/retry`,
-    { method: 'POST', data: {} }
-  ),
-  previewAdminKnowledge: payload => request('/admin/knowledge/preview', {
-    method: 'POST', data: payload
-  }),
-
   // ── 演示账号切换 ──
   // 注意：调用方（index/mine）在拿到 data 后自行落盘 accessToken 与 user，
   // switchRole 刻意不做副作用，避免与页面重复写入。

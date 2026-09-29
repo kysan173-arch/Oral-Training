@@ -58,7 +58,11 @@
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 28rpx 5rpx 14rpx; }
 .section-heading view text { display: block; }
 .section-heading view text:first-child { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
-.section-heading view text:last-child { margin-top: 4rpx; color: var(--text-secondary); font-size: 22rpx; }
+/* 副标题小字（原先只有「全部基于本人记录」用）。必须排除「唯一子节点」：只写 :last-child 时，
+   单文本标题会同时命中 :first-child 与 :last-child，两者特异性相同而后者在后 → 标题被降级成
+   22rpx 灰色小字。排除 :first-child 后，单文本标题回到正常的 :first-child 标题样式。
+   （不要改用 `text + text`：特异性会降到 (0,1,3)，反倒让 `.streak-sub.streak-hot` 的橙色生效。） */
+.section-heading view text:last-child:not(:first-child) { margin-top: 4rpx; color: var(--text-secondary); font-size: 22rpx; }
 .checkin-head { display: flex; align-items: baseline; gap: 10rpx; flex: 1; min-width: 0; }
 .checkin-head > text { white-space: nowrap; }
 .checkin-toggle { margin-top: 0 !important; color: var(--color-primary) !important; font-size: 22rpx !important; font-weight: 400 !important; flex-shrink: 0; }

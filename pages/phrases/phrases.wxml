@@ -37,7 +37,6 @@
         <text class="favorite-action {{item.favorited ? 'active' : ''}}" bindtap="toggleFavorite" data-session-id="{{item.sessionId}}" data-phrase-key="{{item.phraseKey}}">{{favoriteBusyId === item.id ? '处理中…' : item.favorited ? '★ 已收藏' : '☆ 收藏'}}</text>
         <view class="phrase-action-right">
           <text class="copy-action" bindtap="copyPhrase" data-phrase="{{item.csReply}}">复制话术</text>
-          <text class="train-action" bindtap="startScenario" data-id="{{item.scenarioId}}">用此场景复练 ›</text>
         </view>
       </view>
     </view>

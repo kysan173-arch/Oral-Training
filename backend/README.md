@@ -102,12 +102,11 @@ ctest --test-dir build-msvc -C Release --output-on-failure
 .\tests\state_machine.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 ```
 
-知识目录、存储与管理 API 使用一次性 schema 验证，不会清理未核对范围的数据库：
+知识目录与存储 API 使用一次性 schema 验证，不会清理未核对范围的数据库：
 
 ```powershell
 .\tests\knowledge_catalog_migration.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 .\tests\knowledge_store_database.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
-.\tests\knowledge_admin_api.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 ```
 
 迁移测试要求一次性数据库名包含 `test` 或 `ci`：

@@ -1,8 +1,8 @@
 # 口腔客服智能陪练 API 契约
 
-版本：v3.6（训练体验、主管团队与个人成长 · RAG v2 报告兼容、知识管理与检索预览）
+版本：v3.6（训练体验、主管团队与个人成长 · RAG v2 报告兼容、角色互换证据检索）
 
-> RAG v2 仍在分阶段开发。知识发布已生成中文检索块，管理端可预览确定性召回，角色互换已接入服务快照和回答依据；学员扮演客服的 AI 患者初始化与知识核验评分仍待实现。
+> RAG v2 仍在分阶段开发。角色互换已接入服务快照和回答依据；学员扮演客服的 AI 患者初始化与知识核验评分仍待实现。
 
 Base URL 为 `https://<host>/api`。本机开发可使用 `http://127.0.0.1:8080/api`；体验版和正式版必须使用 HTTPS。
 
@@ -408,11 +408,13 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 完成报告允许没有综合分。聚合响应以 `completedSessions` 统计所有已完成且报告为 `ready` 的训练，并同时返回 `scoredSessions` 与 `unscoredSessions`。平均分、达标率、最佳分和趋势仅使用 `totalScore` 非空的报告；没有已评分样本时平均分和达标率返回 JSON `null`。`dimensionAverages` 的每个维度独立排除该维度的 `null`，没有样本的维度返回 `null`。
 
+`scenarioStats` 逐场景下发 `{scenarioId, scenarioName, category, trainingCount}`；`category` 取自 `scenarios.category`（`consultation` / `price_negotiation` / `complaint_handling` / `recommendation`），供学员数据页把次数归并到四大分类。
+
 仅 `admin` 可以调用。**所有聚合口径都限定在「我的团队」范围内**（`supervisor_team_members`），未加入团队的学员不会出现在看板、成员列表、报表与排行榜中：
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/supervisor/dashboard?range=week\|month\|quarter\|all` | 本团队学员数、训练量、达标率、场景聚合、五维均值和趋势 |
+| `GET` | `/supervisor/dashboard?range=week\|month\|quarter\|all` | 本团队学员数、训练量、达标率、场景聚合、五维均值和趋势。`scenarioStats` 逐场景下发（每项带 `category`），主管端展示层据此归并到四大分类 |
 | `GET` | `/supervisor/members?limit=1..100` | `admin` | 本团队成员学习摘要，按姓名展示，不按成绩排序；附 `totalTeamMembers`（不受 `limit` 影响的团队成员总数，用于判断列表是否被截断）与 `totalLearners`（全部在职学员数，含已归属其他主管的人）。分档字段（迁移 026）：`standardAvgScore` / `advancedAvgScore`（该档**没练过时为 `null`，前端须显示「未挑战」而不是 0**）与 `advancedCount` |
 | `GET` | `/supervisor/members/{memberId}` | `admin` | 本团队单个成员的五维均值、弱项建议和最多 12 条训练分数趋势；非本团队成员返回 `MEMBER_NOT_FOUND`。分档字段同上，另附 `advancedChallengeRate`（进阶完成数 / 已完成报告数，百分之一位；无已评分训练时为 `null`）；`trend` 每点带 `difficultyTier`（`standard`/`advanced`）——**混档趋势不可比，前端默认只画标准档** |
 | `GET` | `/supervisor/scenarios` | 场景目录（`id`、`name`、`category`、`difficulty`），供发布培训计划时选择适用场景 |
@@ -423,6 +425,13 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 | `POST` | `/supervisor/scenarios/ai-draft` | `admin` | 提交 AI 骨架生成任务（202）。请求体 `{category, difficulty, concerns[1..5], name?, brief?}` + `Idempotency-Key`（或 body 内 `idempotencyKey`）；返回任务对象，`draftId` 即预建的占位场景 id。未知 kind、无效分类/难度、空顾虑返回 400 |
 | `GET` | `/supervisor/scenarios/ai-draft/{jobId}` | `admin` | 轮询任务状态（`pending` / `running` / `retry_wait` / `succeeded` / `dead`）。`result` 含 `candidate`、`applied`、`scenarioId`、`warnings` |
 | `POST` | `/supervisor/scenarios/ai-draft/{jobId}/retry` | `admin` | 仅 `dead` 任务可重试（202）。**已上架的骨架返回 409 `SCENARIO_PUBLISHED`**——重试成功会强制下线，那等于把已发布场景撤下来 |
+| `GET` | `/supervisor/reports/forbidden-phrases?range=week\|month\|quarter\|all&sceneCategory=…&limit=…` | `admin` | 违规表达按类型聚合。`phrases` **只含有命中的分类**，每项带 `category`、`categoryLabel`、`count`、`memberCount`；`countedViolations` 是全量次数；`violationCategories` 是完整分类目录（前端据此渲染，不得另建中文名副本）；`sceneCategories` 是另一条**正交**的筛选轴 |
+| `GET` | `/supervisor/reports/forbidden-phrases/{category}?range=…&limit=1..200` | `admin` | 该分类下涉及的成员，按违规次数降序。每名成员带 `entries`：**最多 5 条**违规明细（`round` / `originalQuote` / `reason` / `recommendedRewrite` / `deduction` / `scenarioName` / `date`），按扣分降序。`count` 是该分类下的**完整**违规条数——超出 `entries.length` 时前端必须如实标注「仅展示扣分最高的 N 条」，不要把它读成全部 |
+
+**违规分类口径（重要）**：分类**预设为固定 5 类且不落库**——评分模型在 `violations[].type` 里填写的是**自由文本**，查询时由 `violationCategorySql()`（`reliable_store.h`）用关键词正则归并到 `efficacy_guarantee` / `overreach_judgement` / `risk_mishandling` / `peer_disparagement` / `other`。因此：
+
+- **改词表会即时重算历史统计**（每次查询现算，没有口径快照）；`CASE` 首命中优先，**调 WHEN 顺序等于调口径**。
+- `other` 是兜底类，**没有占比监控**：模型换一种词表里没有的措辞（或直接吐出维度 key，如 `knowledgeAccuracy`）就整批掉进去，统计会静默失真。改动前先量一下 `other` 占比。
 
 **场景 ↔ 维度映射（迁移 024）**：`scenarios.dimension_weights` 记录「该场景主要练哪几个维度」，是「按弱项推荐场景」的前提——此前只有自由文本的 `focus`（如 `["需求挖掘","引导专业检查"]`），与五维 key 之间没有任何映射，任何形式的推荐都只能靠拍脑袋。
 
@@ -620,44 +629,6 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 ```
 
 `ready` 只表示报告生成完成，不保证 `totalScore` 非空。只有有总分的报告进入平均分、达标率分母、最佳分、趋势及高分成就；完成次数仍包括无综合分报告。
-
-### A.2 管理接口（R02—R04 主体已实现）
-
-| 方法 | 路径 | 目标行为 |
-|---|---|---|
-| `GET/POST` | `/admin/services` | 服务列表与新建服务草稿 |
-| `GET/PUT` | `/admin/services/{id}/draft` | 按 `draftVersion` 读取和保存服务草稿 |
-| `POST` | `/admin/services/{id}/publish` | 按草稿版本与幂等键原子发布 |
-| `POST` | `/admin/services/{id}/archive` | 停止新会话选择，不删除历史版本 |
-| `GET` | `/admin/services/{id}/revisions` | 读取不可变版本及字段差异 |
-| `GET/POST` | `/admin/knowledge` | 专业知识列表与新建条目 |
-| `GET/PUT` | `/admin/knowledge/{id}/draft` | 按 `draftVersion` 编辑知识草稿 |
-| `POST` | `/admin/knowledge/{id}/publish` | 发布不可变版本并生成 `zh-bigram-v1` 检索块 |
-| `POST` | `/admin/knowledge/{id}/archive` | 停止新上下文纳入该条目 |
-| `GET` | `/admin/knowledge/{id}/revisions` | 读取知识版本历史 |
-| `POST` | `/admin/knowledge/generation-jobs` | 创建模拟资料草稿生成任务，返回 `202` |
-| `GET` | `/admin/knowledge/generation-jobs/{id}` | 读取排队、执行、失败或草稿结果 |
-| `POST` | `/admin/knowledge/generation-jobs/{id}/retry` | 对失败任务显式重试 |
-| `POST` | `/admin/knowledge/preview` | 使用指定已保存草稿版本和问题执行临时检索预览 |
-
-全部管理端点逐个校验 `admin`。知识管理权限不授予学员对话、个人报告、话术或错题读取权限。生成任务只保存 `synthetic/unverified` 草稿，不能直接发布或自行标记 `reviewed`。
-
-服务创建提交 `{"payload": ServiceDraft}`；保存提交 `{"draftVersion":2,"payload":ServiceDraft}`。知识创建提交 `topic/scope/serviceId/title/body/metadata`，保存提交 `draftVersion/title/body/metadata`。服务与知识发布都必须携带 `Idempotency-Key` 请求头以及正文中的 `draftVersion`；同键同参返回原 revision，同键异参返回 `409 IDEMPOTENCY_CONFLICT`。
-
-金额使用整数分。已知价格必须保留类型、CNY、单位和适用条件；范围价格的下界不得大于上界。价格、单次时长、全程周期、复诊间隔和预约资料都可显式使用 `{"status":"unknown","reason":"..."}`，不得用零冒充未知。发布在一个事务内追加不可变 revision、切换 current pointer、更新场景关联并写审计，归档不删除历史版本。
-
-生成任务请求示例：
-
-```json
-{
-  "kind":"knowledge_draft",
-  "draftId":"knowledge-draft-001",
-  "brief":"生成一份仅用于演示训练的候选正文",
-  "count":1
-}
-```
-
-`count` 当前固定为 1。任务状态为 `pending/running/retry_wait/succeeded/dead`，响应包含 `generation`、`attempts`、`maxAttempts`、`promptVersion`、`modelVersion`、`resultApplied` 和错误字段。Worker 使用独立队列、租约与 attempt token；生成开始后如管理员保存了新草稿，旧结果只保存在 `result.candidate` 且 `resultApplied=false`，不会覆盖人工编辑。失败任务只能通过 retry 端点开始新 generation；重试会以当时的最新草稿重新构造模型输入。
 
 ### A.3 新增错误码
 

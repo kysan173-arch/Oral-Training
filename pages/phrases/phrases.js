@@ -102,22 +102,5 @@ Page({
       this.setData({ favoriteBusyId: '' });
       api.showCenterNotice({ title: error.message || '收藏操作失败' });
     });
-  },
-
-  startScenario(e) {
-    const scenarioId = e.currentTarget.dataset.id;
-    if (!scenarioId) return;
-    api.getScenarios().then(data => {
-      const scenario = (data.items || []).find(item => item.id === scenarioId);
-      if (scenario && scenario.activeSession) {
-        wx.navigateTo({ url: `/pages/training/training?sessionId=${scenario.activeSession.id}` });
-        return null;
-      }
-      return api.createSession(scenarioId);
-    }).then(data => {
-      if (data && data.session) {
-        wx.navigateTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
-      }
-    }).catch(error => api.showCenterNotice({ title: error.message || '创建训练失败' }));
   }
 });

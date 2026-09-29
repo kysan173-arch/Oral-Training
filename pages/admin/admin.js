@@ -1,5 +1,7 @@
 const api = require('../../utils/api.js');
 const datetime = require('../../utils/datetime.js');
+/* 分类中文名唯一来源（勿在本页另写副本）：与后端 reliable_store.h sceneCategories() 对齐。 */
+const { CATEGORY_CONFIG } = require('../../utils/scenario.js');
 /* 数值格式化与主管端派生（辅导判定 / 等级 / 原因文案）都走单一来源，
    本页不再自持副本——否则首页工作台与这里会给出不一致的结论。 */
 const {
@@ -21,6 +23,93 @@ const DIMENSIONS = [
 
 /* 分数分档：颜色只跟随分数（≥80 良好绿 / 60–79 中间蓝 / <60 待提升橙） */
 const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
+
+/* 学员数据页「各场景训练」：后端逐场景下发，这里归并到四大分类。
+   场景粒度太细（10 条上下），四个大类才看得出训练结构。
+   category 缺失（对接到尚未升级的旧后端）时退回逐场景展示，
+   而不是把整块静默显示成 0 次——那种错没有告警，最难排查。 */
+const buildLearnerSceneStats = stats => {
+  const counts = Object.create(null);
+  let categorizedTotal = 0;
+  stats.forEach(item => {
+    if (!item.category) return;
+    const count = Number(item.trainingCount) || 0;
+    counts[item.category] = (counts[item.category] || 0) + count;
+    categorizedTotal += count;
+  });
+  if (!categorizedTotal) {
+    const rawTotal = stats.reduce((sum, item) => sum + (Number(item.trainingCount) || 0), 0) || 1;
+    return stats.map(item => ({
+      id: item.scenarioId,
+      name: item.scenarioName,
+      count: Number(item.trainingCount) || 0,
+      barWidth: (Number(item.trainingCount) || 0) / rawTotal * 100
+    }));
+  }
+  return CATEGORY_CONFIG.map(category => {
+    const count = counts[category.id] || 0;
+    return { id: category.id, name: category.name, count, barWidth: count / categorizedTotal * 100 };
+  });
+};
+
+/* 主管端「分类通过率分布」：把逐场景聚合归并到四大分类（与学员数据页同口径）。
+   关键点：通过率与均分必须按**已评分会话数加权**——对各场景的百分比直接取平均，
+   会把「1 次 100%」和「20 次 40%」等权，结论可能整体反向。
+   category 缺失（对接到尚未升级的旧后端）时退回逐场景，而不是把整块静默归零。 */
+const buildSupervisorSceneStats = stats => {
+  const has = value => value !== null && value !== undefined;
+  const round1 = value => Math.round(value * 10) / 10;
+  const newBucket = () => ({ total: 0, scoredCount: 0, passed: 0, scoreSum: 0 });
+  const buckets = Object.create(null);
+  let categorizedTotal = 0;
+  stats.forEach(item => {
+    if (!item.category) return;
+    const bucket = buckets[item.category] || (buckets[item.category] = newBucket());
+    const total = Number(item.total) || 0;
+    const scoredCount = Number(item.scoredCount) || 0;
+    bucket.total += total;
+    bucket.scoredCount += scoredCount;
+    categorizedTotal += total;
+    if (scoredCount > 0) {
+      if (has(item.passRate)) bucket.passed += Number(item.passRate) / 100 * scoredCount;
+      if (has(item.averageScore)) bucket.scoreSum += Number(item.averageScore) * scoredCount;
+    }
+  });
+  const rows = categorizedTotal
+    ? CATEGORY_CONFIG.map(category => {
+      const bucket = buckets[category.id] || newBucket();
+      return {
+        id: category.id,
+        name: category.name,
+        total: bucket.total,
+        scoredCount: bucket.scoredCount,
+        unscoredCount: bucket.total - bucket.scoredCount,
+        /* scoredCount 为 0 时是「没有已评分样本」，恒给 null —— 与逐场景口径一致，
+           前端不得把它读成 0 分。 */
+        averageScore: bucket.scoredCount > 0 ? round1(bucket.scoreSum / bucket.scoredCount) : null,
+        passRate: bucket.scoredCount > 0 ? round1(bucket.passed / bucket.scoredCount * 100) : null
+      };
+    })
+    : stats.map(item => ({
+      id: item.scenarioId,
+      name: item.scenarioName,
+      total: Number(item.total) || 0,
+      scoredCount: Number(item.scoredCount) || 0,
+      unscoredCount: Number(item.unscoredCount) || 0,
+      averageScore: has(item.averageScore) ? Number(item.averageScore) : null,
+      passRate: has(item.passRate) ? Number(item.passRate) : null
+    }));
+  const maxTotal = Math.max(1, ...rows.map(row => row.total));
+  return rows.map(row => Object.assign({}, row, {
+    barWidth: Math.max(0, Math.min(100, Number(row.passRate) || 0)),
+    totalWidth: Math.max(4, row.total / maxTotal * 100),
+    averageScoreText: has(row.averageScore) ? `${api.formatScore(row.averageScore)} 分` : '暂无评分',
+    passRateText: has(row.passRate) ? `${api.formatScore(row.passRate)}%` : '暂无',
+    /* 「暂无」不能染成告警色：判定阈值只对真有样本的分类生效。 */
+    passRateClass: !has(row.passRate) ? '' : (Number(row.passRate) >= 60 ? 'pass-ok' : 'pass-warn'),
+    weak: has(row.passRate) && Number(row.passRate) < 60
+  }));
+};
 
 /* 团队级薄弱项：五维最低项 + 通过率最低场景 */
 const coachingSuggestions = dashboard => {
@@ -179,11 +268,6 @@ Page({
     this.loadPage();
   },
 
-  /* 知识与服务管理后台入口（master 独有，页面已注册在 app.json） */
-  goKnowledgeAdmin() {
-    wx.navigateTo({ url: '/pages/knowledge-admin/knowledge-admin' });
-  },
-
   loadPage() {
     this.setData({ loading: true });
     api.ensureAuthenticated().then(() => {
@@ -236,18 +320,8 @@ Page({
       const tier = scoreTier(value);
       return Object.assign({}, item, { value, valueText: api.formatScore(value), tier });
     });
-    const maxSceneTotal = Math.max(1, ...(supervisor.scenarioStats || []).map(item => item.total));
-    /* 场景可能「有已完成会话但一条都没评分」：此时后端给 null，
-       展示层必须区分「暂无评分」和「0 分」，否则会把未评分场景标成需重点训练。 */
-    const scored = value => value !== null && value !== undefined;
-    const scenarioStats = (supervisor.scenarioStats || []).map(item => Object.assign({}, item, {
-      barWidth: Math.max(0, Math.min(100, Number(item.passRate) || 0)),
-      totalWidth: Math.max(4, item.total / maxSceneTotal * 100),
-      averageScoreText: scored(item.averageScore)
-        ? `${api.formatScore(item.averageScore)} 分` : '暂无评分',
-      passRateText: scored(item.passRate) ? `${api.formatScore(item.passRate)}%` : '暂无',
-      weak: scored(item.passRate) && Number(item.passRate) < 60
-    }));
+    /* 通过率 / 均分 / 弱项判定（含「暂无评分」与「0 分」的区分）收敛进归并函数。 */
+    const scenarioStats = buildSupervisorSceneStats(supervisor.scenarioStats || []);
 
     const trendPoints = supervisor.trend || [];
     const trendLabels = trendPoints.map(item => datetime.formatMonthDay(item.date));
@@ -345,7 +419,7 @@ Page({
 
   loadPersonal() {
     api.getDashboard().then(data => {
-      const totalSceneCount = (data.scenarioStats || []).reduce((sum, s) => sum + s.trainingCount, 0) || 1;
+      const sceneStats = buildLearnerSceneStats(data.scenarioStats || []);
       const dimensionAverages = DIMENSIONS.map(item => {
         const value = Math.round(Number((data.dimensionAverages || {})[item.key] || 0));
         return Object.assign({}, item, { value, tier: scoreTier(value) });
@@ -373,12 +447,7 @@ Page({
         averageScore: api.formatScore(data.averageScore),
         focalScoreRing: Math.max(0, Math.min(100, avgScore)),
         completionRate,
-        sceneStats: (data.scenarioStats || []).map(item => ({
-          id: item.scenarioId,
-          name: item.scenarioName,
-          count: item.trainingCount,
-          barWidth: item.trainingCount / totalSceneCount * 100
-        })),
+        sceneStats,
         dimensionAverages,
         weakestDimension: weakest,
         strongestDimension: strongest,

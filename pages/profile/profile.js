@@ -20,8 +20,7 @@ Page({
     profile: null,
     dimensions: [],
     trend: [],
-    weaknesses: [],
-    mistakePercent: 0
+    weaknesses: []
   },
 
   onShow() { this.loadProfile(); },
@@ -54,10 +53,6 @@ Page({
           arrowClass: delta === null ? '' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
         });
       });
-      const mistakes = data.mistakes || {};
-      const mistakePercent = mistakes.total > 0
-        ? Math.round((mistakes.mastered / mistakes.total) * 100)
-        : 0;
       /* 弱项卡片要带「复练」入口：后端算出了薄弱维度，但此前没有任何入口
          从弱项跳到训练，学员读完那句建议只能自己回训练中心找场景。
          score 是后端原始 double（会出现 66.66666666666667 那种），展示前格式化。 */
@@ -72,7 +67,6 @@ Page({
         dimensions,
         trend,
         weaknesses,
-        mistakePercent,
         loading: false
       });
     }).catch(error => {
@@ -80,10 +74,6 @@ Page({
       api.showCenterNotice({ title: error.message || '成长数据加载失败' });
     });
   },
-
-  goPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
-
-  goMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
 
   /* 弱项 → 场景候选。只传维度 key 就够，名称一并带上是为了让候选页
      首屏就能显示维度名（避免等接口返回前标题是空的）。 */
@@ -95,7 +85,4 @@ Page({
     });
   },
 
-  goTraining() { wx.switchTab({ url: '/pages/index/index' }); },
-
-  goHistory() { wx.switchTab({ url: '/pages/report/report' }); }
 });

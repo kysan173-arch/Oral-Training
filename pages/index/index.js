@@ -94,7 +94,6 @@ const buildCategories = (scenarios, activeCategoryId, expandedCategories) => CAT
     id: category.id,
     icon: category.icon,
     name: category.name,
-    description: category.description,
     /* 序号在 JS 预算成两位字符串：场景数可能超过 9（主管可自由建场景），
        WXML 里拼 "0" + index 会显示成 "010"。 */
     items: items.map((item, index) => Object.assign({}, item, {

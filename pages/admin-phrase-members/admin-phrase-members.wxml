@@ -2,22 +2,47 @@
   <view class="detail-hero card">
     <text class="phrase-hero-label">违规类型</text>
     <text class="phrase-hero-title">{{categoryLabel}}</text>
-    <text class="phrase-hero-desc">{{rangeLabel}}内共有 {{total}} 名成员出现该类表达。点击成员可查看其学习详情。</text>
+    <text class="phrase-hero-desc">{{rangeLabel}}内共有 {{total}} 名成员出现该类表达。点击成员可在原位展开其违规明细。</text>
   </view>
 
   <view class="loading-card card" wx:if="{{loading}}"><text>正在加载成员明细…</text></view>
 
   <block wx:else>
-    <view class="member-item card" wx:for="{{members}}" wx:key="learnerId" bindtap="openMember" data-id="{{item.learnerId}}" hover-class="member-card-hover">
-      <view class="member-avatar">{{item.initial}}</view>
-      <view class="member-copy">
-        <view class="member-name-row">
-          <text class="member-name">{{item.displayName}}</text>
-          <text class="member-count">{{item.count}} 次</text>
+    <!-- 整行可点：原地展开该类违规的原话 / 原因 / 建议改写 —— 主管点进来要的就是这个，
+         而不是跳到一个看不到违规内容的通用画像页。 -->
+    <view class="member-item card" wx:for="{{members}}" wx:key="learnerId" bindtap="toggleMember" data-index="{{index}}" hover-class="member-card-hover">
+      <view class="member-row">
+        <view class="member-avatar">{{item.initial}}</view>
+        <view class="member-copy">
+          <view class="member-name-row">
+            <text class="member-name">{{item.displayName}}</text>
+            <text class="member-count">{{item.count}} 次</text>
+          </view>
+          <text class="member-scene">涉及场景：{{item.scenarioText}}</text>
         </view>
-        <text class="member-scene">涉及场景：{{item.scenarioText}}</text>
+        <view class="member-caret {{item.expanded ? 'member-caret-up' : ''}}"></view>
       </view>
-      <text class="warning-arrow">›</text>
+
+      <!-- catchtap：区内点击不冒泡到整行的 toggle，否则读到一半就被收起 -->
+      <view class="entry-list" wx:if="{{item.expanded}}" catchtap="swallowTap">
+        <view class="entry-item" wx:for="{{item.entries}}" wx:for-item="entry" wx:key="entryKey">
+          <view class="entry-head">
+            <text class="entry-round">{{entry.roundText}}</text>
+            <text class="entry-meta">{{entry.metaText}}</text>
+            <text class="entry-deduction" wx:if="{{entry.deductionText}}">{{entry.deductionText}}</text>
+          </view>
+          <text class="entry-quote">{{entry.originalQuote}}</text>
+          <text class="entry-reason">原因：{{entry.reason}}</text>
+          <text class="entry-rewrite" wx:if="{{entry.recommendedRewrite}}">建议改写：{{entry.recommendedRewrite}}</text>
+        </view>
+
+        <view class="entry-empty" wx:if="{{!item.entries.length}}"><text>该成员在此类型下的违规明细暂未回带。</text></view>
+
+        <text class="entry-overflow" wx:if="{{item.overflowText}}">{{item.overflowText}}</text>
+
+        <!-- 跳转保留但降级：展开满足「看这类违规」，这里满足「看这个人整体」 -->
+        <view class="entry-link" catchtap="openMemberDetail" data-id="{{item.learnerId}}">查看完整学习详情 ›</view>
+      </view>
     </view>
 
     <empty-state wx:if="{{members.length === 0}}" title="本期没有成员涉及" text="换个时间周期或场景分类看看。"></empty-state>

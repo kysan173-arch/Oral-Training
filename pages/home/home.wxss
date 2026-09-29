@@ -67,9 +67,6 @@
 .wb-candidate-text { flex: 1; min-width: 0; font-size: 24rpx; color: var(--color-primary); }
 .wb-candidate-link { flex-shrink: 0; margin-left: 16rpx; font-size: 24rpx; font-weight: 600; color: var(--color-primary); }
 
-.wb-snapshot { display: flex; align-items: center; justify-content: space-between; margin: 0 0 30rpx; padding: 20rpx 24rpx; border-radius: var(--radius-md); background: #fff; border: 1rpx solid var(--color-border); }
-.wb-snapshot-item { font-size: 22rpx; color: var(--text-secondary); }
-
 .wb-idle { padding: 28rpx 24rpx; margin: 0 0 30rpx; }
 .wb-idle-title { display: block; font-size: 26rpx; font-weight: 600; color: var(--text-strong); }
 .wb-idle-desc { display: block; margin-top: 10rpx; font-size: 22rpx; color: var(--text-secondary); line-height: 1.6; }

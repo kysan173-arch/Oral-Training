@@ -84,6 +84,23 @@ Page({
     wx.navigateTo({ url: '/pages/admin-training-plan-create/admin-training-plan-create' });
   },
 
+  /* 「AI 建议」「导出 CSV」都是低频操作，收进动作面板；顶栏只留主行动「＋发布计划」。
+     原先 3 个按钮 + 3 个筛选胶囊挤在一行会超宽约 104rpx，把「已到期」顶到第二行。
+     面板写法与 pages/roleplay 对齐；用户取消是正常交互，不提示。 */
+  openPlanMore() {
+    wx.showActionSheet({
+      itemList: ['AI 建议', '导出 CSV'],
+      success: result => {
+        if (result.tapIndex === 0) this.openAiPlans();
+        else if (result.tapIndex === 1) this.exportPlanMembersCsv();
+      },
+      fail: error => {
+        if (error && /cancel/i.test(error.errMsg || '')) return;
+        api.showCenterNotice({ title: '面板打开失败，请重试' });
+      }
+    });
+  },
+
   /* AI 建议独立成页：草稿数量不定、每条都要展开推荐理由，塞进本页会把
      进行中的计划挤下去，主管反而看不到最该盯的进度。 */
   openAiPlans() {
@@ -95,7 +112,11 @@ Page({
      写入用户目录后转发文件；转发不可用时降级为复制到剪贴板。 */
   exportPlanMembersCsv() {
     if (this.data.exporting) return;
+    /* 收进动作面板后按钮文案不再变化，改由 loading 承担「正在导出」的反馈——
+       否则从点击到 shareFileMessage 弹出的这几秒完全没有反馈，读起来像「点了没反应」。
+       exporting 仍保留作防重入标志。 */
     this.setData({ exporting: true });
+    wx.showLoading({ title: '正在导出…', mask: true });
     api.exportSupervisorReport({ scope: 'plan_members' }).then(data => {
       const csv = `\uFEFF${data.csv || ''}`;
       const filePath = `${wx.env.USER_DATA_PATH}/${data.filename || 'plan-members.csv'}`;
@@ -105,6 +126,7 @@ Page({
         data: csv,
         encoding: 'utf8',
         success: () => {
+          wx.hideLoading();
           wx.shareFileMessage({
             filePath,
             fileName: data.filename || 'plan-members.csv',
@@ -119,11 +141,13 @@ Page({
           });
         },
         fail: () => {
+          wx.hideLoading();
           this.setData({ exporting: false });
           api.showCenterNotice({ title: '文件写入失败', duration: 1800 });
         }
       });
     }).catch(error => {
+      wx.hideLoading();
       this.setData({ exporting: false });
       api.showCenterNotice({ title: error.message || '导出失败' });
     });

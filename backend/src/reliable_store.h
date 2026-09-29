@@ -1263,6 +1263,12 @@ class ReliableDatabase {
         && custom_profile["emotion"].is_string()) {
       merged_hidden["initialState"]["emotion"] = custom_profile["emotion"].get<std::string>();
     }
+    /* 与 createSession 对称：情绪强度一并沿用，否则「再来一次」会悄悄退回档位默认强度，
+       同一局练两遍难度还不一样。 */
+    if (custom_profile.is_object() && custom_profile.contains("emotionLevel")
+        && custom_profile["emotionLevel"].is_number()) {
+      merged_hidden["initialState"]["emotionLevel"] = custom_profile["emotionLevel"].get<int>();
+    }
     const json state = {
         {"emotion", merged_hidden["initialState"].value("emotion", "平静")},
         {"emotionLevel", merged_hidden["initialState"].value("emotionLevel", 0)},
@@ -1838,10 +1844,12 @@ class ReliableDatabase {
       FROM sessions
     )" + filter)[0];
     const auto user_condition = institution_aggregate ? "" : " AND x.user_id = " + tx.quote(user_id);
+    /* s.category 供学员数据页把逐场景次数归并到四大分类；放 SELECT 里必须同步 GROUP BY，
+       且这是唯一喂下方 scenario_stats 循环的查询（漏列只会运行时抛异常，编译期发现不了）。 */
     const auto scenarios = tx.exec(R"(
-      SELECT s.id, s.name, COUNT(x.id) AS training_count FROM scenarios s
+      SELECT s.id, s.name, s.category, COUNT(x.id) AS training_count FROM scenarios s
       LEFT JOIN sessions x ON x.scenario_id = s.id AND x.status <> 'abandoned'
-    )" + user_condition + " GROUP BY s.id, s.name, s.sort_order ORDER BY s.sort_order");
+    )" + user_condition + " GROUP BY s.id, s.name, s.category, s.sort_order ORDER BY s.sort_order");
     const auto report_filter = institution_aggregate ? "" : " AND s.user_id = " + tx.quote(user_id);
     const auto reports = tx.exec(R"(
       SELECT e.report FROM evaluations e JOIN sessions s ON s.id = e.session_id
@@ -1862,6 +1870,7 @@ class ReliableDatabase {
     for (const auto& row : scenarios) {
       scenario_stats.push_back({{"scenarioId", row["id"].c_str()},
                                 {"scenarioName", row["name"].c_str()},
+                                {"category", row["category"].c_str()},
                                 {"trainingCount", row["training_count"].as<int>()}});
     }
     json recent = json::array();
@@ -2346,7 +2355,7 @@ class ReliableDatabase {
       FROM sessions s WHERE TRUE
     )" + time_filter + supervisorTeamFilter("s.user_id"), supervisor_id)[0];
     const auto scenario_rows = tx.exec_params(R"(
-      SELECT sc.id, sc.name, COUNT(s.id) AS completed_count,
+      SELECT sc.id, sc.name, sc.category, COUNT(s.id) AS completed_count,
         COUNT(s.id) FILTER (WHERE s.total_score IS NOT NULL) AS scored_count,
         AVG(s.total_score) AS average_score,
         ROUND(100.0 * COUNT(s.id) FILTER (WHERE s.total_score >= 60) /
@@ -2355,7 +2364,7 @@ class ReliableDatabase {
       LEFT JOIN sessions s ON s.scenario_id = sc.id
         AND s.status = 'completed' AND s.evaluation_status = 'ready'
     )" + supervisorTimeFilter(time_range, "s.finished_at") + supervisorTeamFilter("s.user_id") + R"(
-      GROUP BY sc.id, sc.name, sc.sort_order ORDER BY sc.sort_order
+      GROUP BY sc.id, sc.name, sc.category, sc.sort_order ORDER BY sc.sort_order
     )", supervisor_id);
     const auto report_rows = tx.exec_params(R"(
       SELECT e.report FROM evaluations e JOIN sessions s ON s.id = e.session_id
@@ -2379,6 +2388,7 @@ class ReliableDatabase {
     json scenario_stats = json::array();
     for (const auto& row : scenario_rows) {
       scenario_stats.push_back({{"scenarioId", row["id"].c_str()}, {"scenarioName", row["name"].c_str()},
+                                {"category", row["category"].c_str()},
                                 {"total", row["completed_count"].as<int>()},
                                 {"scoredCount", row["scored_count"].as<int>()},
                                 {"unscoredCount", row["completed_count"].as<int>() -
@@ -3599,7 +3609,20 @@ class ReliableDatabase {
     const auto rows = tx.exec_params(R"(
       SELECT u.id AS learner_id, COALESCE(NULLIF(u.display_name, ''), '未命名学员') AS display_name,
         COUNT(*) AS violation_count,
-        jsonb_agg(DISTINCT s.scenario_name) AS scenarios
+        jsonb_agg(DISTINCT s.scenario_name) AS scenarios,
+        jsonb_agg(
+          jsonb_build_object(
+            'round', COALESCE(NULLIF(v->>'round', '')::int, 0),
+            'originalQuote', v->>'originalQuote',
+            'reason', v->>'reason',
+            'recommendedRewrite', v->>'recommendedRewrite',
+            'deduction', COALESCE(NULLIF(v->>'deduction', '')::int, 0),
+            'scenarioName', s.scenario_name,
+            'date', to_char(s.updated_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
+          )
+          ORDER BY COALESCE(NULLIF(v->>'deduction', '')::int, 0) DESC,
+                   COALESCE(NULLIF(v->>'round', '')::int, 0)
+        ) AS entries
       FROM evaluations e
       JOIN sessions s ON s.id = e.session_id
       JOIN users u ON u.id = s.user_id
@@ -3612,12 +3635,23 @@ class ReliableDatabase {
       GROUP BY u.id, u.display_name
       ORDER BY violation_count DESC, lower(COALESCE(NULLIF(u.display_name, ''), u.id))
       LIMIT )" + std::to_string(limit), supervisor_id);
+    /* 每名成员最多回带 5 条明细（按扣分降序取）：列表页的价值是「谁犯得多」，
+       具体条目是点开某一行才需要的；全量回带会让本接口随历史累积线性变胖。
+       完整条数由 count 承载，前端据此提示「还有 N 条」。 */
+    constexpr int kEntriesPerMember = 5;
     json members = json::array();
     for (const auto& row : rows) {
+      const auto raw_entries = jsonbColumn(row, "entries");
+      json entries = json::array();
+      for (const auto& entry : raw_entries) {
+        if (static_cast<int>(entries.size()) >= kEntriesPerMember) break;
+        entries.push_back(entry);
+      }
       members.push_back({{"learnerId", row["learner_id"].c_str()},
                          {"displayName", row["display_name"].c_str()},
                          {"count", row["violation_count"].as<int>()},
-                         {"scenarios", jsonbColumn(row, "scenarios")}});
+                         {"scenarios", jsonbColumn(row, "scenarios")},
+                         {"entries", entries}});
     }
     return {{"category", category}, {"categoryLabel", violationCategoryLabel(category)},
             {"range", time_range.empty() ? "month" : time_range}, {"members", members},

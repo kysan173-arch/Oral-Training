@@ -55,7 +55,11 @@ Component({
     /* 右轴固定量程，默认百分制 */
     rightMax: { type: Number, value: 100 },
     /* 左轴量程，0 表示按数据自动取整 */
-    maxValue: { type: Number, value: 0 }
+    maxValue: { type: Number, value: 0 },
+    /* 纵轴单位：非空且该侧真有刻度时，在轴顶画一行标题（如「次」「分」）。
+       双轴图两侧量纲不同（次数 vs 百分制），不标单位就是两串无法分辨的裸数字。 */
+    leftUnit: { type: String, value: '', observer() { this.scheduleDraw(); } },
+    rightUnit: { type: String, value: '', observer() { this.scheduleDraw(); } }
   },
 
   data: {
@@ -137,9 +141,21 @@ Component({
     },
 
     render(ctx, width, height, labels, series) {
-      const padLeft = 30;
+      /* 左右对称：某一侧没有任何系列时，既收窄留白、也不画该侧刻度。
+         否则会出现「有数据的那侧 0–100、没数据的那侧 0–4」——那个 4 是
+         niceCeil(0) 的兜底值，纯属噪音，看图的会以为左轴另有含义。 */
+      const padLeft = series.some(item => item.axis !== 'right') ? 30 : 12;
       const padRight = series.some(item => item.axis === 'right') ? 30 : 12;
-      const padTop = 16;
+      /* 轴标题（单位）与刻度同一条对称原则：该侧没有刻度就不画标题，
+         否则会重演「空轴 + 孤零零一个单位」的噪音。 */
+      const leftUnit = String(this.properties.leftUnit || '').trim();
+      const rightUnit = String(this.properties.rightUnit || '').trim();
+      const showLeftUnit = padLeft > 20 && !!leftUnit;
+      const showRightUnit = padRight > 20 && !!rightUnit;
+      const hasUnit = showLeftUnit || showRightUnit;
+      /* 有轴标题时绘图区整体下移一行，让标题落在新增的留白里，不跟顶端刻度挤在同一行 */
+      const padTop = hasUnit ? 28 : 16;
+      const unitY = 11;
       const padBottom = 26;
       const plotWidth = Math.max(10, width - padLeft - padRight);
       const plotHeight = Math.max(10, height - padTop - padBottom);
@@ -179,11 +195,28 @@ Component({
         ctx.strokeStyle = level === 4 ? '#dfe4ef' : '#edf0f6';
         ctx.stroke();
         ctx.fillStyle = '#9AA6B8';
-        ctx.textAlign = 'right';
-        ctx.fillText(String(Math.round(leftMax * (4 - level) / 4)), padLeft - 6, y);
+        if (padLeft > 20) {
+          ctx.textAlign = 'right';
+          ctx.fillText(String(Math.round(leftMax * (4 - level) / 4)), padLeft - 6, y);
+        }
         if (padRight > 20) {
           ctx.textAlign = 'left';
           ctx.fillText(String(Math.round(rightMax * (4 - level) / 4)), padLeft + plotWidth + 6, y);
+        }
+      }
+
+      /* 轴标题（单位）：贴在该侧最外缘、最高刻度线上方一行。
+         左右各写各的，读图时先看单位再看刻度，不会把「次」读成「分」。 */
+      if (hasUnit) {
+        ctx.fillStyle = '#9AA6B8';
+        ctx.textBaseline = 'middle';
+        if (showLeftUnit) {
+          ctx.textAlign = 'left';
+          ctx.fillText(leftUnit, 1, unitY);
+        }
+        if (showRightUnit) {
+          ctx.textAlign = 'right';
+          ctx.fillText(rightUnit, width - 1, unitY);
         }
       }
 

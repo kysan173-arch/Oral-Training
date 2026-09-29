@@ -234,7 +234,7 @@ Page({
       title: '无法生成报告',
       content: '该训练已被放弃，请从历史记录选择其他已完成训练。',
       showCancel: false,
-      success: () => wx.switchTab({ url: '/pages/report/report' })
+      success: () => wx.redirectTo({ url: '/pages/report/report' })
     });
   },
 
@@ -244,7 +244,7 @@ Page({
       title: '无法打开报告',
       content: '页面链接缺少会话信息，请从历史记录重新进入。',
       showCancel: false,
-      success: () => wx.switchTab({ url: '/pages/report/report' })
+      success: () => wx.redirectTo({ url: '/pages/report/report' })
     });
   },
 
@@ -290,7 +290,7 @@ Page({
 
   restartTraining() { wx.switchTab({ url: '/pages/index/index' }); },
   viewScenes() { wx.switchTab({ url: '/pages/index/index' }); },
-  viewHistory() { wx.switchTab({ url: '/pages/report/report' }); },
+  viewHistory() { wx.navigateTo({ url: '/pages/report/report' }); },
   viewMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
   viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
   viewProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },

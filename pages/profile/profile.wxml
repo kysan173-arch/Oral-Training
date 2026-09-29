@@ -23,7 +23,6 @@
     <!-- 页头 -->
     <view class="profile-header">
       <text class="page-title">个人成长</text>
-      <text class="page-intro">你的数据仅基于本人完成的客服训练报告，用于回顾练习重点，不用于排名或正式考核。</text>
     </view>
 
     <!-- 统计卡 横滑 -->
@@ -79,23 +78,8 @@
       </view>
     </view>
 
-    <!-- 错题掌握进度 -->
-    <view class="learning-summary card">
-      <view class="ls-header">
-        <text class="ls-title">错题掌握进度</text>
-        <text class="ls-link" bindtap="goMistakes">去复练 ›</text>
-      </view>
-      <text class="ls-stats">{{profile.mistakes.mastered}} / {{profile.mistakes.total}} 项已标记掌握</text>
-      <view class="ls-bar">
-        <view class="ls-fill" style="width: {{mistakePercent}}%;"></view>
-      </view>
-    </view>
-
     <!-- 最近训练走势 -->
-    <view class="section-heading">
-      <text>最近训练走势</text>
-      <text class="section-link" bindtap="goHistory">历史记录 ›</text>
-    </view>
+    <view class="section-heading"><text>最近训练走势</text></view>
     <view class="empty-card card" wx:if="{{trend.length === 0}}"><text>完成一次客服训练后，这里会出现真实的成长记录。</text></view>
     <view class="trend-card card" wx:for="{{trend}}" wx:key="sessionId">
       <view class="trend-left">
@@ -108,11 +92,5 @@
       </view>
     </view>
 
-    <!-- 底部操作 -->
-    <button class="primary-button train-button" bindtap="goTraining">开始下一次训练</button>
-    <view class="aux-links">
-      <view class="aux-link" bindtap="goPhrases"><image class="aux-link-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image><text>话术锦囊 ›</text></view>
-      <view class="aux-link" bindtap="goMistakes"><image class="aux-link-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image><text>错题复练 ›</text></view>
-    </view>
   </block>
 </view>
