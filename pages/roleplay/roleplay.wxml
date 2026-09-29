@@ -9,7 +9,7 @@
   </view>
 
   <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
-    <view class="chat-intro">与标准客服练习真实咨询，关键答复附学习要点。最多10轮，不进行数值评分。</view>
+    <view class="chat-intro">与标准客服练习真实咨询，需要时可展开学习要点。最多10轮，不进行数值评分。</view>
     <view class="suggestion-panel" wx:if="{{suggestions.length}}"><text class="suggestion-title">可以这样提问</text><view class="suggestion-list"><text class="suggestion-chip" wx:for="{{suggestions}}" wx:key="*this" bindtap="useSuggestion" data-prompt="{{item}}">{{item}}</text></view></view>
     <view class="message-item {{item.role === 'learner_patient' ? 'learner-message' : 'customer-message'}}" wx:for="{{messages}}" wx:key="id">
       <view class="message-avatar">{{item.role === 'learner_patient' ? '我' : '客'}}</view>
@@ -17,7 +17,8 @@
         <text class="message-role">{{item.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}} · {{item.time}}</text>
         <view class="message-bubble"><text>{{item.content}}</text></view>
         <text class="evidence-link" wx:if="{{item.role === 'standard_customer' && item.traceId && item.citations.length}}" catchtap="viewEvidence" data-trace="{{item.traceId}}">查看依据（{{item.citations.length}}）</text>
-        <view class="learning-card" wx:if="{{item.role === 'standard_customer' && (item.learningPoints.length || item.complianceBoundary)}}">
+        <text class="evidence-link" wx:if="{{item.role === 'standard_customer' && (item.learningPoints.length || item.complianceBoundary)}}" catchtap="toggleLearning" data-id="{{item.id}}" aria-role="button" aria-label="{{expandedLearning[item.id] ? '收起学习要点' : '展开学习要点'}}">{{expandedLearning[item.id] ? '收起学习要点' : '查看学习要点'}}</text>
+        <view class="learning-card" wx:if="{{item.role === 'standard_customer' && expandedLearning[item.id] && (item.learningPoints.length || item.complianceBoundary)}}">
           <text class="learning-title">学习要点</text>
           <text class="learning-point" wx:for="{{item.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text>
           <view class="boundary-box" wx:if="{{item.complianceBoundary}}"><text class="boundary-label">合规边界</text><text>{{item.complianceBoundary}}</text></view>

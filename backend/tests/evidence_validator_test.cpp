@@ -100,6 +100,18 @@ int main() {
     require(unavailabilityText("抱歉，刚才没说清楚。周六的实时号源我这里看不到，还得由门诊确认。"), "natural apology retains uncertainty");
     require(unavailabilityText("不能保证完全不疼，这点我得跟您说清楚。"), "honest refusal is not a pain guarantee");
     require(unavailabilityText("没法保证完全不疼。"), "colloquial refusal retains its meaning");
+    const json no_slot={{"reply","明天已约好"},{"evidenceIds",json::array()},{"unavailableTopic","appointment"}};
+    const auto first_slot=groundedReply(no_slot,c,b,"first-slot","明天能约吗？");
+    const auto next_slot=groundedReply(no_slot,c,b,"next-slot","怎么又是确认？",first_slot["reply"]);
+    require(first_slot["reply"]!=next_slot["reply"] && next_slot["reply"].get<std::string>().find("看不到实时号源")!=std::string::npos,
+        "repeated unavailable answer must explain actual limitation");
+    require(next_slot["citations"].empty() && next_slot["answerStatus"]=="unknown","follow-up invented availability");
+    const auto third_slot=groundedReply(no_slot,c,b,"third-slot","还是不知道吗？",next_slot["reply"],
+        json::array({first_slot["reply"],next_slot["reply"]}));
+    require(third_slot["reply"]!=first_slot["reply"] && third_slot["reply"]!=next_slot["reply"],"fallback cycles between old replies");
+    const auto fake_followup=groundedReply({{"reply","我看不到实时号源，需要帮您跟门诊确认一下。"},
+        {"replyKind","unavailable"},{"evidenceIds",json::array()},{"unavailableTopic","appointment"}},c,b,"no-followup");
+    require(fake_followup["reply"].get<std::string>().find("帮您")==std::string::npos,"unsupported follow-up promise accepted");
     require(!unavailabilityText("没法确定，但保证完全不疼。"), "positive guarantee still rejected");
     require(!unavailabilityText("不能确定，但我已经预约成功。"), "uncertainty cannot mask invented action");
     for (const auto* unsafe : {"保证无痛。", "只需3个月。", "支持分期。", "已经预约成功。", "当天完成。"}) {

@@ -5,6 +5,8 @@
 
 namespace {
 std::map<std::string,int> rejectedReads;
+int hintCalls=0;
+bool unsafeHint=false;
 void requireInit(bool ok, const std::string& message) {
   if (!ok) throw std::runtime_error(message);
 }
@@ -45,6 +47,15 @@ class InitGateway final : public oral_training::IModelGateway {
   json standardServiceReply(const json&,const json&) const override { throw std::runtime_error("unexpected model call"); }
   json roleplaySummary(const json&,const json&) const override { throw std::runtime_error("unexpected model call"); }
   bool supportsPatientInitialization() const override { return true; }
+  json trainingHint(const json& scenario,const json& state,const json& history,
+                    const std::string& current,int round,int) const override {
+    ++hintCalls;
+    requireInit(!scenario.contains("hidden") && !scenario.dump().empty(),"hint received scenario secrets");
+    requireInit(!scenario["public"].contains("budget") && !state.contains("revealedInformation"),"hint received private profile");
+    requireInit(!history.empty() && !current.empty(),"hint missing actual dialogue");
+    if(unsafeHint) return {{"hint","保证成功，您放心。"}};
+    return {{"hint",round==1?"您最担心的是哪一点？":"这个预算我记下了，您还想先了解什么？"}};
+  }
   json groundedPatientReply(const json& view,const json&,const json&) const override {
     if(view["round"]==1) requireInit(!view["allowedInformation"].contains("budget") &&
         !view["allowedInformation"].contains("competitor"),"private information in model prompt");
@@ -207,13 +218,24 @@ int main() {
       const auto first=service.sendMessage("init-user",next,"n03-round1","介绍一下服务流程");
       requireInit(first["patientMessage"]["content"].get<std::string>().find("5000")==std::string::npos,
                   "first turn disclosed private budget");
+      const auto first_hint=service.requestTrainingHint("init-user",next);
+      requireInit(first_hint["hint"]["content"]=="您最担心的是哪一点？" && hintCalls==1,"v2 hint did not call model");
+      expectInitError([&]{service.requestTrainingHint("init-user",next);},"HINT_ROUND_LIMIT_REACHED");
+      requireInit(hintCalls==1,"duplicate hint consumed model call");
       const auto second=service.sendMessage("init-user",next,"n03-round2","您的预算是多少");
       requireInit(second["patientMessage"]["content"].get<std::string>().find("5000")!=std::string::npos,
                   "asked budget was not disclosed");
+      unsafeHint=true;
+      expectInitError([&]{service.requestTrainingHint("init-user",next);},"MODEL_UNSAFE_RESPONSE");
+      requireInit(service.database().getSession("init-user",next)["hintRemaining"]==2,"failed hint consumed quota");
+      unsafeHint=false;
+      const auto second_hint=service.requestTrainingHint("init-user",next);
+      requireInit(second_hint["hint"]["content"]!=first_hint["hint"]["content"] && hintCalls==3,"new round reused boilerplate");
       const auto replay=service.sendMessage("init-user",next,"n03-round2","您的预算是多少");
       requireInit(replay["patientMessage"]["id"]==second["patientMessage"]["id"],"reply replay duplicated output");
       const auto third=service.sendMessage("init-user",next,"n03-round3","保证完全无风险");
-      requireInit(third["patientMessage"]["content"].get<std::string>().find("医生评估")!=std::string::npos,
+      requireInit(third["patientMessage"]["content"].get<std::string>().find("不放心")!=std::string::npos &&
+                  store.profiles(next)["state"]["riskTriggered"]==true && store.profiles(next)["state"]["trustLevel"]==40,
                   "patient accepted guarantee");
       const auto resumed=service.database().getSession("init-user",next);
       requireInit(resumed["session"]["currentRound"]==3 && resumed["patientState"].size()==1,

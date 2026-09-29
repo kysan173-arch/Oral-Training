@@ -12,6 +12,7 @@ Page({
     session: null,
     scenario: {},
     messages: [],
+    expandedLearning: {},
     suggestions: [],
     currentRound: 0,
     maxRounds: 10,
@@ -26,6 +27,14 @@ Page({
   },
 
   sessionId: '',
+
+  toggleLearning(event) {
+    const id = event.currentTarget.dataset.id;
+    if (!id || !this.data.messages.some(item => item.id === id && item.role === 'standard_customer')) return;
+    const expandedLearning = Object.assign({}, this.data.expandedLearning);
+    expandedLearning[id] = !expandedLearning[id];
+    this.setData({ expandedLearning });
+  },
   initialPrompt: '',
   pendingPollTimer: null,
 

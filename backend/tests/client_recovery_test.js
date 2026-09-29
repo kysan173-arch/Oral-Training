@@ -46,6 +46,16 @@ const missingSessionCases = [
   ['pages/roleplay-result/roleplay-result.js', '/pages/report/report']
 ];
 
+const learningPage = instantiatePage(loadPage('pages/roleplay/roleplay.js'));
+learningPage.data.messages = [{ id: 'reply-1', role: 'standard_customer' }, { id: 'user-1', role: 'learner_patient' }];
+assert.deepStrictEqual(learningPage.data.expandedLearning, {});
+learningPage.toggleLearning({ currentTarget: { dataset: { id: 'reply-1' } } });
+assert.strictEqual(learningPage.data.expandedLearning['reply-1'], true);
+learningPage.toggleLearning({ currentTarget: { dataset: { id: 'reply-1' } } });
+assert.strictEqual(learningPage.data.expandedLearning['reply-1'], false);
+learningPage.toggleLearning({ currentTarget: { dataset: { id: 'user-1' } } });
+assert.strictEqual(learningPage.data.expandedLearning['user-1'], undefined);
+
 for (const [pagePath, expectedUrl] of missingSessionCases) {
   let modal = null;
   let destination = null;

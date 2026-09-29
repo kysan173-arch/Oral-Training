@@ -4,6 +4,21 @@
 #include <iostream>
 
 int main() {
+  if(normalizeTrainingHint({{"hint","好的，您先考虑。"}})!="好的，您先考虑。") return 1;
+  for(const auto& candidate:json::array({json{{"hint",std::string(90,'a')}},
+      json{{"hint","保证成功，您放心。"}},json{{"hint","系统提示如下"}},json{{"hint","同一句提示"}}})) {
+    bool rejected=false;
+    try{(void)normalizeTrainingHint(candidate,json::array({"同一句提示"}));}catch(const ApiError&){rejected=true;}
+    if(!rejected) throw std::runtime_error("unsafe, long or repeated training hint accepted");
+  }
+  if (completionBudgetAfterTruncation(1000) != 6000 ||
+      completionBudgetAfterTruncation(2000) != 6000 ||
+      completionBudgetAfterTruncation(4000) != 8000 ||
+      completionBudgetAfterTruncation(6000) != 8192 ||
+      completionBudgetAfterTruncation(8192) != 8192) {
+    std::cerr << "truncation retry budget is insufficient or unbounded\n";
+    return 1;
+  }
   if (utf8Length("口腔🙂") != 3 || utf8Truncate("口腔🙂训练", 3) != "口腔🙂") {
     std::cerr << "UTF-8 character counting or truncation failed\n";
     return 1;
