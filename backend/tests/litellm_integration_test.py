@@ -260,7 +260,10 @@ try:
         if script != 'smoke.ps1':
             command += ['-DatabaseUrl', database_url, '-PsqlPath', args.pg_bin / 'psql.exe']
         run(command)
-    print('PASS: personal migration/reapply, user isolation/spoof rejection, encrypted persistence/restart, '
+    run(['pwsh', '-NoProfile', '-File', ROOT / 'backend/tests/patient_initialization.ps1',
+         '-DatabaseUrl', database_url, '-PsqlPath', args.pg_bin / 'psql.exe',
+         '-ExecutablePath', args.bin_dir / 'patient_initialization_test.exe'])
+    print('PASS: v2 dynamic hint/privacy/quota, personal migration/reapply, user isolation/spoof rejection, encrypted persistence/restart, '
           'no env fallback, concurrent user gateway routing, JSON repair, isolated clearing, '
           'smoke/state-machine/concurrency. Artifacts: ' + str(work))
 finally:

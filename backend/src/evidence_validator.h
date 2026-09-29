@@ -254,11 +254,16 @@ inline bool isSimpleThanks(std::string question) {
 
 inline json groundedReply(const json& source, const json& context,
                            const json& bundle, const std::string& trace_id,
-                           const std::string& question = "") {
+                           const std::string& question = "", const std::string& previous_reply = "",
+                           const json& previous_replies = json::array()) {
   if (!source.is_object()) throw std::invalid_argument("grounded reply must be an object");
   EvidenceValidator validator(context, bundle, trace_id);
   if (!validator.valid()) throw std::runtime_error("RAG evidence context mismatch");
   const bool conflicted = bundle.contains("conflicts") && !bundle["conflicts"].empty();
+  const auto already_said=[&](const std::string& value) {
+    return !value.empty() && (value==previous_reply ||
+        std::find(previous_replies.begin(),previous_replies.end(),json(value))!=previous_replies.end());
+  };
   std::string reply = evidenceString(source, "reply"), authority;
   json citations = json::array();
   std::set<std::string> selected;
@@ -279,7 +284,9 @@ inline json groundedReply(const json& source, const json& context,
       evidenceString(source, "replyKind") == "unavailable" && unavailabilityText(reply);
   bool usable = conversation || unavailable || (!invalid_selection && !citations.empty() && citations.size() <= 3 &&
                 conciseGroundedText(reply, authority));
-  for (const auto* claim : {"可以安排", "可以约上", "肯定能约", "肯定有号"})
+  for (const auto* claim : {"可以安排", "可以约上", "肯定能约", "肯定有号",
+       "帮您跟门诊", "帮您联系", "帮您核实", "帮您查询", "帮您查", "替您联系", "替您预约",
+       "我会联系", "稍后回复", "确认后回复", "回头通知"})
     if (reply.find(claim) != std::string::npos) usable = false;
   // An exact, standalone thank-you has no factual question to defer for verification.
   // Never apply this fallback to messages that also contain a substantive question.
@@ -304,17 +311,31 @@ inline json groundedReply(const json& source, const json& context,
     }
   }
   const bool missing = bundle.contains("missingFields") && !bundle["missingFields"].empty();
-  if (!usable || conflicted) {
+  if (!usable || conflicted || (unavailable && already_said(reply))) {
     citations = json::array();
-    const std::map<std::string, std::string> unavailable = {
+    const std::map<std::string, std::string> fallback_text = {
         {"appointment", "具体号源需要门诊实时确认，目前还不能确定能否约上。"},
         {"price", "具体费用还需核实，目前不能给您准确报价。"},
         {"duration", "具体需要多久还不能确认，需医生检查后评估。"},
         {"promotion", "优惠活动还需向门诊核实，目前不能确认有这项优惠。"},
         {"medical", "仅凭描述还不能判断，建议联系医生进一步评估。"}};
-    const auto topic = unavailable.find(evidenceString(source, "unavailableTopic"));
-    reply = conflicted ? "这项信息还需核对，暂时不能给您准确答复。确认后再向您说明。"
-        : topic != unavailable.end() ? topic->second : "这项信息暂时还不能确认，需要向门诊核实后再答复您。";
+    const auto topic = fallback_text.find(evidenceString(source, "unavailableTopic"));
+    reply = conflicted ? "这项信息有矛盾，需要门诊核实，我不能给您确定答复。"
+        : topic != fallback_text.end() ? topic->second : "我这里没有这项信息，暂时无法确认。";
+    // Explain the concrete limitation on a repeated unavailable answer, rather than
+    // promise a check we cannot perform or rotate synonyms of the same deferral.
+    if(already_said(reply) || (unavailable && already_said(evidenceString(source,"reply")))) {
+      const std::map<std::string,std::string> limitations={
+        {"appointment","我这里看不到实时号源，直接联系门诊确认时间会更准确。"},
+        {"price","我这里没有可确认的报价，请让门诊列出具体项目和费用。"},
+        {"duration","目前缺少能确定时间的信息，需要医生检查后说明。"},
+        {"promotion","我这里查不到已确认的活动，是否有优惠请直接向门诊确认。"},
+        {"medical","这已经涉及具体诊疗判断，我无法替医生下结论。"}};
+      const auto limit=limitations.find(evidenceString(source,"unavailableTopic"));
+      reply=conflicted?"现有信息有矛盾，我不能选一个说法当作确定答案。请向门诊核实。":
+          limit!=limitations.end()?limit->second:"抱歉，我这里没有更多可确认的信息，继续猜测会误导您。";
+      if(already_said(reply)) reply="这项暂时没有更多可确认的信息。您还有其他想了解的吗？";
+    }
   }
   return {{"reply", reply}, {"replyKind", conversation && usable && !conflicted ? "conversation" : "answer"},
       {"answerStatus", conflicted ? "conflicted" : conversation && usable ? "answered" : citations.empty() ? "unknown" : missing ? "partial" : "answered"},
