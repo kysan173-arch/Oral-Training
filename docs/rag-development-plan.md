@@ -170,9 +170,11 @@ DeepSeek 选择 evidenceId
 
 ### N01 — 加固当前角色互换 RAG
 
+当前状态（2026-09-20）：实现完成，完整 Windows/PostgreSQL CI 通过；微信模拟器/真机未验证，尚未合并。详见 [N01 验证记录](rag-n01-validation.md)。
+
 对应原任务：R05、R07、R08 的剩余部分。  
 预计：1—2 人日。  
-前置：无，下一步立即执行。
+前置：无。
 
 主要改动：
 
@@ -204,11 +206,13 @@ DeepSeek 选择 evidenceId
 
 ### N02 — 客服训练上下文与患者初始化基础设施
 
+当前状态（2026-09-20）：基础设施完成，完整 Windows/PostgreSQL CI 通过，尚未合并。详见 [N02 验证记录](rag-n02-validation.md)。真实患者生成与逐轮回复仍属于 N03。
+
 对应原任务：R06、R09。  
 预计：2—3 人日。  
 前置：N01。
 
-新增迁移 `012_patient_initialization_jobs.sql`，不得修改已发布的 010/011。迁移至少需要：
+新增迁移 `032_patient_initialization_jobs.sql`，不得修改已发布的 010/011。迁移至少需要：
 
 - 为 `sessions` 增加可空的 `service_id`、`service_revision_id`、`client_session_id` 和 `context_version`。
 - 扩展 `training_contexts`，保存初始化状态、generation、错误、私有画像、公开画像和可变患者状态。
@@ -232,6 +236,8 @@ DeepSeek 选择 evidenceId
 - 新发布知识只影响新会话，续练始终沿用原 manifest。
 
 ### N03 — RAG 驱动的 AI 患者与逐轮状态
+
+当前状态（2026-09-21）：实现完成，完整 Windows/PostgreSQL CI 通过，尚未合并。详见 [N03 验证记录](rag-n03-validation.md)。
 
 对应原任务：R09。  
 预计：2—3 人日。  
@@ -279,6 +285,8 @@ DeepSeek 选择 evidenceId
 
 ### N04 — 客服训练服务选择与初始化交互
 
+当前状态（2026-09-22）：实现完成，完整 Windows/PostgreSQL CI 通过，尚未合并。详见 [N04 验证记录](rag-n04-validation.md)。
+
 对应原任务：R10。  
 预计：1.5—2 人日。  
 前置：N02、N03。
@@ -300,6 +308,8 @@ DeepSeek 选择 evidenceId
 - 同一场景的不同服务分别保存续练状态和历史记录。
 
 ### N05 — 学员陈述核验与确定性知识评分
+
+当前状态（2026-09-22）：核验器、固定 rubric、提取契约和只读服务接口已实现，完整 Windows/PostgreSQL CI 通过，尚未合并。正式报告接入按计划在 N06 完成。详见 [N05 验证记录与解析边界](rag-n05-validation.md)。
 
 对应原任务：R11。  
 预计：3—4 人日。  
@@ -354,6 +364,8 @@ DeepSeek 选择 evidenceId
 
 ### N06 — 报告 v2、错题复练与完整测试
 
+当前状态（2026-09-22）：代码已实现，82 条固定规则案例与完整 Windows/PostgreSQL 自动回归通过，尚未合并。业务/医疗人员对固定集的人工复核及微信 DevTools 验收仍待完成，因此尚不认定全部发布门槛通过；按后续用户指令进入 N07 准备，真实联调与发布仍须通过人工门槛。详见 [N06 验收记录](rag-validation-report.md)。
+
 对应原任务：R12、R13。  
 预计：3—4 人日。  
 前置：N04、N05。
@@ -396,6 +408,8 @@ DeepSeek 选择 evidenceId
 实施时新增 `docs/rag-validation-report.md`，记录实际命令、环境、退出码、Passed/Failed/Skipped、指标分母和剩余限制。
 
 ### N07 — 受控 DeepSeek 联调与分段发布
+
+当前状态（2026-09-22）：按用户指令完成发布开关、调用上限、审计与受控批次准备，完整 Windows/PostgreSQL 自动回归已通过。真实模型联调尚未执行，人工前置门槛仍保留。详见 [N07 验证与执行记录](rag-n07-validation.md)。
 
 对应原任务：R14。  
 预计：1—2 人日。  
@@ -548,8 +562,19 @@ reliable_store.h 中 training_contexts/rag_traces/roleplay summary 逻辑。
 
 ### 当前交接
 
-- 状态：N01 待开发；N02—N07 依赖顺序待开发。
+- 状态：N01 已实现、核心离线验证通过，集成验收待确认（见下方记录）；N02—N07 待开发。
 - 当前基线：`master@be64028ad5b121bbe5fc2b7a33d3a7a05380ca9d`。
 - 最近 RAG 功能提交：PR #7，`377464287c935c585ea4e3464a66688bf7dfc63d`，已合并。
 - 最近文档提交：`112a3f52206a3c61857303efb75710d339584e9e`，已合并。
-- 下一步：从 N01 开始，不要直接跳到向量检索或评分页面。
+- 下一步：见下方 N01 交接记录；先处理集成验收阻塞，再进入 N02。
+
+### N01 — 加固当前角色互换 RAG（2026-09-20）
+
+- 状态：实现完成；核心离线、Windows 全量构建、CTest 和知识管理集成通过；总 CI 被上游主管看板场景统计测试阻断，尚未全量验收。
+- 基线：同步上游 `master@a1ba5fb1ea028d74b64f4a1ca5917d8e05e8d740`；工作分支 `fix/rag-n01`。旧工作区的未跟踪设计文档未覆盖，本次使用独立工作区。
+- 实际修改：`sha256.h`、`rag_manifest.h`、`evidence_validator.h`；`knowledge_store.cpp`、`rag_retriever.*`、`rag_types.h`、`main.cpp`、`reliable_store.h`；CTest、证据/检索测试；复盘页、历史详情页和共用引用展示；API 与验证记录。
+- API/DTO：规范化 SHA-256、bundle/passage 服务范围、新 citation 元数据；v2 summary 增加 groundedFacts/citations/knowledgeManifestHash。无迁移、无新配置。
+- 验证：58 项证据断言、RAG contract、客户端恢复、复盘引用 JS 测试及 50 个 JS/37 个 JSON 静态检查通过；详见 [N01 验证记录](rag-n01-validation.md)。
+- 与计划偏差：校验器 header-only；v2 沟通文本用固定模板，复盘直接由已公开证据确定性生成；原始旧 hash 不批量重写，读取时校验并规范化，保留审计原值。缺少范围元数据的旧 passage 不复用。
+- 已知限制：通用 database_feature 测试停在主管统计场景数量不一致；后续通用 smoke/状态机/并发脚本未运行；微信视觉及真实模型未运行。代码提交 `60ddf18`，完整日志与结果见 N01 验证记录。
+- 下一任务：确认 N01 集成验收后执行 N02。当前最新迁移已为 019，必须重新核对并从下一空闲编号开始，不能使用计划原文中的 012。

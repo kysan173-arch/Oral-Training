@@ -49,27 +49,37 @@ function Assert-ApiCode {
 
 function Invoke-Sql {
   param([string]$Sql)
-  $output = & $PsqlPath --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -X -Atc $Sql
-  if ($LASTEXITCODE -ne 0) { throw 'SQL assertion/setup failed.' }
-  ($output -join "`n").Trim()
+  $queryPath = Join-Path ([IO.Path]::GetTempPath()) ('state-machine-' + [guid]::NewGuid().ToString('N') + '.sql')
+  try {
+    [IO.File]::WriteAllText($queryPath, $Sql, [Text.UTF8Encoding]::new($false))
+    $output = & $PsqlPath --dbname=$DatabaseUrl -v ON_ERROR_STOP=1 -X -At -f $queryPath
+    if ($LASTEXITCODE -ne 0) { throw 'SQL assertion/setup failed.' }
+    ($output -join "`n").Trim()
+  } finally { Remove-Item -LiteralPath $queryPath -ErrorAction SilentlyContinue }
 }
 
 try {
   $health = Invoke-TestApi GET '/health' $null
-  Assert-ApiCode $health 503 0
-  if ($health.Payload.data.ready -or $health.Payload.data.status -ne 'unhealthy' -or
+  Assert-ApiCode $health 200 0
+  if (-not $health.Payload.data.ready -or $health.Payload.data.status -ne 'healthy' -or
       -not $health.Payload.data.database -or -not $health.Payload.data.workerRunning -or
       $health.Payload.data.workersInDatabaseBackoff -ne 0 -or
       $health.Payload.data.databasePool.maximum -lt 4 -or
       $health.Payload.data.databasePool.open -gt $health.Payload.data.databasePool.maximum) {
-    throw 'Health endpoint did not isolate the missing model from other healthy components.'
+    throw 'Health endpoint did not report healthy infrastructure independently of personal configuration.'
   }
-  if ($health.Payload.data.modelConfigured) {
-    throw 'Refusing state-machine test while a model key is configured.'
+  if ($null -ne $health.Payload.data.modelConfigured -or
+      $health.Payload.data.modelConfigurationScope -ne 'personal') {
+    throw 'Public health must not expose a global model configuration state.'
   }
   $login = Invoke-TestApi POST '/auth/wechat' @{ code = 'state-machine-test' }
   Assert-ApiCode $login 200 0
   $script:Token = $login.Payload.data.accessToken
+  $modelSettings = Invoke-TestApi GET '/config/litellm' $null
+  Assert-ApiCode $modelSettings 200 0
+  if ($modelSettings.Payload.data.configured) {
+    throw 'Refusing state-machine test while this account has a model key configured.'
+  }
   $scenarios = Invoke-TestApi GET '/scenarios' $null
   Assert-ApiCode $scenarios 200 0
   $scenarioId = $scenarios.Payload.data.items[0].id

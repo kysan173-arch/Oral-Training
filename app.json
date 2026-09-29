@@ -11,6 +11,7 @@
     "pages/admin/admin",
     "pages/member-detail/member-detail",
     "pages/mine/mine",
+    "pages/model-settings/model-settings",
     "pages/phrases/phrases",
     "pages/mistakes/mistakes",
     "pages/mistake-retrain/mistake-retrain",
@@ -26,7 +27,10 @@
     "pages/session-inspect/session-inspect",
     "pages/admin-ai-plans/admin-ai-plans",
     "pages/retrain-candidates/retrain-candidates",
-    "pages/scenario-templates/scenario-templates"
+    "pages/scenario-templates/scenario-templates",
+    "pages/knowledge-admin/knowledge-admin",
+    "pages/knowledge-editor/knowledge-editor",
+    "pages/service-editor/service-editor"
   ],
   "window": {
     "navigationBarBackgroundColor": "#FFFFFF",

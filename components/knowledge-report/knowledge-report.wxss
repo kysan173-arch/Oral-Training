@@ -1,0 +1,5 @@
+.knowledge-report { background: #fff; border-radius: 20rpx; padding: 28rpx; margin: 24rpx 0; color: #334155; }
+.knowledge-report text { display: block; font-size: 25rpx; line-height: 1.7; overflow-wrap: anywhere; }
+.title { font-weight: 600; color: #142d4e; }
+.check { border-top: 1rpx solid #e2e8f0; margin-top: 24rpx; padding-top: 20rpx; }
+.link { color: #2563eb; padding: 12rpx 0; }

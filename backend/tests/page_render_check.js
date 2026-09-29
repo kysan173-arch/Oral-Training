@@ -158,7 +158,11 @@ const run = async () => {
           { id: 'm3', role: 'standard_customer', content: 'c', createdAt: ISO_MSG, emotion: '缓和' }
         ]
       }),
-      getEvaluation: () => Promise.resolve({ status: 'ready' })
+      getEvaluation: () => Promise.resolve({ status: 'ready', evaluation: {
+        schemaVersion: 2, totalScore: null, dimensionScores: {
+          knowledgeAccuracy: null, medicalCompliance: 80, empathy: 80, needsDiscovery: 80, serviceEtiquette: 80
+        }
+      } })
     });
     page.sessionId = 's1';
     page.data.isRoleplay = false;
@@ -169,6 +173,8 @@ const run = async () => {
     expect('session-detail/patient emotion text', page.data.messages[1].emotionText, '缓和');
     expect('session-detail/patient emotion tone', page.data.messages[1].emotionTone, 'tag-success');
     expect('session-detail/roleplay message has no emotion', page.data.messages[2].emotionText, '');
+    expect('session-detail/null score preserved', page.data.evaluation.totalScore, null);
+    expect('session-detail/unscored knowledge excluded', page.data.dimensions.length, 4);
   }
 
   /* ---------- 4. 结果页起止区间（同日折叠） ---------- */
@@ -206,16 +212,16 @@ const run = async () => {
     page.loadInitialData();
     await tick();
     expect('result/range text', page.data.session && page.data.session.rangeText, '09-12 21:28 — 21:40');
-    /* 折叠派生：默认只显示首条。WXML 不支持函数调用，可见列表必须在 JS 预算；
+    /* 折叠派生：默认最多显示三条（上游新版布局）。WXML 不支持函数调用，可见列表必须在 JS 预算；
        若退回 {{list.slice(0,1)}} 这类写法，以下断言会红。 */
-    expect('result/violations folded', page.data.visibleViolations.length, 1);
-    expect('result/roundComments folded', page.data.visibleRoundComments.length, 1);
+    expect('result/violations folded', page.data.visibleViolations.length, 3);
+    expect('result/roundComments folded', page.data.visibleRoundComments.length, 2);
     page.toggleViolations();
     page.toggleRoundComments();
     expect('result/violations expanded', page.data.visibleViolations.length, 3);
     expect('result/roundComments expanded', page.data.visibleRoundComments.length, 2);
     page.toggleViolations();
-    expect('result/violations re-folded', page.data.visibleViolations.length, 1);
+    expect('result/violations re-folded', page.data.visibleViolations.length, 3);
   }
 
   /* ---------- 4b. 训练页：场景加载失败必须留痕（不能空成「没有场景可练」） ---------- */
@@ -223,6 +229,7 @@ const run = async () => {
     const page = loadPage('pages/index/index.js', {
       getCurrentUser: () => ({ role: 'learner' }),
       getScenarios: () => Promise.reject(new Error('boom')),
+      getServices: () => Promise.resolve({ items: [{ id: 'service', name: '服务' }] }),
       getRoleplayScenarios: () => Promise.resolve({ items: [] }),
       getRoleplaySessions: () => Promise.resolve({ items: [] }),
       getLearnerTrainingPlans: () => Promise.resolve({ plans: [] })

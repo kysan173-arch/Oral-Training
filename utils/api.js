@@ -155,17 +155,18 @@ module.exports = {
   clearAuthentication,
   getCurrentUser: () => wx.getStorageSync(USER_KEY) || null,
   getHealth: () => request('/health', { public: true, acceptUnreadyHealth: true }),
+  getModelSettings: () => request('/config/litellm'),
+  saveModelSettings: data => request('/config/litellm', { method: 'PUT', data }),
+  clearModelSettings: revision => request('/config/litellm', { method: 'DELETE', data: { revision } }),
 
   // ── 训练（学员端） ──
-  getScenarios: () => request('/scenarios'),
-  /* tier 选填：'advanced' 时按场景的难度档位覆盖患者初始状态（迁移 026）。
-     不传就**不要塞空串**——后端把「缺省」当 standard，空串反而会被判成非法值。 */
-  createSession: (scenarioId, customPatientProfile, tier) => request('/sessions', {
-    method: 'POST',
-    data: tier ? { scenarioId, customPatientProfile, tier } : { scenarioId, customPatientProfile }
+  getScenarios: serviceId => request(serviceId ? `/scenarios?${query({ serviceId })}` : '/scenarios'),
+  createSession: (scenarioId, customPatientProfile, options = {}) => request('/sessions', {
+    method: 'POST', data: Object.assign({ scenarioId }, customPatientProfile === undefined ? {} : { customPatientProfile }, typeof options === 'string' ? { tier: options } : options)
   }),
   restartSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/restart`, { method: 'POST', data: {} }),
   getSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}`),
+  retryPatientInitialization: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/initialization/retry`, { method: 'POST', data: {} }),
   sendMessage: (sessionId, clientMessageId, content) => request(`/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST', data: { clientMessageId, content }, timeout: MODEL_REQUEST_TIMEOUT
   }),
@@ -176,12 +177,63 @@ module.exports = {
     method: 'POST', data: { reason }
   }),
   abandonSession: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/abandon`, { method: 'POST', data: {} }),
+  getTrainingEvidence: (sessionId, traceId) => request(`/sessions/${encodeURIComponent(sessionId)}/evidence/${encodeURIComponent(traceId)}`),
   getEvaluation: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/evaluation`),
   retryEvaluation: sessionId => request(`/sessions/${encodeURIComponent(sessionId)}/evaluation/retry`, { method: 'POST', data: {} }),
   getSessions: params => request(`/sessions?${query(params || {})}`),
 
   // ── 患者模拟（roleplay） ──
   // 服务目录：RAG 语料按「服务」组织；开关关闭时后端返回空列表，前端隐藏选择器。
+  getAdminServices: () => request('/admin/services'),
+  createAdminService: payload => request('/admin/services', {
+    method: 'POST', data: { payload }
+  }),
+  getAdminServiceDraft: serviceId => request(`/admin/services/${encodeURIComponent(serviceId)}/draft`),
+  saveAdminServiceDraft: (serviceId, draftVersion, payload) => request(
+    `/admin/services/${encodeURIComponent(serviceId)}/draft`,
+    { method: 'PUT', data: { draftVersion, payload } }
+  ),
+  publishAdminService: (serviceId, draftVersion, idempotencyKey) => request(
+    `/admin/services/${encodeURIComponent(serviceId)}/publish`,
+    { method: 'POST', data: { draftVersion }, header: { 'Idempotency-Key': idempotencyKey } }
+  ),
+  archiveAdminService: serviceId => request(
+    `/admin/services/${encodeURIComponent(serviceId)}/archive`, { method: 'POST', data: {} }
+  ),
+  getAdminServiceRevisions: serviceId => request(
+    `/admin/services/${encodeURIComponent(serviceId)}/revisions`
+  ),
+  getAdminKnowledge: () => request('/admin/knowledge'),
+  createAdminKnowledge: payload => request('/admin/knowledge', { method: 'POST', data: payload }),
+  getAdminKnowledgeDraft: entryId => request(`/admin/knowledge/${encodeURIComponent(entryId)}/draft`),
+  saveAdminKnowledgeDraft: (entryId, payload) => request(
+    `/admin/knowledge/${encodeURIComponent(entryId)}/draft`,
+    { method: 'PUT', data: payload }
+  ),
+  publishAdminKnowledge: (entryId, draftVersion, idempotencyKey) => request(
+    `/admin/knowledge/${encodeURIComponent(entryId)}/publish`,
+    { method: 'POST', data: { draftVersion }, header: { 'Idempotency-Key': idempotencyKey } }
+  ),
+  archiveAdminKnowledge: entryId => request(
+    `/admin/knowledge/${encodeURIComponent(entryId)}/archive`, { method: 'POST', data: {} }
+  ),
+  getAdminKnowledgeRevisions: entryId => request(
+    `/admin/knowledge/${encodeURIComponent(entryId)}/revisions`
+  ),
+  createKnowledgeGenerationJob: payload => request('/admin/knowledge/generation-jobs', {
+    method: 'POST', data: payload, header: { 'Idempotency-Key': payload.idempotencyKey }
+  }),
+  getKnowledgeGenerationJob: jobId => request(
+    `/admin/knowledge/generation-jobs/${encodeURIComponent(jobId)}`
+  ),
+  retryKnowledgeGenerationJob: jobId => request(
+    `/admin/knowledge/generation-jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: 'POST', data: {} }
+  ),
+  previewAdminKnowledge: payload => request('/admin/knowledge/preview', {
+    method: 'POST', data: payload
+  }),
+
   getServices: () => request('/services'),
   getRoleplayScenarios: serviceId => request(`/roleplay/scenarios?${query({ serviceId: serviceId || '' })}`),
   // options: { freeDescription } 自由模拟模板描述 | { serviceId, clientSessionId } RAG 场景与幂等键

@@ -486,10 +486,9 @@ bool KnowledgeAdminQueue::succeed(const KnowledgeAdminJob& job, const json& cand
     applied_ok = !applied.empty();
     if (applied_ok) {
       tx.exec_params(R"(
-        UPDATE clinic_services SET name = $2, category = $3, updated_at = NOW()
+        UPDATE clinic_services SET updated_at = NOW()
         WHERE id = $1
-      )", applied[0]["service_id"].c_str(), candidate["name"].get<std::string>(),
-          candidate["category"].get<std::string>());
+        )", applied[0]["service_id"].c_str());
     }
   } else if (*target == GenerationTarget::KnowledgeDraft) {
     applied = tx.exec_params(R"(

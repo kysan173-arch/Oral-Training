@@ -93,7 +93,7 @@ Copy-Item backend.env.example backend.env
 
 ```dotenv
 DATABASE_URL=postgresql://oral_training_app:your_db_password@127.0.0.1:5432/oral_training
-DEEPSEEK_API_KEY=your_deepseek_key_optional
+# 模型在「我的 → LiteLLM 模型配置」按账号设置
 DEEPSEEK_MODEL=deepseek-v4-flash
 PRODUCTION=false
 AUTH_MODE=demo
@@ -199,7 +199,7 @@ cd backend
 ```powershell
 cd backend
 $env:DATABASE_URL='postgresql://oral_training_app:your_db_password@127.0.0.1:5432/oral_training'
-$env:DEEPSEEK_API_KEY='your_deepseek_key_optional'
+# 模型在小程序个人配置页设置
 $env:PRODUCTION='false'
 $env:AUTH_MODE='demo'
 $env:ALLOW_RUNTIME_API_KEY='true'
@@ -249,7 +249,7 @@ http://127.0.0.1:8080/api/health
 | `libpq.dll` 缺失 | 确认 PostgreSQL 客户端库已安装，并把对应 `bin` 下 DLL 复制到 `backend` 目录或加入 `PATH` |
 | CMake 找不到 PostgreSQL | 检查 `PostgreSQL_ROOT` 路径，安装「开发」组件，把 `bin` 加入 `PATH` |
 | 小程序请求报「URL 不在白名单」| 开发模式在微信开发者工具勾选「不校验合法域名」，并确认请求的是 `127.0.0.1:8080` |
-| 训练/生成报告卡住 | 多为未配置有效 `DEEPSEEK_API_KEY` 或模型不可达；先看后端终端日志 |
+| 训练/生成报告卡住 | 多为当前账号未配置有效模型 API Key 或模型不可达；先看后端终端日志 |
 | 迁移执行报编码错误 | 执行迁移前先设置 `$env:PGCLIENTENCODING='UTF8'` |
 | 改了后端 C++ 代码不生效 | 需要重新 `cmake --build`，并把新的 exe 复制到 `backend` 根目录再启动 |
 

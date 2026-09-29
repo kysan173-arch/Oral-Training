@@ -45,7 +45,7 @@ Crow API  ──▶  DeepSeek（模拟患者 / 评分）
 2. 确认安装目录，例如 `C:\Program Files\PostgreSQL\18\`。
 3. 安装完成后，把 `C:\Program Files\PostgreSQL\18\bin` 加入系统 `PATH`（或在使用时用绝对路径调用 `psql.exe`）。
 
-先备份历史数据库，并只读执行 `backend/migrations/preflight_reliability.sql` 记录重复轮次和异常状态。按顺序执行全部迁移；迁移过程不会调用模型。执行 `005` 至 `019` 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务与知识目录，`011` 增加角色互换 RAG 会话快照、证据 trace 与引用字段。
+先备份历史数据库，并只读执行 `backend/migrations/preflight_reliability.sql` 记录重复轮次和异常状态。按顺序执行全部迁移；迁移过程不会调用模型。执行 `005` 至最新迁移 期间必须保持后端停止，全部迁移完成后再启动。`010` 增加服务与知识目录，`011` 增加角色互换 RAG 会话快照、证据 trace 与引用字段。
 
 ### 3.2 创建数据库与用户
 
@@ -62,37 +62,7 @@ GRANT ALL PRIVILEGES ON DATABASE oral_training TO oral_training_app;
 \q
 
 $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\001_initial.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\002_roleplay.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\003_reliability.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\004_identity.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\005_pair_and_state_repair.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\006_learner_insights.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\007_training_experience.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\008_supervisor_growth.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\009_legacy_report_totals.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\010_knowledge_catalog.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\011_roleplay_rag_mvp.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\012_custom_patient_profile.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\013_recommendation_scenario.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\014_training_plans.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\015_supervisor_team.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\016_message_emotion.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\017_hint_per_round.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\018_scenario_reaction_rules.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\019_roleplay_free_template.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\020_conflict_scenarios.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\021_ai_training_plans.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\022_plan_focus_dimension.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\023_plan_scenario_cap.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\024_scenario_dimension_weights.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\025_scenario_templates.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\026_difficulty_tiers.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\027_advanced_tier_openings.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\028_scenario_variants.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\029_scenario_variants_bulk.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\030_scenario_ai_draft.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend\migrations\031_plan_each_pass.sql
+& backend\migrate.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $psql
 ```
 
 > 生产或共享环境请使用更安全的密码；本地测试可用 `oral_training_pass`。请不要把真实密码提交到仓库。
@@ -100,6 +70,8 @@ $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 ---
 
 ## 4. 获取代码
+
+数据库迁移统一使用 `backend/migrate.ps1`，自动包含 001–035 全部编号文件，并为已发布的 005 安装完整行归档保护。升级已有数据库前停止后端、完成备份；首次登记迁移账本需要核实最后成功编号并传入 `-BaselineThrough`。例如仅在确认上游 001–031 全部完成时使用 `-BaselineThrough 31`，不能用此参数绕过失败迁移。详见 [后端迁移说明](backend/README.md)。
 
 把仓库克隆或复制到本机，例如：
 
@@ -124,16 +96,13 @@ cd backend
 Copy-Item backend.env.example backend.env
 ```
 
-3. 编辑 `backend.env`，至少修改数据库密码。**DeepSeek API Key 也在这里配置**——小程序前端已移除密钥输入框，请把 `DEEPSEEK_API_KEY=` 后面的占位值替换为你的真实 Key：
+3. 编辑 `backend.env`，至少修改数据库密码。每个账号在小程序「我的 → LiteLLM 模型配置」保存自己的模型配置，不再从系统环境变量读取：
 
 ```dotenv
 DATABASE_URL=postgresql://oral_training_app:your_db_password@127.0.0.1:5432/oral_training
-DEEPSEEK_API_KEY=your_deepseek_key_optional
-DEEPSEEK_MODEL=deepseek-v4-flash
 PRODUCTION=false
 AUTH_MODE=demo
 AUTH_TOKEN_TTL_SECONDS=604800
-ALLOW_RUNTIME_API_KEY=true
 BIND_ADDRESS=127.0.0.1
 PORT=8080
 ALLOWED_ORIGIN=*
@@ -156,7 +125,6 @@ PRODUCTION=true
 AUTH_MODE=wechat
 WECHAT_APP_ID=<appid>
 WECHAT_APP_SECRET=<secret>
-ALLOW_RUNTIME_API_KEY=false
 ALLOWED_ORIGIN=https://your-gateway.example
 REQUIRE_HTTPS=true
 TRUSTED_PROXY_IPS=127.0.0.1,::1
@@ -170,49 +138,19 @@ DATABASE_POOL_WAIT_MS=3000
 
 API、身份服务、报告 Worker 和独立的知识草稿 Worker 共享惰性数据库连接池。连接总数受 `DATABASE_POOL_SIZE` 限制；等待超过 `DATABASE_POOL_WAIT_MS` 的请求返回 HTTP 503 `DATABASE_BUSY`。连接池大小必须至少比两个 Worker 池的并发数之和多 2，避免后台任务占满 API 所需连接。
 
-> **如何配置 DeepSeek API Key**：小程序前端不再提供密钥输入框，请统一在 `backend/backend.env` 的 `DEEPSEEK_API_KEY` 中填写（见上面第 5 节步骤 3），保存后重启后端即可生效。没有 Key 时服务也能启动、也能做界面测试，但「开始训练 / 生成报告 / 患者模拟」这类依赖模型的功能不可用（健康检查会返回 503）。
+> **如何配置模型**：按顺序迁移到 `035_personal_litellm_settings.sql`，学员和主管均可打开「我的 → LiteLLM 模型配置」，填写自己的网关 Base URL、LiteLLM 模型别名和网关 API Key。仅影响本人后续调用，重启后保留；密钥加密存储且不回显。清除后不会回退到系统 Key 或其他账号的配置。未配置的账号调用模型时返回 `MODEL_NOT_CONFIGURED`，不影响服务健康状态。原机构配置仅迁移给最后保存它的账号，其他账号需各自配置。LiteLLM 网关需单独部署，上游 DeepSeek/OpenRouter Key 在网关中管理，详见 [后端说明](backend/README.md)。
 
 ---
 
 ## 6. 初始化数据库（执行迁移）
 
-在 `backend/` 目录下，按顺序执行全部迁移。当前已到 `019`：
+在 `backend/` 目录下，按顺序执行全部迁移。当前已到 `035`：
 
 ```powershell
 $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 $env:PGCLIENTENCODING='UTF8'
 
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\001_initial.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\002_roleplay.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\003_reliability.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\004_identity.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\005_pair_and_state_repair.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\006_learner_insights.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\007_training_experience.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\008_supervisor_growth.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\009_legacy_report_totals.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\010_knowledge_catalog.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\011_roleplay_rag_mvp.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\012_custom_patient_profile.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\013_recommendation_scenario.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\014_training_plans.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\015_supervisor_team.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\016_message_emotion.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\017_hint_per_round.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\018_scenario_reaction_rules.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\019_roleplay_free_template.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\020_conflict_scenarios.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\021_ai_training_plans.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\022_plan_focus_dimension.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\023_plan_scenario_cap.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\024_scenario_dimension_weights.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\025_scenario_templates.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\026_difficulty_tiers.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\027_advanced_tier_openings.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\028_scenario_variants.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\029_scenario_variants_bulk.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\030_scenario_ai_draft.sql
-& $psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f migrations\031_plan_each_pass.sql
+& .\migrate.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $psql
 ```
 
 说明：
@@ -262,10 +200,8 @@ cd backend
 ```powershell
 cd backend
 $env:DATABASE_URL='postgresql://oral_training_app:your_db_password@127.0.0.1:5432/oral_training'
-$env:DEEPSEEK_API_KEY='your_deepseek_key_optional'
 $env:PRODUCTION='false'
 $env:AUTH_MODE='demo'
-$env:ALLOW_RUNTIME_API_KEY='true'
 $env:BIND_ADDRESS='127.0.0.1'
 $env:PORT='8080'
 $env:ALLOWED_ORIGIN='*'
@@ -312,7 +248,7 @@ http://127.0.0.1:8080/api/health
 | `libpq.dll` 缺失 | 确认 PostgreSQL 客户端库已安装，并把对应 `bin` 下 DLL 复制到 `backend` 目录或加入 `PATH` |
 | CMake 找不到 PostgreSQL | 检查 `PostgreSQL_ROOT` 路径，安装「开发」组件，把 `bin` 加入 `PATH` |
 | 小程序请求报「URL 不在白名单」| 开发模式在微信开发者工具勾选「不校验合法域名」，并确认请求的是 `127.0.0.1:8080` |
-| 训练/生成报告卡住 | 多为未配置有效 `DEEPSEEK_API_KEY` 或模型不可达；先看后端终端日志 |
+| 训练/生成报告卡住 | 检查「我的 → LiteLLM 模型配置」中的网关、模型和 Key，并查看后端日志 |
 | 迁移执行报编码错误 | 执行迁移前先设置 `$env:PGCLIENTENCODING='UTF8'` |
 | 改了后端 C++ 代码不生效 | 需要重新 `cmake --build`，并把新的 exe 复制到 `backend` 根目录再启动 |
 
@@ -354,4 +290,4 @@ $env:ORAL_TRAINING_TEST_DATABASE_URL = 'postgresql://.../oral_training_test'
 
 - 不要把 `backend.env`、`run-backend.bat`（内含真实密钥）、真实数据库密码、DeepSeek Key、bearer token 提交到仓库或发给无关成员。
 - 演示环境禁止输入真实患者姓名、电话、病历等隐私信息。
-- 上线请走 HTTPS 反向代理，并将 `AUTH_MODE` 改为 `wechat`、`PRODUCTION=true`、`ALLOW_RUNTIME_API_KEY=false`。
+- 上线请走 HTTPS 反向代理，并将 `AUTH_MODE` 改为 `wechat`、`PRODUCTION=true`；模型配置由已认证用户在「我的」页面独立管理。

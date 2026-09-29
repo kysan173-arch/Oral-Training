@@ -261,6 +261,15 @@
     <view class="section-spacer"></view>
   </block>
 
+  <view class="tool-card model-settings-entry" bindtap="goModelSettings">
+    <view class="tool-icon-wrap"><text class="model-entry-icon">AI</text></view>
+    <view class="tool-body">
+      <text class="tool-title">LiteLLM 模型配置</text>
+      <text class="tool-sub">设置我自己的网关、模型与 API Key</text>
+    </view>
+    <text class="tool-arrow">›</text>
+  </view>
+
   <!-- 切换演示账号面板 -->
   <view class="demo-mask" wx:if="{{showDemoPicker}}" bindtap="closeDemoPicker"></view>
   <view class="demo-picker {{showDemoPicker ? 'demo-picker-show' : ''}}">

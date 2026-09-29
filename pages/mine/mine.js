@@ -248,6 +248,8 @@ Page({
     this.setData({ checkinExpanded: !this.data.checkinExpanded });
   },
 
+  goModelSettings() { wx.navigateTo({ url: '/pages/model-settings/model-settings' }); },
+
   goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
   goMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
   goPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },

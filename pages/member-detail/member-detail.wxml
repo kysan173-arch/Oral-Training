@@ -2,7 +2,7 @@
   <view class="loading-card card" wx:if="{{loading}}"><text>正在读取成员学习摘要…</text></view>
   <block wx:elif="{{detail}}">
     <view class="member-hero card"><view class="hero-avatar">{{detail.member.initial}}</view><view class="hero-copy"><text class="hero-name">{{detail.member.displayName}}</text><text class="hero-meta">加入于 {{detail.member.joinedAt}}</text></view></view>
-    <view class="stat-grid stat-grid-4"><view class="stat-card card"><text>{{detail.completedSessions}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{detail.standardScoreText}}</text><text>标准档均分</text></view><view class="stat-card card"><text>{{detail.advancedScoreText}}</text><text>进阶档均分</text></view><view class="stat-card card"><text>{{detail.passRateText}}%</text><text>练习达标率</text></view></view>
+    <view class="stat-grid stat-grid-4"><view class="stat-card card"><text>{{detail.completedSessions}}</text><text>完成训练</text></view><view class="stat-card card"><text>{{detail.standardScoreText}}</text><text>标准档均分</text></view><view class="stat-card card"><text>{{detail.advancedScoreText}}</text><text>进阶档均分</text></view><view class="stat-card card"><text>{{detail.passRateText}}{{detail.passRate === null ? '' : '%'}}</text><text>练习达标率</text></view></view>
 
     <!-- 进阶挑战率（P1-1）：比均分更有信息量——回答「他是不是一直在舒适区」 -->
     <view class="tier-strip card">
@@ -73,34 +73,5 @@
     <view class="empty-card card" wx:elif="{{detail.trend.length}}"><text>当前筛选下没有记录。</text></view>
     <view class="empty-card card" wx:else><text>该成员还没有已完成的训练报告。</text></view>
 
-    <!-- 训练记录抽查（主管质检通道，只读） -->
-    <view class="section-heading section-toggle" hover-class="section-toggle-hover" bindtap="toggleSection" data-key="inspect">
-      <text>训练记录抽查</text>
-      <view class="section-toggle-tail">
-        <text>含进行中会话</text>
-        <view class="toggle-badge"><view class="chev {{sections.inspect ? 'chev-up' : 'chev-down'}}"></view></view>
-      </view>
-    </view>
-    <view class="inspect-card card" wx:if="{{inspectItems.length}}">
-      <block wx:for="{{inspectItems}}" wx:key="id">
-        <view class="inspect-row" wx:if="{{index < previewRows || sections.inspect}}" bindtap="openInspect" data-id="{{item.id}}">
-          <view class="inspect-copy">
-            <text class="inspect-name">{{item.scenarioName}}</text>
-            <text class="inspect-meta">{{item.statusText}} · {{item.roundText}} · {{item.updatedAtText}}</text>
-          </view>
-          <text class="inspect-score">{{item.scoreText}}</text>
-          <text class="inspect-arrow">›</text>
-        </view>
-      </block>
-      <view class="list-action" hover-class="list-action-hover" wx:if="{{!sections.inspect && inspectItems.length > previewRows}}" bindtap="toggleSection" data-key="inspect">
-        <text>还有 {{inspectItems.length - previewRows}} 条会话</text>
-        <view class="chev chev-down"></view>
-      </view>
-      <view class="list-action" hover-class="list-action-hover" wx:if="{{sections.inspect}}" bindtap="toggleSection" data-key="inspect">
-        <text>收起</text>
-        <view class="chev chev-up"></view>
-      </view>
-    </view>
-    <view class="empty-card card" wx:else><text>该成员还没有训练会话。</text></view>
   </block>
 </view>

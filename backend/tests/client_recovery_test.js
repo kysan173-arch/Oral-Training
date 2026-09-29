@@ -51,8 +51,14 @@ for (const [pagePath, expectedUrl] of missingSessionCases) {
   let destination = null;
   global.wx = {
     showModal: options => { modal = options; },
-    switchTab: options => { destination = options.url; },
-    redirectTo: options => { destination = options.url; }
+    switchTab: options => {
+      assert(require('../../app.json').tabBar.list.some(item => '/' + item.pagePath === options.url));
+      destination = options.url;
+    },
+    redirectTo: options => {
+      assert(!require('../../app.json').tabBar.list.some(item => '/' + item.pagePath === options.url));
+      destination = options.url;
+    }
   };
   const page = instantiatePage(loadPage(pagePath));
   page.onLoad({});

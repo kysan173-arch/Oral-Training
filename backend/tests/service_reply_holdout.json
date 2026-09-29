@@ -1,0 +1,8 @@
+[
+  {"id":"closing","question":"行，那先这样吧。","maxChars":25},
+  {"id":"busy","question":"我不是问全部做完，我是问每次去要请多久假？","maxChars":75},
+  {"id":"fear_followup","question":"主要怕打针，我小时候被吓过。","maxChars":65,"history":[{"role":"learner_patient","content":"我有点害怕。"},{"role":"standard_customer","content":"您最担心的是哪一步？"}]},
+  {"id":"not_ready","question":"今天不留电话了，我还没想好。","maxChars":30},
+  {"id":"rephrase","question":"能不能再简单点？","maxChars":45,"history":[{"role":"learner_patient","content":"多少钱一颗？"},{"role":"standard_customer","content":"单颗参考价格8900—12300元，是否需要植骨和其他附加治疗要检查后确认。"}]},
+  {"id":"no_promise","question":"你就说能不能保证不疼，别绕。","maxChars":65}
+]

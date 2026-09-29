@@ -70,7 +70,7 @@ preflight_reliability.sql 为生产预检脚本，开发测试可忽略。
 ==========================================================
 复制 backend.env.example 为 backend.env，并编辑：
 - DATABASE_URL：改成你的数据库密码
-- DEEPSEEK_API_KEY：填你的 DeepSeek Key（训练/评分功能需要）
+- 模型：启动后在小程序「我的 → LiteLLM 模型配置」填写当前账号的 Base URL、模型名和 API Key；系统密钥变量不再生效。
 - 其余保持默认即可（AUTH_MODE=demo 免微信配置）
 
 ==========================================================

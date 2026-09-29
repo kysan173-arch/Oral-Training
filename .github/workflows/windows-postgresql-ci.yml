@@ -27,6 +27,11 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Start PostgreSQL and create disposable database
         shell: pwsh
         run: |
@@ -57,6 +62,12 @@ jobs:
         run: |
           ctest --test-dir backend\build-msvc -C Release --output-on-failure
 
+      - name: Verify personal model routing with offline gateway
+        shell: pwsh
+        run: |
+          python backend/tests/litellm_integration_test.py --pg-bin $env:PGBIN
+          if ($LASTEXITCODE -ne 0) { throw 'Personal model routing integration failed.' }
+
       - name: Verify migrations on empty and historical schemas
         shell: pwsh
         run: |
@@ -64,28 +75,14 @@ jobs:
           & .\backend\tests\knowledge_catalog_migration.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
           & .\backend\tests\knowledge_store_database.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
           & .\backend\tests\knowledge_admin_api.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
+          & .\backend\tests\patient_initialization.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
+          & .\backend\tests\audit_regression.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
 
       - name: Run no-model API, state-machine and session-concurrency tests
         shell: pwsh
         run: |
           $env:PGPASSWORD = 'root'
-          $migrationFiles = @(
-            '001_initial.sql',
-            '002_roleplay.sql',
-            '003_reliability.sql',
-            '004_identity.sql',
-            '005_pair_and_state_repair.sql',
-            '006_learner_insights.sql',
-            '007_training_experience.sql',
-            '008_supervisor_growth.sql',
-            '009_legacy_report_totals.sql',
-            '010_knowledge_catalog.sql',
-            '011_roleplay_rag_mvp.sql'
-          )
-          foreach ($migration in $migrationFiles) {
-            & $env:PSQL_PATH --dbname=$env:DATABASE_URL -v ON_ERROR_STOP=1 -X -f ".\backend\migrations\$migration"
-            if ($LASTEXITCODE -ne 0) { throw "Migration failed: $migration" }
-          }
+          & .\backend\migrate.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $env:PSQL_PATH
 
           $env:ORAL_TRAINING_TEST_DATABASE_URL = $env:DATABASE_URL
           & .\backend\build-msvc\Release\database_feature_test.exe
@@ -106,7 +103,7 @@ jobs:
 
           $stdout = Join-Path $env:RUNNER_TEMP 'oral-training-backend.stdout.log'
           $stderr = Join-Path $env:RUNNER_TEMP 'oral-training-backend.stderr.log'
-          $backend = Start-Process -FilePath '.\backend\build-msvc\Release\oral_training_backend.exe' -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $backend = Start-Process -FilePath '.\backend\build-msvc\Release\oral_training_backend.exe' -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           try {
             $started = $false
             for ($attempt = 0; $attempt -lt 60; $attempt++) {

@@ -9,6 +9,7 @@ const DIMENSIONS = [
 ];
 
 function scoreTier(score) {
+  if (score === null) return 'unscored';
   if (score >= 80) return 'high';
   if (score >= 60) return 'mid';
   return 'low';
@@ -30,13 +31,14 @@ Page({
     api.getLearningProfile().then(data => {
       const dimensionAverages = data.dimensionAverages || {};
       const rawDimensions = DIMENSIONS.map(item => Object.assign({}, item, {
-        score: dimensionAverages[item.key] || 0,
-        tier: scoreTier(dimensionAverages[item.key] || 0)
+        score: dimensionAverages[item.key] == null ? null : dimensionAverages[item.key],
+        scoreText: dimensionAverages[item.key] == null ? '未评估' : dimensionAverages[item.key],
+        tier: scoreTier(dimensionAverages[item.key] == null ? null : dimensionAverages[item.key])
       }));
       // 标记最弱维度（分数最低项），横条标橙引导关注
-      const weakestKey = rawDimensions.reduce(
+      const weakestKey = rawDimensions.filter(item => item.score !== null).reduce(
         (min, item) => (item.score < min.score ? item : min),
-        rawDimensions[0] || { score: 101 }
+        { score: 101 }
       ).key;
       const dimensions = rawDimensions.map(item => Object.assign({}, item, {
         weakest: item.key === weakestKey

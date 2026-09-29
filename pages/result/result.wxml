@@ -32,6 +32,8 @@
     <view class="dimension-summary"><text class="summary-label">综合评价</text><text>{{evaluation.summary}}</text></view>
   </view>
 
+  <knowledge-report report="{{evaluation}}" session-id="{{session.id}}"></knowledge-report>
+
   <view class="feedback-grid">
     <view class="feedback-card feedback-good"><text class="feedback-icon">✓</text><view class="feedback-copy"><text class="feedback-title positive">做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view></view>
     <view class="feedback-card feedback-improve"><text class="feedback-icon">→</text><view class="feedback-copy"><text class="feedback-title improve">下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view></view>

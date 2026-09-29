@@ -1,3 +1,5 @@
+const scored = value => value != null && value !== '' && Number.isFinite(Number(value));
+
 Component({
   properties: {
     dimensions: {
@@ -28,7 +30,7 @@ Component({
 
   methods: {
     computeLegend() {
-      const compareList = (this.properties.compare || []).filter(item => Number.isFinite(Number(item)));
+      const compareList = (this.properties.compare || []).filter(scored);
       if (!compareList.length) {
         this.setData({ legend: [] });
         return;
@@ -97,46 +99,45 @@ Component({
         ctx.stroke();
       }
 
-      /* 团队均线对比系列：虚线 + 浅灰描边 + 极浅填充，无标签和点 */
-      const compareList = (this.properties.compare || []).filter(item => Number.isFinite(Number(item)));
-      if (compareList.length === count) {
+      const drawSeries = (values, stroke, fill, dashed) => {
+        const complete = values.length === count && values.every(scored);
+        let connected = false;
         ctx.beginPath();
-        compareList.forEach((value, index) => {
-          const score = Math.max(0, Math.min(100, Number(value) || 0));
-          const target = point(index, score / 100);
-          if (index === 0) ctx.moveTo(target.x, target.y);
+        values.forEach((value, index) => {
+          if (!scored(value)) { connected = false; return; }
+          const target = point(index, Math.max(0, Math.min(100, Number(value))) / 100);
+          if (!connected) ctx.moveTo(target.x, target.y);
           else ctx.lineTo(target.x, target.y);
+          connected = true;
         });
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(107, 122, 147, 0.10)';
-        ctx.fill();
-        ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = '#6B7A93';
-        ctx.lineWidth = 1.5;
+        if (complete) {
+          ctx.closePath();
+          ctx.fillStyle = fill;
+          ctx.fill();
+        }
+        ctx.setLineDash(dashed ? [4, 3] : []);
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = dashed ? 1.5 : 2;
         ctx.stroke();
         ctx.setLineDash([]);
-      }
-
-      /* 主数据：实线 + 实心浅色填充 */
-      ctx.beginPath();
-      dimensions.forEach((item, index) => {
-        const score = Math.max(0, Math.min(100, Number(item.score) || 0));
-        const value = point(index, score / 100);
-        if (index === 0) ctx.moveTo(value.x, value.y);
-        else ctx.lineTo(value.x, value.y);
-      });
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(31, 56, 100, 0.15)';
-      ctx.fill();
-      ctx.strokeStyle = '#1F3864';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      };
+      const compare = this.properties.compare || [];
+      if (compare.length === count) drawSeries(compare, '#6B7A93', 'rgba(107, 122, 147, 0.10)', true);
+      drawSeries(dimensions.map(item => item.score), '#1F3864', 'rgba(31, 56, 100, 0.15)', false);
 
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       dimensions.forEach((item, index) => {
-        const score = Math.max(0, Math.min(100, Number(item.score) || 0));
+        if (!scored(item.score)) {
+          const label = point(index, 1.23);
+          const missingLabel = point(index, 0.82);
+          ctx.fillStyle = '#54627a';
+          ctx.fillText(item.name, label.x, label.y);
+          ctx.fillText('未评估', missingLabel.x, missingLabel.y);
+          return;
+        }
+        const score = Math.max(0, Math.min(100, Number(item.score)));
         const dot = point(index, score / 100);
         ctx.beginPath();
         ctx.arc(dot.x, dot.y, 3.5, 0, Math.PI * 2);

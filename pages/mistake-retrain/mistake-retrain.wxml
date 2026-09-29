@@ -14,6 +14,11 @@
   </view>
 
   <block wx:elif="{{context}}">
+    <view class="card" wx:if="{{context.session.contextVersion === 2}}">
+      <text>复练按提交时的当前服务资料核验；原报告仍保留当时的依据。</text>
+      <text wx:if="{{context.session.versionChanged || result.versionChanged}}">服务资料已更新，请以当前版本为准。</text>
+      <text>当前版本：{{result.currentRevisionId || context.session.currentRevisionId}}</text>
+    </view>
     <view class="profile-strip card">
       <text class="scene-name">{{scenario.name}}</text>
       <text class="profile-line">{{scenario.patientAge}}{{scenario.patientGender ? ' · ' + scenario.patientGender : ''}}{{scenario.patientEmotion ? ' · 情绪：' + scenario.patientEmotion : ''}}</text>
@@ -40,7 +45,7 @@
 
     <view class="result-card card" wx:if="{{result}}">
       <view class="verdict {{result.passed ? 'verdict-pass' : 'verdict-retry'}}">
-        {{result.passed ? '本次达标' : '建议再练一次'}}
+        {{result.passed === null ? '依据不足，暂不判定' : result.passed ? '本次达标' : '建议再练一次'}}
       </view>
       <text class="field-label">点评</text>
       <text class="result-text">{{result.comment}}</text>

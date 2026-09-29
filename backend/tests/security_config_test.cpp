@@ -10,6 +10,8 @@ void setEnvironment(const char* name, const char* value) {
 }
 
 void setValidProductionEnvironment() {
+  for (const auto* key : {"RAG_ROLEPLAY_ENABLED", "RAG_PATIENT_ENABLED", "RAG_EVALUATION_V2_ENABLED", "MODEL_CALL_LIMIT"})
+    setEnvironment(key, "");
   setEnvironment("DATABASE_URL", "postgresql://test@127.0.0.1:5432/test");
   setEnvironment("DEEPSEEK_API_KEY", "");
   setEnvironment("DEEPSEEK_MODEL", "deepseek-v4-flash");
@@ -43,6 +45,34 @@ bool throwsRuntimeError(Function&& function) {
 }  // namespace
 
 int main() {
+  {
+    setValidProductionEnvironment();
+    const auto defaults=Config::fromEnvironment();
+    if(!defaults.rag_roleplay_enabled || !defaults.rag_patient_enabled || !defaults.rag_evaluation_v2_enabled || defaults.model_call_limit!=0) return 1;
+    setEnvironment("RAG_ROLEPLAY_ENABLED","false");
+    setEnvironment("RAG_PATIENT_ENABLED","false");
+    setEnvironment("RAG_EVALUATION_V2_ENABLED","false");
+    const auto enabled=Config::fromEnvironment();
+    if(!enabled.rag_roleplay_enabled || !enabled.rag_patient_enabled || !enabled.rag_evaluation_v2_enabled) return 1;
+    setEnvironment("RAG_ROLEPLAY_ENABLED","tru");
+    if(!Config::fromEnvironment().rag_roleplay_enabled) return 1;
+    setValidProductionEnvironment();setEnvironment("MODEL_CALL_LIMIT","-1");
+    if(!throwsRuntimeError([]{Config::fromEnvironment();})) return 1;
+    std::atomic<int> calls{0},accepted{0};
+    std::vector<std::thread> contenders;
+    for(int i=0;i<16;++i) contenders.emplace_back([&]{
+      try {reserveModelCall(calls,5);++accepted;}
+      catch(const ApiError& error) {if(error.code!="MODEL_CALL_BUDGET_EXHAUSTED") std::terminate();}
+    });
+    for(auto& thread:contenders) thread.join();
+    if(accepted!=5 || calls!=5) return 1;
+    std::ostringstream output;
+    auto* original=std::cerr.rdbuf(output.rdbuf());
+    {ModelCallAudit audit;audit.started=true;audit.fields={{"event","model_call"},{"errorType","MODEL_TIMEOUT"},{"attempt",2}};}
+    std::cerr.rdbuf(original);
+    const auto record=json::parse(output.str());
+    if(record["errorType"]!="MODEL_TIMEOUT" || !record.contains("latencyMs")) return 1;
+  }
   setValidProductionEnvironment();
   const auto production = Config::fromEnvironment();
   if (!production.production || production.auth_mode != "wechat" ||

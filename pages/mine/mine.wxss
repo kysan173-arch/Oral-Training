@@ -135,6 +135,8 @@
 .tool-title { color: var(--text-strong); font-size: 26rpx; font-weight: 600; line-height: 1.3; }
 .tool-sub { margin-top: 6rpx; color: var(--text-muted); font-size: 22rpx; font-weight: 400; letter-spacing: .5rpx; }
 .tool-arrow { color: var(--text-muted); font-size: 32rpx; margin-left: 8rpx; flex-shrink: 0; }
+.model-settings-entry { margin-top: 20rpx; }
+.model-entry-icon { color: var(--color-primary); font-size: 30rpx; font-weight: 600; }
 
 /* 个人成长 略微突出 */
 .tool-prominent { padding-top: 26rpx; padding-bottom: 26rpx; box-shadow: 0 0 0 2rpx rgba(31, 56, 100, .12), 0 4rpx 16rpx rgba(0, 0, 0, .06); }

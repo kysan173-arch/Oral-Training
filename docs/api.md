@@ -1,8 +1,8 @@
 # 口腔客服智能陪练 API 契约
 
-版本：v3.6（训练体验、主管团队与个人成长 · RAG v2 报告兼容、角色互换证据检索）
+版本：v3.8（每个账号独立管理 LiteLLM 模型配置）
 
-> RAG v2 仍在分阶段开发。角色互换已接入服务快照和回答依据；学员扮演客服的 AI 患者初始化与知识核验评分仍待实现。
+> RAG v2 仍在分阶段开发。知识发布已生成中文检索块，管理端可预览确定性召回，角色互换已接入服务快照和回答依据；客服训练患者初始化与逐轮回复已接入锁定证据，知识核验评分仍待实现。
 
 Base URL 为 `https://<host>/api`。本机开发可使用 `http://127.0.0.1:8080/api`；体验版和正式版必须使用 HTTPS。
 
@@ -67,7 +67,8 @@ Content-Type: application/json
   "status":"healthy",
   "ready":true,
   "database":true,
-  "modelConfigured":true,
+  "modelConfigured":null,
+  "modelConfigurationScope":"personal",
   "workerRunning":true,
   "workerThreads":1,
   "knowledgeWorkerThreads":1,
@@ -90,7 +91,31 @@ Content-Type: application/json
 }
 ```
 
-数据库、任务队列、模型或 Worker 不可用时返回 HTTP 503，`ready=false` 且 `status=unhealthy`。Worker 进入数据库错误退避期间不会再被报告为健康。小程序仍会读取健康响应中的 `runtimeApiKeyAllowed`，因此本地演示可在模型未配置时打开密钥配置入口；负载均衡器则会正确识别该实例尚未就绪。连接池等待超时时，普通接口返回 HTTP 503 `DATABASE_BUSY`。
+数据库、任务队列或 Worker 不可用时返回 HTTP 503，`ready=false` 且 `status=unhealthy`。个人模型配置不参与公共 readiness：`modelConfigured=null`、`modelConfigurationScope=personal`，个人未配置不会影响其他用户。Worker 进入数据库错误退避期间不会再被报告为健康。`runtimeApiKeyAllowed` 固定为 false，旧内存密钥入口已退役；所有已登录用户都可进入「我的 → LiteLLM 模型配置」。连接池等待超时时，普通接口返回 HTTP 503 `DATABASE_BUSY`。
+
+### LiteLLM 个人模型配置（迁移 023）
+
+`GET /config/litellm`：所有已登录用户仅读取自己的配置，返回：
+
+```json
+{"provider":"litellm","scope":"personal","configured":true,"canEdit":true,"baseUrl":"https://llm.example.com/v1","model":"ds-primary","hasApiKey":true,"revision":1}
+```
+
+学员和主管都收到 `canEdit=true`；首次未配置时 revision=0。任何响应均不含明文 Key、密文或 Key 尾号。configured 只表示已保存配置，不表示上游连通性已验证。个人配置范围始终来自服务端 bearer 会话，忽略请求体和查询参数中的 userId。
+
+`PUT /config/litellm`：已登录用户修改自己的配置，生产环境继续要求可信 HTTPS。请求：
+
+```json
+{"baseUrl":"https://llm.example.com/v1","model":"ds-primary","apiKey":"<LiteLLM 网关 Key>","revision":0}
+```
+
+首次保存和修改 Base URL 必须输入 Key；地址不变时省略或留空 apiKey 保留原密钥。revision 使用 GET 获得的个人版本，成功递增；过期版本返回 409 `MODEL_CONFIG_CONFLICT`。字段非法返回 400 `INVALID_ARGUMENT`，未登录返回 401。保存不发起模型请求，不表示连接验证通过。
+
+`DELETE /config/litellm`：清除本人的配置；请求 `{"revision":1}`，递增个人版本并保留配置变更审计，不影响其他账号。本账号后续生成返回 `MODEL_NOT_CONFIGURED`，已有模型调用完成其原配置快照。不会回退到系统变量或其他人的 Key。
+
+配置和不含密钥的变更审计按 user_id 隔离，在同一事务内保存。凭据由 Windows DPAPI 按后端运行账号加密，重启仍有效；迁移机器/运行账号后无法解密时返回 `MODEL_CONFIG_UNREADABLE`，需本人重新保存 Key。旧机构配置及审计原样保留，迁移 023 只向最后保存者复制配置，不向其他用户分发 Key。后台模型任务从数据库中的会话所有者或知识生成任务创建者确定用户。后端不再读取 DEEPSEEK_API_KEY、DEEPSEEK_MODEL、ALLOW_RUNTIME_API_KEY。`POST /config/deepseek-key` 在鉴权后返回 410 `MODEL_CONFIG_MOVED`。
+
+后端调用 `{baseUrl}/chat/completions`（无路径时补 `/v1`），保留公共 Chat Completions 参数和业务 JSON 修复流程，不再发送 DeepSeek 专属 thinking 或固定 user_id。HTTP 仅限回环网关，其他地址要求 HTTPS，禁止携带 URL 用户凭据/查询参数和自动重定向。模型日志含 provider、requestedModel、actualModel、configRevision、usage；modelVersion 记录 `litellm:<模型别名>@<配置版本>`。上游推理参数由 LiteLLM 管理。
 
 ## 4. 客服训练
 
@@ -448,7 +473,11 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 - 服务端归一化的原因：让「权重可跨场景比较」这个不变式不依赖调用方守规矩——主管填 `3/1/1` 与填 `0.6/0.2/0.2` 应当存成同一个东西。
 
 
+看板的 `scenarioStats` 与训练场景目录一致，仅列出启用且非模板的场景，保留训练次数为零的场景；总览计数仍包含所选时间范围内的团队历史训练，因此不要求等于场景行之和。
+
 主管接口不会返回消息、原始患者内容、报告全文、错题或话术；不包含任务指派（培训计划见第 11 节）。
+
+旧客户端的 `GET /api/supervisor/members/:memberId/sessions/:sessionId` 始终拒绝管理员读取，返回 HTTP 403 / `LEARNER_CONTENT_PRIVATE`，不查询会话是否存在。成员摘要不再提供 `inspectSessions`。成员均分、通过率和每维均值无有效样本时为 null，返回 `scoredSessions` / `unscoredSessions` 区分有无总分；趋势仅纳入有总分的记录。
 
 ## 10. 我的团队
 
@@ -542,11 +571,11 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 ## 13. 兼容与安全边界
 
-现有成功响应数据结构和全部业务路径保持兼容。学员洞察字段在服务端对已规范化报告进行派生；DeepSeek 请求地址、请求参数、响应解析与模型调用内部重试逻辑未改变，评分 Prompt 仅新增累计违规与医疗合规分的一致性约束并记录为 `score-prompt-v3`。生产环境必须设置 `PRODUCTION=true`、`AUTH_MODE=wechat`、HTTPS `ALLOWED_ORIGIN`、`REQUIRE_HTTPS=true` 和非空 `TRUSTED_PROXY_IPS`，并在 HTTPS 反向代理后运行；运行时密钥上传会自动关闭。程序只信任列表内代理提供的 `X-Forwarded-For` 和 `X-Forwarded-Proto`，配置或代理头无效时采用拒绝策略。
+现有训练成功响应结构保持兼容。学员洞察字段在服务端对已规范化报告进行派生；评分 Prompt 记录为 `score-prompt-v3`。v3.8 使用个人 LiteLLM 配置，具体配置及参数边界见第 3 节，业务响应解析与模型内部修复重试保留。生产环境必须设置 `PRODUCTION=true`、`AUTH_MODE=wechat`、HTTPS `ALLOWED_ORIGIN`、`REQUIRE_HTTPS=true` 和非空 `TRUSTED_PROXY_IPS`，并在 HTTPS 反向代理后运行；旧运行时密钥上传接口已退役，新配置接口允许已认证用户管理自己的配置。程序只信任列表内代理提供的 `X-Forwarded-For` 和 `X-Forwarded-Proto`，配置或代理头无效时采用拒绝策略。
 
 ## 附录 A：RAG v2 分阶段契约
 
-本附录冻结 `contextVersion=2`、`schemaVersion=2` 的目标契约。旧客户端未提交 `serviceId` 时继续走 v1；服务端不得替旧请求随机选择服务。当前已实现 `/services`、按服务筛选的角色互换场景、角色互换 v2 会话/消息及其 evidence 读取；客服训练 v2 初始化与知识核验评分仍待后续阶段完成。
+本附录冻结 `contextVersion=2`、`schemaVersion=2` 的目标契约。旧客户端未提交 `serviceId` 时继续走 v1；服务端不得替旧请求随机选择服务。当前已实现 `/services`、按服务筛选的角色互换场景、角色互换 v2 会话/消息及其 evidence 读取；客服训练 v2 初始化、逐轮回复、固定知识核验评分与报告已实现；N07 新建开关默认关闭，真实联调与人工验收状态另见 N07 记录。
 
 ### A.1 学员接口
 
@@ -586,7 +615,7 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 初始化状态通过 `GET /sessions/{id}` 以 `pending / generating / failed / ready` 正常返回。`pending` 或 `generating` 时发送消息、结束或请求提示返回 `409 PATIENT_INITIALIZATION_PENDING`；失败时返回 `409 PATIENT_INITIALIZATION_FAILED`，不能回落到无证据的旧患者生成。
 
-带依据回复保留旧页面使用的 `reply`：
+带依据回复保留旧页面使用的 `reply`。`service-reply-rag-v3` 让模型基于本轮有效证据写简短客服答复（通常 1—2 句、20—80 字，明确要求详细时最多 180 字），首句回答当前问题，仅补充必要条件。结构化字段足以回答时不再追加知识段落的分支信息。后端校验引用归属、数字范围和单位及起价条件，不再把资料原文拼入聊天气泡；完整原文保留在 trace 和「查看依据」中。无有效引用、格式超限或校验不通过时返回简短待确认答复，不截断条件或输出未经核实的数字。既有历史消息不重写。v3 将寒暄、感谢、拒绝预约、共情等无服务事实的聊天与事实问答区分：通过校验的普通聊天可没有引用，返回空 learningPoints/complianceBoundary，页面不显示空依据入口或教学卡片。“一句话”等追问使用上一条实质患者问题检索，不把旧模型回答当作知识来源。
 
 ```json
 {
@@ -642,7 +671,104 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 | 409 | `PATIENT_INITIALIZATION_PENDING` | 患者画像或开场仍在生成 |
 | 409 | `PATIENT_INITIALIZATION_FAILED` | 患者初始化失败，需要显式重试 |
 | 503 | `KNOWLEDGE_NOT_READY` | 当前运行范围没有满足开练条件的已发布资料 |
-| 503 | `RAG_UNAVAILABLE` | RAG 被停用或检索基础设施不可用 |
+| 503 | `RAG_UNAVAILABLE` | 固定知识上下文缺失或检索基础设施不可用 |
 | 503 | `EVIDENCE_VALIDATION_FAILED` | 模型输出经过一次修复后仍不能由证据支持 |
 
+新服务训练按 Asia/Shanghai 日历日期检查报价 `validFrom/validUntil`，起止日均包含在有效范围内；无边界表示该方向不限期。过期或未生效报价不进入学员服务目录，也不能创建新训练。创建时的服务/场景联合查询可能返回 `SERVICE_SCENARIO_MISMATCH`；重开时返回 `SERVICE_NOT_AVAILABLE`。知识版本的 `effectiveFrom/effectiveUntil` 同样在新快照中筛选；检索再次按会话锁定的 `knowledgeAsOf` 检查，因此旧会话不会因今天的日期变化而丢失当时有效的依据。
+
+同主题、同范围及同适用条件的命中段落，在截取前六条之前检测相反陈述与同一陈述的数值差异，冲突组进入 `conflicts`，回复/核验沿用 conflicted 处理。检测使用确定性文本规则，不增加模型调用；任意语义改写或复杂条件冲突仍需要发布者人工核对，不能将空 conflicts 当成资料完全一致的证明。
+
 证据读取必须同时验证当前用户拥有会话、`traceId` 属于该会话且证据已被胜出消息或报告公开。任一条件不满足时统一返回无资源响应，避免枚举其他用户或失败尝试的 trace。
+
+### N01：角色互换 RAG 证据加固（2026-09-20）
+
+适用 `contextVersion >= 2` 的角色互换会话；无服务的 v1 会话保持原路径。不新增接口、环境变量或数据库迁移。
+
+- 新上下文的 `manifestHash` 为 `sha256:` + 64 位小写十六进制。规范化对象为 `{version:1, serviceRevisionId, knowledgeRevisionIds, trainingScope}`；知识 revision ID 排序去重，以 nlohmann JSON 默认键排序、紧凑 UTF-8 序列化计算 SHA-256。服务 revision 和训练范围也参与摘要。
+- 检索显式接受锁定摘要，返回同一摘要；检索前核对完整锁定 revision 集。摘要不一致、revision 丢失或越过服务范围属于系统错误，不伪装为资料未知。
+- evidence bundle 新增 `serviceId`、`trainingScope`；passage 新增 `scope`、`serviceId`、`trainingScope`。后端验证本轮 trace、context、manifest、revision、服务范围及可渲染字段。新 citation 保留 `traceId/evidenceId`，增加 `manifestHash/revisionId`。
+- 模型没有选择合法 evidenceId 时返回 `answerStatus=unknown`、空 citations；不再自动选择命中块。部分缺失返回 `partial`，有冲突时返回 `conflicted` 且不选边。
+- 服务事实从结构化值重新渲染，不信任 displayText 或模型文本。保留起价、单位、范围、有效期、阶段和条件；预约资料明确为非实时号源。完整证据放不下时略过该条，不截断原文或价格限定词。
+- N01 使用固定 intro、learningPoints 和 complianceBoundary；模型自由文本不进入这些展示字段，因此阿拉伯数字、中文数字、日期、折扣和无依据承诺不能从这些字段绕过引用。模型仍可选择本轮证据并返回布尔 shouldEnd。
+
+`GET /roleplay/sessions/{id}/summary` 的 ready summary 对 v2 增加：
+
+```json
+{
+  "schemaVersion": 2,
+  "knowledgeManifestHash": "sha256:<64 hex characters>",
+  "groundedFacts": [
+    {
+      "text": "3980 元起/颗；需检查后确认",
+      "citation": {
+        "traceId": "trace-example",
+        "evidenceId": "E1",
+        "revisionId": "service-revision-example",
+        "manifestHash": "sha256:<64 hex characters>"
+      }
+    }
+  ],
+  "citations": [],
+  "modelVersion": "deterministic-evidence-v1",
+  "promptVersion": "roleplay-summary-evidence-v2"
+}
+```
+
+示例省略原有 summary、coveredTopics、keyPrinciples、nextPracticeSuggestions 字段；实际 citations 为 groundedFacts 中引用的同一列表。最多复用六条已公开且已被标准客服消息引用的依据；未公开 trace、其他会话/服务引用和未选中的命中块不进入复盘。没有可复用依据时 groundedFacts/citations 为空，仅返回沟通原则。v2 复盘由后端确定性生成，不调用模型；完成任务前在持有任务租约的事务中再次校验。结果页和历史详情页可逐项展开原始依据。
+
+**历史兼容**：不重写原始历史数据。旧 MD5 上下文须先校验原摘要，然后只在读取投影中按原服务 revision/manifest 计算规范化 SHA-256。旧 trace 的版本拼接串须与同一上下文相符，投影保留 `legacyManifestHash` 并返回规范化摘要。旧消息中仅有 traceId/evidenceId 的 citation 仍可读取；新回复、复盘及其引用使用规范化 SHA-256。没有服务范围元数据的旧 passage 不纳入新复盘，旧结构化事实经校验后可复用。旧 v2 自由文本复盘通过安全投影读取；v1 复盘不变。
+
+验证范围与未运行项见 [N01 验证记录](rag-n01-validation.md)。
+
+## N02：客服训练异步患者初始化
+
+迁移：`032_patient_initialization_jobs.sql`。未提供服务的旧 `POST /sessions` 保持 201；提供服务时：
+`{"scenarioId":"implant-basic","serviceId":"svc-...","clientSessionId":"客户端稳定唯一 ID"}` 返回 202，包含 `session`、`initialization`、空 `messages`。此路径暂不接受 `customPatientProfile`。
+
+- 同一用户同一 clientSessionId、同参重放返回原会话（即使已放弃）；异参返回 409 IDEMPOTENCY_CONFLICT。
+- 活跃唯一性按用户、场景、服务隔离；旧无服务会话有独立的唯一索引。
+- 服务版本、完整知识 revision 清单、knowledgeAsOf、trainingScope=demo 和 SHA-256 manifest 在创建事务中固定，重试和续练不重新选取。
+- `GET /sessions/{id}/initialization`：返回 status（pending/generating/ready/failed）、generation、retryable、errorType、manifestHash 和 publicProfile。只允许本人读取，不返回 privateProfile 或内部患者状态。
+- `POST /sessions/{id}/initialization/retry`：仅失败且仍在进行中的会话可重试，返回 202；generation 增加，manifest 不变。重复重试返回 409 INITIALIZATION_NOT_RETRYABLE。
+- 初始化未就绪时，消息、提示、结束请求返回 409 PATIENT_INITIALIZATION_PENDING 或 PATIENT_INITIALIZATION_FAILED；可显式放弃。
+- 初始化成功时事务提交公开/私有画像、患者状态、round 0 开场和任务成功状态；开场不占学员轮数。旧 attempt、过期 lease、旧 generation 或已放弃会话的结果不能提交。
+- 服务会话的旧 restart 接口返回 409 SERVICE_SESSION_RESTART_REQUIRES_CREATE：先放弃，再携带新 clientSessionId 创建。
+- 会话详情及历史增加 contextVersion、serviceId、serviceRevisionId，详情增加 initializationStatus、publicProfile。
+
+**阶段边界：** N02 完成基础设施和可注入的初始化网关契约；默认 DeepSeek 网关尚不支持患者初始化，任务会明确失败为 PATIENT_INITIALIZATION_UNAVAILABLE。真实 grounded 画像/逐轮回复在 N03 实现；N02 不将服务训练降级到旧患者模板。即使测试网关将初始化推进 ready，服务对话与提示仍返回 503 PATIENT_TRAINING_UNAVAILABLE。小程序选择服务与轮询界面留在 N04。本次不调用真实模型。
+
+
+## N03：证据约束患者与逐轮状态
+
+N03 替代上述 N02 阶段限制：默认 DeepSeek 网关支持患者初始化和逐轮回复；缺少 API key 时明确失败为 `MODEL_NOT_CONFIGURED`，不回落到旧模板。模型只选择画像枚举、回应意图和证据 ID，服务端验证锁定快照并组织患者话语；价格等事实保留原证据的条件和单位，资料缺失或冲突时要求确认。
+
+私有画像固定存储；每轮模型只接收公开画像、关注点和已达到披露条件的信息。预算在明确询问后披露，比较其他诊所的信息在明确询问或第三轮起披露；个人预算不作为诊所报价。v2 会话的公开 `patientState` 仅含 `emotion`，不暴露信任度、隐藏信息及触发规则。训练提示使用不包含私有画像的固定指导文本。
+
+每轮患者消息、情绪/信任度/披露状态/异议及结束原因、私有检索轨迹在获胜回复事务内保存。过期 lease 和重放不能覆盖状态。round 0 开场不消耗学员轮数；达到轮数上限或有效结束意图时与评分任务原子提交，手动结束与放弃同样记录原因。评分仍走现有流程，知识核验评分留待 N05/N06；小程序 v2 入口留待 N04。
+
+
+## N04：服务选择与初始化交互
+
+`GET /scenarios?serviceId=...` 和 `GET /roleplay/scenarios?serviceId=...` 仅返回该已发布、未归档服务的兼容场景，进行中会话按服务隔离；客服训练最佳成绩同样按服务隔离。省略 serviceId 为旧版通用场景及无服务会话。归档服务不能新建，但已有会话按 sessionId 读取仍有效。
+
+客服训练历史列表新增可选 `serviceName`，取会话锁定的服务版本名称。小程序默认按服务训练，保留显式旧版入口；创建 v2 时不发送 customPatientProfile。创建请求 ID 在用户/模式/服务/场景范围内持久化，直到成功进入会话。初始化状态来自会话详情的 initializationStatus，显式重试使用已有 initialization/retry 接口。
+
+### N06：服务训练评分报告 v2
+
+`GET /api/sessions/:id/evaluation` 对 `contextVersion=2` 的会话返回 `schemaVersion=2` 报告。知识核验固定使用会话 manifest，沟通四维单独评价；总分固定权重为知识 25%、合规 25%、共情 20%、需求 20%、礼仪 10%。知识无法核验时 `knowledgeAccuracy/totalScore/passed` 为 `null`，不重分配权重；`knowledgeAssessment.nullReason` 解释原因。
+
+新增报告字段：`serviceRevisionId`、`knowledgeManifestHash`、`knowledgeAssessment`（status、knowledgeAccuracy、assessableCount、unassessableCount、coverage、rubricVersion、nullReason）、`knowledgeChecks`。每条核验包含原始轮次和原句、verdict、reason、evidenceRefs、evidenceTexts、recommendedRewrite、scoringUnit、correctedInLaterRound。未回答项单独保留患者问题，不伪造客服原句。`learningMistakes` 只包含有引用、仍计分且未被后续纠正的 contradicted 项。
+
+`GET /api/sessions/:id/evidence/:traceId` 需要会话所有者身份，且会话已完成、报告 ready。仅返回当前报告实际引用的公开 claim_verification trace，响应为 `{traceId, manifestHash, citations:[{text,citation}]}`。不存在、其他用户、其他会话、初始化/患者回复私有 trace、未被当前报告引用的 trace 均返回 `404 EVIDENCE_NOT_FOUND`。
+
+错题复练上下文的 session 新增 `contextVersion/serviceId/originalRevisionId/currentRevisionId/versionChanged`。v2 单轮提交在提交时读取当前已发布服务与知识快照，返回实际 `currentRevisionId/versionChanged/assessmentStatus`。依据不足时 `passed=null`，明确已核实错误或缺漏为 false，目标知识确认且无其他错误/未知为 true。该操作不改写原报告，也不把复练快照当作原报告公开证据。
+
+v1 报告和单轮复练契约保持兼容。N06 不增加数据迁移，不调用真实模型进行验收。
+
+### N07：分段新建开关与受控调用
+
+三个 `RAG_*_ENABLED` 环境变量默认 false，启动时生效。`RAG_ROLEPLAY_ENABLED` 控制新建服务患者模拟；新建服务客服训练同时要求 `RAG_PATIENT_ENABLED && RAG_EVALUATION_V2_ENABLED`。关闭时新建/角色互换重新开始返回 `503 RAG_NEW_SESSIONS_PAUSED`；已成功 clientSessionId 的重放、已有会话消息/初始化重试/评分/复盘/历史/证据继续原 v2 路径，绝不降级。无服务 v1 路径保持兼容。
+
+health 新增 `rag.roleplayNewSessions/patientNewSessions/evaluationV2Enabled`、`modelCallLimit/modelCallCount`。`MODEL_CALL_LIMIT` 为非负整数，默认 0（不限）；正值按后端进程限制全部模型 HTTP 尝试，重试也计数，并发不能超额。耗尽返回 `503 MODEL_CALL_BUDGET_EXHAUSTED`，队列不自动重试；重启清零，所以不能用作跨进程/跨重启的账单额度。
+
+每次实际 HTTP 尝试输出一个 `event=model_call` JSON 审计记录：logicalCallId、attempt、callNumber、requestedModel、actualModel、promptVersion、maxOutputTokens、usage、httpStatus、finishReason、latencyMs、retry、errorType。缺失的提供商 usage 保持缺失，不能当 0；无返回时 actualModel 为 null。日志不记录密钥、对话、资料正文或完整模型响应。该记录反映传输/JSON 解析结果，后续领域验证失败还需关联 Worker 失败日志。v2 复盘为确定性证据汇总，本身不增加模型调用。

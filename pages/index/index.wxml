@@ -27,6 +27,26 @@
 
   <view class="boundary-tip"><text class="boundary-icon">i</text><text>{{trainingMode === 'patient_simulation' ? '标准客服会展示答复思路与合规边界；不提供诊断、治疗承诺或未经确认的价格信息。' : '患者隐藏信息不会直接展示，训练中请通过提问逐步了解。'}}</text></view>
 
+  <view class="service-picker card">
+    <text class="service-picker-label">{{legacyMode ? '通用训练（不绑定诊所服务）' : '按诊所服务训练'}}</text>
+    <button size="mini" bindtap="toggleLegacy" disabled="{{starting}}">{{legacyMode ? '切换到服务训练' : '进入旧版通用训练'}}</button>
+  </view>
+  <block wx:if="{{!legacyMode && services.length && !scenariosFailed}}">
+    <view class="service-picker card">
+      <text class="service-picker-label">本次训练服务</text>
+      <picker range="{{services}}" range-key="name" bindchange="onServiceChange" disabled="{{starting}}">
+        <view class="service-picker-value">{{selectedService ? selectedService.name : '请选择服务'}} ›</view>
+      </picker>
+      <text class="service-picker-meta" wx:if="{{selectedService}}">版本 v{{selectedService.version}}</text>
+    </view>
+  </block>
+  <view class="category-empty" wx:if="{{catalogLoading}}">正在加载服务与场景…</view>
+  <view class="role-blocked-card" wx:if="{{!legacyMode && !catalogLoading && !scenariosFailed && !services.length}}">
+    <text class="blocked-title">暂无已发布服务</text>
+    <text class="blocked-desc">请联系管理员发布服务，或进入旧版通用训练；已有会话可从历史记录继续。</text>
+    <button bindtap="retryScenarios">刷新目录</button>
+  </view>
+  <view class="category-empty" wx:if="{{!legacyMode && selectedServiceId && !catalogLoading && !scenariosFailed && !scenarios.length}}">该服务暂无兼容场景，请切换服务或联系管理员。</view>
   <!-- 培训计划提醒：最紧急的待办计划摘要（标题 / 剩余时间 / 达标差额 / 进度），
        主体点击进该计划明细，右上角「全部 N 个」进列表看全量。
        只在「客服训练」模式展示：计划只统计 sessions（客服训练）里 standard 档的已完成报告，
@@ -61,7 +81,7 @@
   <!-- ═══════════════════════════════════════ -->
   <!-- 患者模拟模式：自由提问面板 -->
   <!-- ═══════════════════════════════════════ -->
-  <view class="free-roleplay-panel" wx:if="{{trainingMode === 'patient_simulation' && !scenariosFailed}}">
+  <view class="free-roleplay-panel" wx:if="{{trainingMode === 'patient_simulation' && legacyMode && !scenariosFailed}}">
     <view class="free-roleplay-header">
       <text class="free-roleplay-title">你想模拟什么场景？</text>
       <text class="free-roleplay-subtitle">描述你在实际工作中遇到的患者情况，AI 会扮演标准客服进行回复与学习</text>
@@ -105,14 +125,7 @@
 
   <!-- 服务维度（master 可选接入）：仅患者模拟模式、且后端返回非空服务列表时展示，
        RAG 开关默认关闭 / 返回空列表时 services 为空，整段不渲染，界面与现在完全一致 -->
-  <block wx:if="{{trainingMode === 'patient_simulation' && services.length > 0 && !scenariosFailed}}">
-    <view class="service-picker card">
-      <text class="service-picker-label">本次模拟服务</text>
-      <picker range="{{services}}" range-key="name" bindchange="onServiceChange">
-        <view class="service-picker-value">{{selectedService ? selectedService.name : '请选择服务'}} ›</view>
-      </picker>
-      <text class="service-picker-meta" wx:if="{{selectedService}}">{{selectedService.priceDisplay}} · 版本 v{{selectedService.version}}</text>
-    </view>
+  <block wx:if="{{trainingMode === 'patient_simulation' && !legacyMode && !catalogLoading && !scenariosFailed}}">
     <view>
       <view class="scenario-card card" wx:for="{{roleplayScenarios}}" wx:key="id">
         <text class="scenario-name">{{item.name}}</text>
@@ -121,7 +134,7 @@
           <text class="best-score">历史最佳：{{item.bestScoreText}}分</text>
         </view>
         <view class="scenario-actions">
-          <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{item.id}}" data-mode="{{item.activeSession ? 'continue' : 'new'}}">{{item.actionText}}</button>
+          <button class="primary-button scenario-button" disabled="{{starting || catalogLoading}}" bindtap="openTraining" data-id="{{item.id}}" data-mode="{{item.activeSession ? 'continue' : 'new'}}">{{item.actionText}}</button>
         </view>
       </view>
     </view>
@@ -170,12 +183,12 @@
 
           <!-- 操作按钮 -->
           <view class="scenario-actions">
-            <button class="primary-button scenario-button" bindtap="openTraining" data-id="{{scenario.id}}" data-mode="{{scenario.activeSession ? 'continue' : 'new'}}">
+            <button class="primary-button scenario-button" disabled="{{starting || catalogLoading}}" bindtap="openTraining" data-id="{{scenario.id}}" data-mode="{{scenario.activeSession ? 'continue' : 'new'}}">
               {{scenario.actionText}}
             </button>
-            <text class="restart-link" wx:if="{{scenario.activeSession}}" bindtap="restartTraining" data-id="{{scenario.id}}">重新开始</text>
+            <text class="restart-link" wx:if="{{legacyMode && scenario.activeSession}}" bindtap="restartTraining" data-id="{{scenario.id}}">重新开始</text>
             <!-- 与「重新开始」互斥：有进行中会话时不给挑战入口，避免必然 409 -->
-            <text class="advanced-link" wx:if="{{scenario.canChallenge}}" bindtap="challengeAdvanced" data-id="{{scenario.id}}">挑战进阶档 ›</text>
+            <text class="advanced-link" wx:if="{{legacyMode && scenario.canChallenge}}" bindtap="challengeAdvanced" data-id="{{scenario.id}}">挑战进阶档 ›</text>
           </view>
         </view>
       </view>

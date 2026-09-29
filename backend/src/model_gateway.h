@@ -3,6 +3,8 @@
 #include <nlohmann/json.hpp>
 
 #include <string>
+#include <stdexcept>
+#include <memory>
 
 namespace oral_training {
 
@@ -12,12 +14,29 @@ class IModelGateway {
 
   virtual ~IModelGateway() = default;
 
+  // Production gateways bind an immutable, server-resolved user to each caller.
+  // In-process deterministic test gateways may retain their injected instance.
+  virtual std::shared_ptr<IModelGateway> forUser(const std::string&) const { return nullptr; }
+
   virtual bool configured() const = 0;
   virtual std::string modelVersion() const = 0;
+  virtual int modelCallCount() const { return 0; }
   virtual void setRuntimeKey(const std::string& api_key) = 0;
+  // N02 infrastructure seam. N03 implements grounded generation in the DeepSeek gateway.
+  virtual bool supportsPatientInitialization() const { return false; }
+  virtual json initializePatient(const json&, const json&, const json&) const {
+    return json::object();
+  }
+  virtual json groundedPatientReply(const json&, const json&, const json&) const {
+    return json::object();
+  }
+  virtual json extractKnowledgeClaims(const json&) const { return json::array(); }
   virtual json patientReply(const json& scenario, const json& patient_state,
                             const json& history) const = 0;
   virtual json evaluate(const json& scenario, const json& messages) const = 0;
+  virtual json evaluateCommunication(const json&, const json&) const {
+    throw std::runtime_error("grounded communication evaluator unavailable");
+  }
   virtual json standardServiceReply(const json& scenario, const json& history) const = 0;
   virtual json groundedServiceReply(const json& scenario, const json& history,
                                     const json& evidence) const {

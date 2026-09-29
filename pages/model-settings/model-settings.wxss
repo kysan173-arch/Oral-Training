@@ -1,0 +1,16 @@
+.model-settings-page { padding: 32rpx 28rpx 64rpx; }
+.settings-heading { margin-bottom: 28rpx; }
+.settings-title { display: block; color: var(--text-strong); font-size: 38rpx; font-weight: 600; }
+.settings-description, .field-help { display: block; margin-top: 12rpx; color: var(--text-secondary); font-size: 24rpx; line-height: 1.7; }
+.settings-card { padding: 28rpx; }
+.settings-status { display: flex; align-items: center; gap: 14rpx; font-size: 30rpx; font-weight: 600; }
+.status-dot { width: 16rpx; height: 16rpx; border-radius: 50%; background: #B5A89B; }
+.status-ready { background: #29956A; }
+.field-label { display: block; margin: 32rpx 0 14rpx; font-size: 27rpx; font-weight: 600; color: var(--text-strong); }
+.settings-input { height: 88rpx; padding: 0 20rpx; border: 1rpx solid var(--color-border); border-radius: 14rpx; background: #F7F9FC; font-size: 26rpx; }
+.field-help { font-size: 22rpx; overflow-wrap: break-word; }
+.save-button { margin-top: 36rpx; }
+.clear-button, .reload-button { margin-top: 20rpx; font-size: 26rpx; background: #F7F9FC; color: var(--text-secondary); }
+.settings-error, .settings-notice { margin-top: 24rpx; padding: 24rpx; border-radius: 16rpx; font-size: 25rpx; line-height: 1.7; overflow-wrap: break-word; }
+.settings-error { color: #A93737; background: #FFF1F0; }
+.settings-notice { color: #1C6249; background: #EDF8F2; }
