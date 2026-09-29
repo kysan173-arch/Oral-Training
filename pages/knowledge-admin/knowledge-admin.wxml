@@ -1,0 +1,22 @@
+<view class="manager-page">
+  <view class="manager-hero"><text class="eyebrow">ADMIN · KNOWLEDGE</text><text class="title">知识与服务管理</text><text class="intro">所有生成内容均为模拟、未审核草稿；发布前请逐字段复核。</text></view>
+  <view class="tab-row"><text wx:for="{{tabs}}" wx:key="id" class="tab {{activeTab === item.id ? 'active' : ''}}" bindtap="selectTab" data-id="{{item.id}}">{{item.name}}</text></view>
+  <view class="loading card" wx:if="{{loading}}">正在加载…</view>
+
+  <block wx:elif="{{activeTab === 'services'}}">
+    <button class="primary-button create-button" bindtap="newService">新建服务草稿</button>
+    <view class="empty card" wx:if="{{services.length === 0}}">暂无服务项目</view>
+    <view class="item-card card" wx:for="{{services}}" wx:key="id" bindtap="editService" data-id="{{item.id}}"><view><text class="item-title">{{item.name}}</text><text class="item-meta">{{item.category}} · 草稿 v{{item.draftVersion || '-'}} · 发布 v{{item.publishedVersion || '-'}}</text></view><text class="status {{item.status}}">{{item.statusLabel}}</text></view>
+  </block>
+
+  <block wx:elif="{{activeTab === 'knowledge'}}">
+    <button class="primary-button create-button" bindtap="newKnowledge">新建知识草稿</button>
+    <view class="empty card" wx:if="{{knowledge.length === 0}}">暂无专业知识</view>
+    <view class="item-card card" wx:for="{{knowledge}}" wx:key="id" bindtap="editKnowledge" data-id="{{item.id}}"><view><text class="item-title">{{item.title || item.topic}}</text><text class="item-meta">{{item.topic}} · {{item.scope === 'service' ? '服务专属' : '通用'}} · 发布 v{{item.publishedVersion || '-'}}</text></view><text class="status {{item.status}}">{{item.statusLabel}}</text></view>
+  </block>
+
+  <block wx:else>
+    <view class="empty card" wx:if="{{jobs.length === 0}}">编辑页发起生成后，最近任务会显示在这里。</view>
+    <view class="job-card card" wx:for="{{jobs}}" wx:key="jobId"><view class="job-head"><text>{{item.kind === 'service_draft' ? '服务草稿' : '知识草稿'}}</text><text class="status {{item.status}}">{{item.statusLabel}}</text></view><text class="item-meta">generation {{item.generation}} · 尝试 {{item.attempts}}/{{item.maxAttempts}}</text><text class="result-note" wx:if="{{item.resultLabel}}">{{item.resultLabel}}</text><text class="error" wx:if="{{item.errorMessage}}">{{item.errorMessage}}</text><button wx:if="{{item.status === 'dead'}}" class="retry-button" bindtap="retryJob" data-id="{{item.jobId}}">重新生成</button></view>
+  </block>
+</view>

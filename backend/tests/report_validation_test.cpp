@@ -52,7 +52,8 @@ int main() {
   const auto json_request = buildCompletionRequest("deepseek-v4-flash", json::array(), 500, 0.4, true);
   const auto fallback_request = buildCompletionRequest("deepseek-v4-flash", json::array(), 1000, 0.0, false);
   if (json_request["response_format"]["type"] != "json_object" || fallback_request.contains("response_format") ||
-      fallback_request["max_tokens"] != 1000 || fallback_request["thinking"]["type"] != "disabled") {
+      fallback_request["max_tokens"] != 1000 || fallback_request.contains("thinking") ||
+      fallback_request.contains("user_id")) {
     std::cerr << "completion fallback request was not configured correctly\n";
     return 1;
   }

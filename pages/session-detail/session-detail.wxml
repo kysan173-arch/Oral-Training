@@ -29,10 +29,10 @@
       <view class="section-title-row"><text class="section-title">得分与五维</text></view>
       <view class="dimensions-card card">
         <view class="score-head">
-          <text class="score-value">{{evaluation.totalScore}}</text>
-          <text class="score-label">分</text>
+          <text class="score-value">{{evaluation.totalScore === null ? '—' : evaluation.totalScore}}</text>
+          <text class="score-label">{{evaluation.totalScore === null ? '知识依据不足' : '分'}}</text>
         </view>
-        <radar-chart dimensions="{{dimensions}}" canvas-width="260" canvas-height="230"></radar-chart>
+        <radar-chart wx:if="{{dimensions.length >= 3}}" dimensions="{{dimensions}}" canvas-width="260" canvas-height="230"></radar-chart>
         <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
           <view class="dimension-head">
             <text class="dim-name">{{item.name}}</text>
@@ -45,6 +45,7 @@
       </view>
 
       <view class="section-title-row"><text class="section-title">综合评价</text></view>
+      <knowledge-report report="{{evaluation}}" session-id="{{session.id}}"></knowledge-report>
       <view class="summary-card card"><text>{{evaluation.summary}}</text></view>
 
       <view class="feedback-grid">
@@ -56,9 +57,18 @@
     <!-- 患者模拟：复盘摘要 -->
     <block wx:if="{{isRoleplay && summary}}">
       <view class="section-title-row"><text class="section-title">整体接待总结</text></view>
+      <knowledge-report report="{{evaluation}}" session-id="{{session.id}}"></knowledge-report>
       <view class="summary-card card"><text>{{summary.summary}}</text></view>
 
-      <view class="section-title-row"><text class="section-title">已覆盖的问题</text><text class="section-caption">{{summary.coveredTopics.length}} 项</text></view>
+      <view wx:if="{{summary.groundedFacts.length}}">
+    <view class="section-title-row"><text class="section-title">本次复盘依据</text></view>
+    <view class="list-card card" wx:for="{{summary.groundedFacts}}" wx:key="index">
+      <text class="topic-text">{{item.text}}</text>
+      <button size="mini" data-citation="{{item.citation}}" bindtap="viewSummaryEvidence">查看原始依据</button>
+    </view>
+  </view>
+
+  <view class="section-title-row"><text class="section-title">已覆盖的问题</text><text class="section-caption">{{summary.coveredTopics.length}} 项</text></view>
       <view class="list-card card">
         <view class="topic-item" wx:for="{{summary.coveredTopics}}" wx:key="*this">
           <view class="topic-dot"></view>

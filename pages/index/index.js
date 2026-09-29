@@ -1,5 +1,6 @@
 const api = require('../../utils/api.js');
 const plan = require('../../utils/plan.js');
+const sessionStart = require('../../utils/session-start.js');
 
 const CATEGORY_CONFIG = require('../../utils/scenario.js').CATEGORY_CONFIG;
 
@@ -136,6 +137,9 @@ Page({
     profileDraftHasInput: false,
     descMaxLength: DESC_MAX_LENGTH,
     // 服务维度（master 可选接入）：仅当后端返回非空列表才展示选择器
+    legacyMode: false,
+    catalogLoading: false,
+    starting: false,
     services: [],
     selectedServiceId: '',
     selectedService: null,
@@ -158,12 +162,21 @@ Page({
       return;
     }
     this.setData({ roleBlocked: false });
-    this.loadScenarios();
+    this._visible = true;
+    this.loadServices();
     // 检查是否有进行中的自由模拟会话
     this.checkActiveFreeSession();
     // 培训计划横幅：只展示最早截止的待办计划
     this.loadPlanNotice();
   },
+
+  onHide() {
+    this._visible = false;
+    this.scenarioRequestVersion = (this.scenarioRequestVersion || 0) + 1;
+    this.catalogVersion = (this.catalogVersion || 0) + 1;
+  },
+
+  onUnload() { this.onHide(); },
 
   loadPlanNotice() {
     api.getLearnerTrainingPlans().then(data => {
@@ -184,8 +197,8 @@ Page({
   },
 
   checkActiveFreeSession() {
-    api.getRoleplaySessions({ status: 'active', limit: 1 }).then(data => {
-      const sessions = data.items || [];
+    api.getRoleplaySessions({ status: 'in_progress', limit: 50 }).then(data => {
+      const sessions = (data.items || []).filter(item => !item.serviceId && item.scenarioId === FREE_ROLEPLAY_TEMPLATE_ID);
       if (sessions.length > 0) {
         this.setData({ activeFreeSession: sessions[0] });
       } else {
@@ -201,7 +214,10 @@ Page({
     const requestVersion = this.scenarioRequestVersion;
     const requestedMode = this.data.trainingMode;
     const isRoleplay = requestedMode === 'patient_simulation';
-    const request = isRoleplay ? api.getRoleplayScenarios() : api.getScenarios();
+    const serviceId = this.data.legacyMode ? '' : this.data.selectedServiceId;
+    if (!this.data.legacyMode && !serviceId) return;
+    this.setData({ catalogLoading: true, scenarios: [], categories: [] });
+    const request = isRoleplay ? api.getRoleplayScenarios(serviceId) : api.getScenarios(serviceId);
     request.then(data => {
       if (requestVersion !== this.scenarioRequestVersion || requestedMode !== this.data.trainingMode) return;
       const difficultyOverride = isRoleplay ? { beginner: { level: 'beginner', label: '初级' } } : null;
@@ -237,17 +253,15 @@ Page({
 
       if (isRoleplay) {
         // 患者模拟模式：不构建分类，只保存场景数据（用于创建会话）
-        this.setData({ scenarios, categories: [], expandedId: '', scenariosFailed: false });
-        // 服务维度可选接入：空列表时静默降级，界面与无服务时完全一致
-        this.loadServices();
+        this.setData({ scenarios, roleplayScenarios: scenarios, categories: [], expandedId: '', scenariosFailed: false, catalogLoading: false });
       } else {
         const expandedCategories = this.data.expandedCategories || {};
         const categories = buildCategories(scenarios, this.data.activeCategoryId, expandedCategories);
-        this.setData({ scenarios, categories, expandedId: '', scenariosFailed: false });
+        this.setData({ scenarios, categories, expandedId: '', scenariosFailed: false, catalogLoading: false });
       }
     }).catch(error => {
       if (requestVersion !== this.scenarioRequestVersion || requestedMode !== this.data.trainingMode) return;
-      this.setData({ scenariosFailed: true, scenarios: [], categories: [] });
+      this.setData({ scenariosFailed: true, scenarios: [], categories: [], catalogLoading: false });
       api.showCenterNotice({ title: error.message || '场景加载失败' });
     });
   },
@@ -255,57 +269,73 @@ Page({
   /* 服务维度（master 独有）：仅患者模拟模式下拉取；RAG 关闭或后端返回空列表时
      不设置 services，WXML 不渲染选择器，界面与现在完全一致。 */
   loadServices() {
-    api.getServices().then(serviceData => {
-      const services = serviceData.items || [];
-      if (!services.length) {
-        this.setData({ services: [], selectedServiceId: '', selectedService: null, roleplayScenarios: [] });
-        return;
-      }
-      const selectedService = services.find(item => item.id === this.data.selectedServiceId) || services[0];
-      this.setData({
-        services,
-        selectedServiceId: selectedService.id,
-        selectedService
-      }, () => this.loadRoleplayScenarios());
-    }).catch(() => {
-      this.setData({ services: [], selectedServiceId: '', selectedService: null, roleplayScenarios: [] });
-    });
-  },
-
-  loadRoleplayScenarios() {
-    const serviceId = this.data.selectedServiceId;
-    if (!serviceId) return;
-    api.getRoleplayScenarios(serviceId).then(data => {
-      const scenarios = (data.items || []).map(item => Object.assign({}, item, {
-        category: inferCategory(item),
-        patientAge: item.patientProfile && item.patientProfile.age ? `${item.patientProfile.age}岁` : '',
-        patientConcern: (item.patientProfile && item.patientProfile.description) || '',
-        patientEmotion: '由你自由提问',
-        bestScore: item.bestScore !== undefined ? item.bestScore : null,
-        bestScoreText: api.formatScore(item.bestScore),
-        hasBestScore: item.bestScore !== null && item.bestScore !== undefined,
-        actionText: item.activeSession ? '继续模拟' : '开始模拟',
-        suggestedQuestions: item.suggestedQuestions || []
-      }));
-      this.setData({ roleplayScenarios: scenarios });
-    }).catch(() => {
-      this.setData({ roleplayScenarios: [] });
+    const version = this.catalogVersion = (this.catalogVersion || 0) + 1;
+    this.scenarioRequestVersion = (this.scenarioRequestVersion || 0) + 1;
+    this.setData({ catalogLoading: true, scenariosFailed: false, scenarios: [], categories: [], roleplayScenarios: [] });
+    return api.getServices().then(data => {
+      if (version !== this.catalogVersion) return;
+      const services = data.items || [];
+      const selectedService = services.find(item => item.id === this.data.selectedServiceId) || services[0] || null;
+      this.setData({ services, selectedService, selectedServiceId: selectedService ? selectedService.id : '', catalogLoading: false });
+      this.loadScenarios();
+    }).catch(error => {
+      if (version !== this.catalogVersion) return;
+      this.setData({ scenariosFailed: true, catalogLoading: false, services: [], selectedService: null, selectedServiceId: '' });
+      wx.showToast({ title: error.message || '服务目录加载失败，请重试', icon: 'none' });
     });
   },
 
   onServiceChange(e) {
+    if (this.data.starting) return;
     const selectedService = this.data.services[Number(e.detail.value)] || null;
-    this.setData({
-      selectedServiceId: selectedService ? selectedService.id : '',
-      selectedService,
-      roleplayScenarios: []
-    }, () => this.loadRoleplayScenarios());
+    this.setData({ selectedServiceId: selectedService ? selectedService.id : '', selectedService, roleplayScenarios: [] });
+    this.loadScenarios();
+  },
+
+  toggleLegacy() {
+    if (this.data.starting) return;
+    this.setData({ legacyMode: !this.data.legacyMode, scenarios: [], categories: [], roleplayScenarios: [] });
+    this.loadServices();
+  },
+
+  startServiceSession(scenario, prompt = '') {
+    if (this.data.starting || this.data.catalogLoading || !this.data.selectedServiceId) return;
+    const mode = this.data.trainingMode;
+    const serviceId = this.data.selectedServiceId;
+    const version = this.scenarioRequestVersion;
+    this.setData({ starting: true });
+    let saved;
+    return api.ensureAuthenticated().then(() => {
+      saved = sessionStart.intent(mode, serviceId, scenario.id);
+      const options = { serviceId, clientSessionId: saved.clientSessionId };
+      return mode === 'patient_simulation'
+        ? api.createRoleplaySession(scenario.id, options)
+        : api.createSession(scenario.id, undefined, options);
+    }).then(data => {
+      // Keep the key until navigation succeeds, so page restoration can replay creation.
+      if (version !== this.scenarioRequestVersion || this._visible === false) return;
+      const session = data.session;
+      const page = mode === 'patient_simulation' ? 'roleplay' : 'training';
+      const target = session.status === 'completed' ? (page === 'roleplay' ? 'roleplay-result' : 'result') : page;
+      if (session.status === 'abandoned') {
+        sessionStart.clear(saved.key);
+        wx.showToast({ title: '上次会话已结束，请再次点击开始', icon: 'none' });
+        this.loadScenarios();
+        return;
+      }
+      wx.navigateTo({ url: `/pages/${target}/${target}?sessionId=${encodeURIComponent(session.id)}${prompt ? '&prompt=' + encodeURIComponent(prompt) : ''}`,
+        success: () => sessionStart.clear(saved.key) });
+    }).catch(error => {
+      if (version !== this.scenarioRequestVersion || this._visible === false) return;
+      wx.showToast({ title: error.message || '创建失败，点击开始可安全重试', icon: 'none' });
+      if (['SERVICE_SCENARIO_MISMATCH', 'SERVICE_NOT_FOUND', 'SESSION_IN_PROGRESS'].includes(error.code)) this.loadServices();
+    }).finally(() => this.setData({ starting: false }));
   },
 
   /* 场景加载失败后的自救入口 */
   retryScenarios() {
     this.setData({ scenariosFailed: false });
-    this.loadScenarios();
+    this.loadServices();
   },
 
   toggleCategory(e) {
@@ -318,7 +348,7 @@ Page({
 
   switchMode(e) {
     const mode = e.currentTarget.dataset.mode;
-    if (!mode || mode === this.data.trainingMode) return;
+    if (!mode || mode === this.data.trainingMode || this.data.starting) return;
     this.setData({
       trainingMode: mode,
       scenarios: [],
@@ -336,7 +366,7 @@ Page({
       selectedService: null,
       roleplayScenarios: []
     }, () => {
-      this.loadScenarios();
+      this.loadServices();
       if (mode === 'patient_simulation') {
         this.checkActiveFreeSession();
       }
@@ -402,6 +432,7 @@ Page({
 
   openTraining(e) {
     const { id, mode } = e.currentTarget.dataset;
+    if (this.data.starting || this.data.catalogLoading) return;
     const scenario = this.data.scenarios.find(item => item.id === id);
     if (!scenario) return;
     if (this.data.trainingMode === 'patient_simulation') {
@@ -412,6 +443,7 @@ Page({
       this.goTraining(scenario.activeSession.id);
       return;
     }
+    if (!this.data.legacyMode) { this.startServiceSession(scenario); return; }
     // 已填过画像 → 直接开始；否则弹层引导（可跳过用默认画像）
     if (this.hasProfileInput(id)) {
       this.startWithCustomProfile(id);
@@ -566,8 +598,9 @@ Page({
       this.goRoleplay(scenario.activeSession.id, prompt);
       return;
     }
+    if (!this.data.legacyMode) { this.startServiceSession(scenario, prompt); return; }
     // 选中服务时透传 serviceId（RAG 场景）；未选服务（自由模拟无服务）则走空对象
-    const serviceId = this.data.selectedServiceId;
+    const serviceId = '';
     const clientSessionId = `roleplay-session-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     const payload = serviceId ? { serviceId, clientSessionId } : {};
     api.createRoleplaySession(scenario.id, payload)
@@ -576,6 +609,7 @@ Page({
   },
 
   restartTraining(e) {
+    if (!this.data.legacyMode || this.data.starting) return;
     const id = e.currentTarget.dataset.id;
     const isRoleplay = this.data.trainingMode === 'patient_simulation';
     wx.showModal({

@@ -17,7 +17,7 @@ const dimensionsFrom = score => [
   { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery },
   { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette },
   { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance }
-].map(item => Object.assign(item, { tier: scoreTier(item.score) }));
+].filter(item => typeof item.score === 'number').map(item => Object.assign(item, { tier: scoreTier(item.score) }));
 
 const totalScoreFrom = (evaluation, sessionTotalScore) => {
   if (evaluation.totalScore !== undefined && evaluation.totalScore !== null) {

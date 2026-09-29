@@ -255,8 +255,17 @@ int main() {
     require(catalog_has_category, "scene category catalog did not include the report category");
     /* 分类筛选在 LIMIT 之前生效：命中分类能查到，其他分类必须为空 */
     const auto filtered = database.listLearningPhrases(kLearnerId, "", "", report_category, false, 20);
-    require(filtered["items"].size() == 1 && filtered["items"][0]["phraseKey"] == "feature-phrase",
-            "scene category filter dropped the matching phrase");
+    // Both the recent and 400-day-old fixture belong to implant-basic.
+    // Category filtering is independent of dashboard time windows.
+    std::set<std::string> filtered_sessions;
+    for (const auto& item : filtered["items"]) {
+      require(item["phraseKey"] == "feature-phrase" && item["category"] == report_category,
+              "scene category filter returned an unrelated phrase");
+      filtered_sessions.insert(item["sessionId"].get<std::string>());
+    }
+    require(filtered["items"].size() == 2 && filtered_sessions ==
+                std::set<std::string>{kReportSessionId, kOldReportSessionId},
+            "scene category filter dropped a matching recent or historical phrase");
     const auto other_category = report_category == "consultation" ? "price_negotiation" : "consultation";
     const auto excluded = database.listLearningPhrases(kLearnerId, "", "", other_category, false, 20);
     require(excluded["items"].empty(), "scene category filter leaked phrases from another category");
@@ -287,8 +296,17 @@ int main() {
        改为与 listScenarios 的实际条数对齐，并额外确认学员练过的场景在列表里。 */
     require(dashboard["studentCount"].get<int>() >= 2,
             "supervisor aggregate did not include learner data");
-    require(dashboard["scenarioStats"].size() == scenarios["items"].size(),
-            "supervisor aggregate did not cover every scenario");
+    std::set<std::string> catalog_scenario_ids;
+    std::set<std::string> dashboard_scenario_ids;
+    for (const auto& scenario : scenarios["items"]) {
+      catalog_scenario_ids.insert(scenario["id"].get<std::string>());
+    }
+    for (const auto& stat : dashboard["scenarioStats"]) {
+      dashboard_scenario_ids.insert(stat["scenarioId"].get<std::string>());
+    }
+    require(dashboard_scenario_ids == catalog_scenario_ids &&
+                dashboard["scenarioStats"].size() == catalog_scenario_ids.size(),
+            "supervisor aggregate did not match the active non-template scenario catalog");
     require(!dashboard.contains("members") && !dashboard.contains("recentSessions"),
             "supervisor aggregate leaked member-level data");
     {
@@ -313,13 +331,14 @@ int main() {
     {
       pqxx::connection connection(database_url);
       pqxx::read_transaction tx(connection);
-      expected_weekly_completed = tx.exec(R"(
+      expected_weekly_completed = tx.exec_params(R"(
         SELECT COUNT(*) AS count FROM sessions s
         WHERE s.status = 'completed' AND s.evaluation_status = 'ready'
+          AND s.user_id IN ($1, $2)
           AND s.finished_at >= (
             date_trunc('week', NOW() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai'
           )
-      )")[0]["count"].as<int>();
+      )", kLearnerId, kPeerId)[0]["count"].as<int>();
     }
     const auto weekly_dashboard = database.supervisorDashboard(kAdminId, "week");
     require(weekly_dashboard["completedSessions"].get<int>() == expected_weekly_completed,

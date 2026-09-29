@@ -22,7 +22,7 @@ const DIMENSIONS = [
 ];
 
 /* 分数分档：颜色只跟随分数（≥80 良好绿 / 60–79 中间蓝 / <60 待提升橙） */
-const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
+const scoreTier = score => (score === null ? 'unscored' : score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
 
 /* 学员数据页「各场景训练」：后端逐场景下发，这里归并到四大分类。
    场景粒度太细（10 条上下），四个大类才看得出训练结构。
@@ -116,7 +116,8 @@ const coachingSuggestions = dashboard => {
   const suggestions = [];
   const dimensions = dashboard.dimensionAverages || {};
   const weakest = DIMENSIONS.reduce((current, item) => {
-    const score = Number(dimensions[item.key] || 0);
+    if (dimensions[item.key] == null) return current;
+    const score = Number(dimensions[item.key]);
     return !current || score < current.score ? Object.assign({}, item, { score }) : current;
   }, null);
   if (weakest && weakest.score < 70) {
@@ -268,6 +269,10 @@ Page({
     this.loadPage();
   },
 
+  goKnowledgeAdmin() {
+    wx.navigateTo({ url: '/pages/knowledge-admin/knowledge-admin' });
+  },
+
   loadPage() {
     this.setData({ loading: true });
     api.ensureAuthenticated().then(() => {
@@ -316,9 +321,10 @@ Page({
     const rangeFilter = (this.data.timeFilters || []).filter(item => item.id === this.data.timeRange)[0];
     const rangeName = rangeFilter ? rangeFilter.name : '本月';
     const dimensionAverages = DIMENSIONS.map(item => {
-      const value = Number((supervisor.dimensionAverages || {})[item.key] || 0);
+      const rawValue = (supervisor.dimensionAverages || {})[item.key];
+      const value = rawValue == null ? null : Number(rawValue);
       const tier = scoreTier(value);
-      return Object.assign({}, item, { value, valueText: api.formatScore(value), tier });
+      return Object.assign({}, item, { value, valueText: value === null ? '未评估' : api.formatScore(value), tier });
     });
     /* 通过率 / 均分 / 弱项判定（含「暂无评分」与「0 分」的区分）收敛进归并函数。 */
     const scenarioStats = buildSupervisorSceneStats(supervisor.scenarioStats || []);
@@ -421,13 +427,15 @@ Page({
     api.getDashboard().then(data => {
       const sceneStats = buildLearnerSceneStats(data.scenarioStats || []);
       const dimensionAverages = DIMENSIONS.map(item => {
-        const value = Math.round(Number((data.dimensionAverages || {})[item.key] || 0));
-        return Object.assign({}, item, { value, tier: scoreTier(value) });
+        const raw = (data.dimensionAverages || {})[item.key];
+        const value = raw == null ? null : Math.round(Number(raw));
+        return Object.assign({}, item, { value, valueText: value === null ? '未评估' : value, tier: scoreTier(value) });
       });
-      const weakest = dimensionAverages.length
-        ? dimensionAverages.reduce((prev, curr) => prev.value <= curr.value ? prev : curr) : null;
-      const strongest = dimensionAverages.length
-        ? dimensionAverages.reduce((prev, curr) => prev.value >= curr.value ? prev : curr) : null;
+      const scoredDimensions = dimensionAverages.filter(item => item.value !== null);
+      const weakest = scoredDimensions.length
+        ? scoredDimensions.reduce((prev, curr) => prev.value <= curr.value ? prev : curr) : null;
+      const strongest = scoredDimensions.length
+        ? scoredDimensions.reduce((prev, curr) => prev.value >= curr.value ? prev : curr) : null;
       const completionRate = data.totalSessions > 0
         ? Math.round(data.completedSessions / data.totalSessions * 100) : 0;
       const recentSessions = (data.recentSessions || []).map(item => {

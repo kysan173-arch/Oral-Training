@@ -1,0 +1,12 @@
+[
+  {"id":"thanks","question":"好的，谢谢你。","maxChars":25},
+  {"id":"decline","question":"我先考虑一下，暂时不约。","maxChars":35},
+  {"id":"fear","question":"说实话我挺怕疼的，一想到做这个就紧张。","maxChars":75},
+  {"id":"price_complaint","question":"有点贵啊，别家跟我说四千就能做。","maxChars":80},
+  {"id":"budget","question":"我预算就六千，能做吗？","maxChars":80},
+  {"id":"included","question":"这个价钱包拍片吗？","maxChars":65,"history":[{"role":"learner_patient","content":"多少钱一颗？"},{"role":"standard_customer","content":"参考价格是8900—12300元/颗，附加治疗需检查后另行确认。"}]},
+  {"id":"shorten","question":"太长了，一句话说清楚就行。","maxChars":55,"history":[{"role":"learner_patient","content":"大概需要多久才能完成？"},{"role":"standard_customer","content":"完整疗程通常约3—8个月，受骨结合、是否需要植骨以及恢复情况影响，具体时间需医生检查后确认。"}]},
+  {"id":"impatient","question":"别老让我找医生，我只想知道大概得花多久。","maxChars":65},
+  {"id":"weekend","question":"我平时要上班，只能周末去，能当天弄完吗？","maxChars":80},
+  {"id":"distrust","question":"这也要确认那也要确认，那我问你有什么用？","maxChars":70,"history":[{"role":"learner_patient","content":"周六能约吗？"},{"role":"standard_customer","content":"具体号源需要门诊实时确认。"}]}
+]

@@ -10,6 +10,14 @@
   <view class="section-title-row"><text class="section-title">整体接待总结</text><text class="section-caption">一句话看懂本次练习</text></view>
   <view class="summary-card card"><text class="summary-quote">{{summary.summary}}</text></view>
 
+  <view wx:if="{{summary.groundedFacts.length}}">
+    <view class="section-title-row"><text class="section-title">本次复盘依据</text></view>
+    <view class="list-card card" wx:for="{{summary.groundedFacts}}" wx:key="index">
+      <text class="topic-text">{{item.text}}</text>
+      <button size="mini" data-citation="{{item.citation}}" bindtap="viewSummaryEvidence">查看原始依据</button>
+    </view>
+  </view>
+
   <view class="section-title-row"><text class="section-title">已覆盖的问题</text><text class="section-caption">{{summary.coveredTopics.length}} 项</text></view>
   <view class="list-card card">
     <view class="topic-item" wx:for="{{summary.coveredTopics}}" wx:key="*this">

@@ -1,5 +1,6 @@
 #include "knowledge_store.h"
 #include "rag_retriever.h"
+#include "sha256.h"
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -357,38 +358,7 @@ void validateGeneratedDraft(const std::string& kind, const json& candidate) {
 }
 
 std::string contentSha256(const json& value) {
-  const auto input = value.dump();
-  BCRYPT_ALG_HANDLE algorithm = nullptr;
-  BCRYPT_HASH_HANDLE hash = nullptr;
-  DWORD object_size = 0;
-  DWORD hash_size = 0;
-  DWORD bytes = 0;
-  if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0 ||
-      BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH,
-                        reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &bytes, 0) != 0 ||
-      BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH,
-                        reinterpret_cast<PUCHAR>(&hash_size), sizeof(hash_size), &bytes, 0) != 0) {
-    if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
-    throw std::runtime_error("SHA-256 initialization failed");
-  }
-  std::vector<unsigned char> object(object_size);
-  std::vector<unsigned char> digest(hash_size);
-  const auto cleanup = [&] {
-    if (hash) BCryptDestroyHash(hash);
-    if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
-  };
-  if (BCryptCreateHash(algorithm, &hash, object.data(), object_size, nullptr, 0, 0) != 0 ||
-      BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<char*>(input.data())),
-                     static_cast<ULONG>(input.size()), 0) != 0 ||
-      BCryptFinishHash(hash, digest.data(), hash_size, 0) != 0) {
-    cleanup();
-    throw std::runtime_error("SHA-256 calculation failed");
-  }
-  cleanup();
-  std::ostringstream output;
-  for (const auto value : digest) output << std::hex << std::setw(2) << std::setfill('0')
-                                        << static_cast<int>(value);
-  return output.str();
+  return oral_training::sha256Hex(value.dump());
 }
 
 json servicePublicProjection(const json& payload) {
@@ -427,15 +397,18 @@ json KnowledgeStore::listAvailableServices() const {
   auto connection = database_pool_->acquire();
   pqxx::read_transaction tx(connection.get());
   const auto rows = tx.exec(R"(
-    SELECT s.id, s.name, s.category, s.current_revision_id, r.version, r.payload,
+    SELECT s.id, r.payload->>'name' AS name, r.payload->>'category' AS category,
+      s.current_revision_id, r.version, r.payload,
       COALESCE(jsonb_agg(ss.scenario_id ORDER BY ss.scenario_id)
         FILTER (WHERE ss.scenario_id IS NOT NULL), '[]'::jsonb) AS scenario_ids
     FROM clinic_services s
     JOIN service_revisions r ON r.id = s.current_revision_id
     LEFT JOIN service_scenarios ss ON ss.service_id = s.id
     WHERE s.status = 'active'
+        AND COALESCE(NULLIF((r.payload->'price')->>'validFrom', ''), '0001-01-01') <= to_char(statement_timestamp() AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
+        AND COALESCE(NULLIF((r.payload->'price')->>'validUntil', ''), '9999-12-31') >= to_char(statement_timestamp() AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
     GROUP BY s.id, s.name, s.category, s.current_revision_id, r.version, r.payload
-    ORDER BY s.name, s.id
+    ORDER BY r.payload->>'name', s.id
   )");
   json items = json::array();
   for (const auto& row : rows) {
@@ -455,7 +428,8 @@ json KnowledgeStore::listServices(const std::string& actor_id) const {
   pqxx::read_transaction tx(connection.get());
   requireAdmin(tx, actor_id);
   const auto rows = tx.exec(R"(
-    SELECT s.id, s.name, s.category, s.status, s.current_revision_id,
+    SELECT s.id, COALESCE(d.payload->>'name', s.name) AS name,
+      COALESCE(d.payload->>'category', s.category) AS category, s.status, s.current_revision_id,
       d.draft_version, d.updated_at, r.version AS published_version
     FROM clinic_services s
     LEFT JOIN service_drafts d ON d.service_id = s.id
@@ -542,8 +516,7 @@ json KnowledgeStore::saveServiceDraft(const std::string& actor_id,
     if (exists.empty()) throw KnowledgeStoreError(404, "SERVICE_NOT_FOUND", "服务草稿不存在");
     throw KnowledgeStoreError(409, "DRAFT_VERSION_CONFLICT", "服务草稿已被其他编辑更新");
   }
-  tx.exec_params("UPDATE clinic_services SET name = $2, category = $3, updated_at = NOW() WHERE id = $1",
-                 service_id, payload["name"].get<std::string>(), payload["category"].get<std::string>());
+  tx.exec_params("UPDATE clinic_services SET updated_at = NOW() WHERE id = $1", service_id);
   writeAudit(tx, actor_id, "service_draft_saved", "service", service_id,
              std::nullopt, std::nullopt, request_id);
   tx.commit();
@@ -602,8 +575,9 @@ json KnowledgeStore::publishService(const std::string& actor_id,
     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
   )", revision_id, service_id, next_version, payload.dump(), content_hash,
       payload["dataOrigin"].get<std::string>(), actor_id);
-  tx.exec_params("UPDATE clinic_services SET current_revision_id = $2, status = 'active', updated_at = NOW() WHERE id = $1",
-                 service_id, revision_id);
+  tx.exec_params("UPDATE clinic_services SET current_revision_id = $2, name = $3, category = $4, "
+                 "status = 'active', updated_at = NOW() WHERE id = $1",
+                 service_id, revision_id, payload["name"].get<std::string>(), payload["category"].get<std::string>());
   tx.exec_params("DELETE FROM service_scenarios WHERE service_id = $1", service_id);
   /* 显式取字符串再绑参：service_scenarios 两列都是 NOT NULL，元素一旦以
      SQL NULL 绑定，报的是 `null value in column "service_id"` —— 看不出是

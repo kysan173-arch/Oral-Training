@@ -2,7 +2,7 @@ const api = require('../../utils/api.js');
 const datetime = require('../../utils/datetime.js');
 
 /* 分数分档：颜色只跟随分数（≥80 良好绿 / 60–79 中间蓝 / <60 待提升橙） */
-const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
+const scoreTier = score => (score === null ? 'unscored' : score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
 
 const DIMENSIONS = [
   { key: 'knowledgeAccuracy', name: '知识准确性' },
@@ -21,6 +21,7 @@ const DIMENSION_DASHED = [false, true, false, true, false];
 
 /* 数值格式化：整数原样显示，小数保留一位 */
 const fmt1 = value => {
+  if (value == null) return '未评估';
   const num = Number(value);
   if (!isFinite(num)) return value === null || value === undefined ? '0' : String(value);
   return num % 1 === 0 ? String(Math.round(num)) : num.toFixed(1);
@@ -37,7 +38,6 @@ Page({
     scenarioFilters: [],
     selectedScenarioId: 'all',
     filteredTrend: [],
-    inspectItems: [],
     /* 趋势分档（P1-1）：默认只看标准档。混档趋势本身不可比——
        「85 → 72」可能是退步，也可能是主动挑战了更难的一档。 */
     tierFilter: 'standard',
@@ -87,10 +87,12 @@ Page({
 
   applyMember(data, dashboard) {
     const dimensions = DIMENSIONS.map(item => {
-      const score = Number((data.dimensionAverages || {})[item.key] || 0);
+      const raw = (data.dimensionAverages || {})[item.key];
+      const score = raw == null ? null : Number(raw);
       return Object.assign({}, item, { score, scoreText: fmt1(score), tier: scoreTier(score) });
     });
-    const teamAverages = DIMENSIONS.map(item => Number((dashboard.dimensionAverages || {})[item.key] || 0));
+    const teamAverages = DIMENSIONS.map(item => (dashboard.dimensionAverages || {})[item.key] == null
+      ? null : Number(dashboard.dimensionAverages[item.key]));
 
     const trend = (data.trend || []).map(item => Object.assign({}, item, {
       scoreText: `${fmt1(item.totalScore)} 分`
@@ -124,14 +126,6 @@ Page({
     });
     const scenarioFilters = [{ id: 'all', name: '全部场景' }].concat(Array.from(scenarioMap.values()));
 
-    /* 抽查列表（含进行中会话）：进入抽查页才拉取完整对话，本页只列条目 */
-    const inspectItems = (data.inspectSessions || []).map(item => Object.assign({}, item, {
-      statusText: item.status === 'in_progress' ? '进行中'
-        : item.status === 'completed' ? '已完成' : '已放弃',
-      roundText: `${item.currentRound}/${item.maxRounds} 轮`,
-      scoreText: item.totalScore === null || item.totalScore === undefined ? '—' : `${fmt1(item.totalScore)} 分`
-    }));
-
     const detail = Object.assign({}, data, {
       member: Object.assign({}, data.member, {
         initial: (data.member.displayName || '学').slice(0, 1)
@@ -158,7 +152,6 @@ Page({
       growthLabels: growth.labels,
       growthSeries: growth.series,
       scenarioFilters,
-      inspectItems,
       selectedScenarioId: 'all',
       filteredTrend: growth.timeline
     }, () => {
@@ -187,7 +180,7 @@ Page({
         axis: 'right',
         values: tierFiltered.map(point => {
           const score = point && point.scores ? point.scores[entry.item.key] : null;
-          return Number.isFinite(Number(score)) ? Number(score) : null;
+          return score != null && Number.isFinite(Number(score)) ? Number(score) : null;
         })
       }));
     /* 时间线在档位过滤之上再叠加场景筛选 */
@@ -238,14 +231,6 @@ Page({
     const key = e.currentTarget.dataset.key;
     if (key !== 'growth' && key !== 'inspect') return;
     this.setData({ [`sections.${key}`]: !this.data.sections[key] });
-  },
-
-  openInspect(e) {
-    const sessionId = e.currentTarget.dataset.id;
-    if (!sessionId) return;
-    wx.navigateTo({
-      url: `/pages/session-inspect/session-inspect?memberId=${encodeURIComponent(this.memberId)}&sessionId=${encodeURIComponent(sessionId)}`
-    });
   },
 
   selectScenarioFilter(e) {

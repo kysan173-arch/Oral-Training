@@ -1,0 +1,15 @@
+<view class="knowledge-report" wx:if="{{report.schemaVersion === 2}}">
+  <text class="title">知识核验</text>
+  <text>可核验覆盖率：{{coverageText}}</text>
+  <text wx:if="{{report.knowledgeAssessment.nullReason}}">{{report.knowledgeAssessment.nullReason}}</text>
+  <text>本次服务版本：{{report.serviceRevisionId}}</text>
+  <view class="check" wx:for="{{checks}}" wx:key="checkId">
+    <text class="title">第 {{item.round}} 轮 · {{item.verdictText}}{{item.correctedInLaterRound ? '（后续已纠正）' : ''}}</text>
+    <text wx:if="{{item.originalQuote}}">原句：“{{item.originalQuote}}”</text>
+    <text wx:elif="{{item.patientQuestion}}">未回应的患者问题：“{{item.patientQuestion}}”</text>
+    <text>{{item.reason}}</text>
+    <text wx:for="{{item.evidenceTexts}}" wx:for-item="evidenceText" wx:key="*this">依据：{{evidenceText}}</text>
+    <text>表达参考：{{item.recommendedRewrite}}</text>
+    <text class="link" wx:for="{{item.evidenceRefs}}" wx:for-item="ref" wx:key="evidenceId" data-trace="{{ref.traceId}}" bindtap="viewEvidence">查看原始依据 ›</text>
+  </view>
+</view>

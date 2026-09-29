@@ -54,11 +54,11 @@
           <text class="dim-name">{{item.name}}</text>
           <view class="dimension-head-right">
             <text class="dim-tag" wx:if="{{item.weakest}}">待提升</text>
-            <text class="dim-score">{{item.score}}</text>
+            <text class="dim-score">{{item.scoreText}}</text>
           </view>
         </view>
         <view class="score-bar">
-          <view class="score-fill {{item.weakest ? 'fill-weak' : 'fill-main'}}" style="width: {{item.score}}%;"></view>
+          <view class="score-fill {{item.weakest ? 'fill-weak' : 'fill-main'}}" style="width: {{item.score === null ? 0 : item.score}}%;"></view>
         </view>
       </view>
     </view>

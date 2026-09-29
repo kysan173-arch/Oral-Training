@@ -68,3 +68,5 @@
 .abandon-link { padding: 12rpx 8rpx 0; color: var(--text-muted); font-size: 22rpx; font-weight: 400; }
 .finish-button { width: 300rpx; height: 64rpx; line-height: 64rpx; padding: 0; border-radius: 32rpx; color: var(--color-primary); background: var(--color-primary-light); border: 1rpx solid var(--color-border); font-size: 26rpx; text-align: center; font-weight: 600; transition: opacity .15s; }
 .finish-button.is-disabled, .finish-button[disabled] { color: var(--text-muted); background: var(--color-bg); border-color: var(--color-border); }
+.initialization-card { margin: 16rpx 24rpx; padding: 24rpx; border-radius: 16rpx; background: #EEF2F8; color: #1F3864; font-size: 26rpx; }
+.initialization-card button { margin-top: 16rpx; }

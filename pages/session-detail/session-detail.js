@@ -1,4 +1,5 @@
 const api = require('../../utils/api.js');
+const { viewSummaryEvidence } = require('../../utils/roleplay-evidence.js');
 const datetime = require('../../utils/datetime.js');
 const emotion = require('../../utils/emotion.js');
 
@@ -6,12 +7,12 @@ const emotion = require('../../utils/emotion.js');
 const scoreTier = score => (score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
 
 const dimensionsFrom = score => [
-  { key: 'empathy', name: '情绪识别与同理心', score: score.empathy || 0 },
-  { key: 'knowledgeAccuracy', name: '口腔知识准确性', score: score.knowledgeAccuracy || 0 },
-  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery || 0 },
-  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette || 0 },
-  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance || 0 }
-].map(item => Object.assign(item, { tier: scoreTier(item.score) }));
+  { key: 'empathy', name: '情绪识别与同理心', score: score.empathy },
+  { key: 'knowledgeAccuracy', name: '口腔知识准确性', score: score.knowledgeAccuracy },
+  { key: 'needsDiscovery', name: '需求挖掘', score: score.needsDiscovery },
+  { key: 'serviceEtiquette', name: '服务礼仪', score: score.serviceEtiquette },
+  { key: 'medicalCompliance', name: '医疗合规', score: score.medicalCompliance }
+].filter(item => typeof item.score === 'number').map(item => Object.assign(item, { tier: scoreTier(item.score) }));
 
 const normalizeEvaluation = evaluation => Object.assign({}, evaluation, {
   strengths: (evaluation.strengths || []).map(item => item.content || item.evidence || item),
@@ -45,6 +46,10 @@ Page({
 
   sessionId: '',
   pollTimer: null,
+
+  viewSummaryEvidence(e) {
+    viewSummaryEvidence(this.sessionId, e.currentTarget.dataset.citation);
+  },
 
   onLoad(options) {
     this.sessionId = options.sessionId || '';

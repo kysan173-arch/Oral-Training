@@ -21,7 +21,7 @@ inline constexpr std::string_view kServiceDraft = "service-draft-v1";
 inline constexpr std::string_view kKnowledgeDraft = "knowledge-draft-v1";
 inline constexpr std::string_view kPatientInitialization = "patient-init-v1";
 inline constexpr std::string_view kPatientReply = "patient-rag-v1";
-inline constexpr std::string_view kServiceReply = "service-reply-rag-v1";
+inline constexpr std::string_view kServiceReply = "service-reply-rag-v3";
 inline constexpr std::string_view kClaimExtraction = "claim-extract-v1";
 inline constexpr std::string_view kScoring = "score-rag-v1";
 inline constexpr std::string_view kRoleplaySummary = "roleplay-summary-rag-v1";
@@ -160,6 +160,9 @@ struct PassageEvidence {
   std::string source_title;
   std::optional<std::string> source_url;
   std::optional<std::string> source_locator;
+  std::string scope;
+  std::string service_id;
+  std::string training_scope;
 };
 
 struct EvidenceConflict {
@@ -169,6 +172,8 @@ struct EvidenceConflict {
 };
 
 struct EvidenceBundle {
+  std::string service_id;
+  std::string training_scope;
   std::string context_id;
   std::string service_revision_id;
   std::string knowledge_as_of;
@@ -275,7 +280,8 @@ inline void to_json(json& output, const PassageEvidence& value) {
             {"revisionId", value.revision_id}, {"title", value.title}, {"body", value.body},
             {"applicability", value.applicability}, {"sourceTitle", value.source_title},
             {"sourceUrl", optionalJson(value.source_url)},
-            {"sourceLocator", optionalJson(value.source_locator)}};
+            {"sourceLocator", optionalJson(value.source_locator)}, {"scope", value.scope},
+            {"serviceId", value.service_id}, {"trainingScope", value.training_scope}};
 }
 
 inline void to_json(json& output, const EvidenceConflict& value) {
@@ -284,7 +290,7 @@ inline void to_json(json& output, const EvidenceConflict& value) {
 }
 
 inline void to_json(json& output, const EvidenceBundle& value) {
-  output = {{"contextId", value.context_id}, {"serviceRevisionId", value.service_revision_id},
+  output = {{"serviceId", value.service_id}, {"trainingScope", value.training_scope}, {"contextId", value.context_id}, {"serviceRevisionId", value.service_revision_id},
             {"knowledgeAsOf", value.knowledge_as_of}, {"purpose", toString(value.purpose)},
             {"manifestHash", value.manifest_hash}, {"tokenizerVersion", value.tokenizer_version},
             {"facts", value.facts}, {"passages", value.passages},

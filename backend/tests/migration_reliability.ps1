@@ -24,10 +24,20 @@ function Invoke-Psql {
   param([string]$Schema, [string]$File, [string]$Command)
   $env:PGOPTIONS = "-c search_path=$Schema"
   $arguments = @($DatabaseUrl, '-v', 'ON_ERROR_STOP=1', '-X', '-q')
+  if ($File -and (Split-Path $File -Leaf) -eq '005_pair_and_state_repair.sql') {
+    $arguments += @('-f', (Join-Path $repositoryRoot 'backend/migration-support/005_archive_guard.sql'))
+  }
   if ($File) { $arguments += @('-f', $File) }
-  if ($Command) { $arguments += @('-c', $Command) }
-  & $PsqlPath @arguments
-  if ($LASTEXITCODE -ne 0) { throw "psql failed for schema $Schema" }
+  $queryPath = $null
+  try {
+    if ($Command) {
+      $queryPath = Join-Path ([IO.Path]::GetTempPath()) ('migration-test-' + [guid]::NewGuid().ToString('N') + '.sql')
+      [IO.File]::WriteAllText($queryPath, $Command, [Text.UTF8Encoding]::new($false))
+      $arguments += @('-f', $queryPath)
+    }
+    & $PsqlPath @arguments
+    if ($LASTEXITCODE -ne 0) { throw "psql failed for schema $Schema" }
+  } finally { if ($queryPath) { Remove-Item -LiteralPath $queryPath -ErrorAction SilentlyContinue } }
 }
 
 try {
@@ -346,6 +356,13 @@ END $$;
   Invoke-Psql $historySchema (Join-Path $migrations '014_training_plans.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '015_supervisor_team.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '016_message_emotion.sql') ''
+  # Legacy rows written before 017 have no round.  They must be bound to a real
+  # round of their own session, not silently dropped or duplicated -- and the
+  # (session_id, round) key has to survive the backfill.
+  Invoke-Psql $historySchema '' @'
+INSERT INTO session_hints(id, session_id, hint_number, content)
+VALUES ('fixture-legacy-hint', 'test-max-rounds', 1, 'Legacy hint without a round column value.');
+'@
   Invoke-Psql $historySchema (Join-Path $migrations '017_hint_per_round.sql') ''
   Invoke-Psql $historySchema '' @'
 INSERT INTO learner_mistake_progress(user_id, session_id, mistake_key, mastered_at)
@@ -431,13 +448,18 @@ DO $$ BEGIN
 END $$;
 '@
 
-  # Legacy rows written before 017 have no round.  They must be bound to a real
-  # round of their own session, not silently dropped or duplicated -- and the
-  # (session_id, round) key has to survive the backfill.
   Invoke-Psql $historySchema '' @'
-INSERT INTO session_hints(id, session_id, hint_number, content)
-VALUES ('fixture-legacy-hint', 'test-max-rounds', 1, 'Legacy hint without a round column value.');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM generation_state_repair_archive
+    WHERE source_table='roleplay_summaries' AND source_id='test-roleplay-duplicate'
+      AND source_row->>'session_id'=source_id AND source_row->>'status'='generating'
+      AND source_row ? 'summary' AND source_row->'summary'='null'::jsonb
+      AND source_row ?& ARRAY['model_version','prompt_version','generated_at','updated_at']) THEN
+    RAISE EXCEPTION 'v005 must archive the complete original roleplay summary row';
+  END IF;
+END $$;
 '@
+
   Invoke-Psql $historySchema (Join-Path $migrations '003_reliability.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '004_identity.sql') ''
   Invoke-Psql $historySchema (Join-Path $migrations '005_pair_and_state_repair.sql') ''
@@ -623,6 +645,42 @@ DO $$ BEGIN
     AND report->>'summary'='zero is valid' AND (report->>'totalScore')::int=0) THEN
     RAISE EXCEPTION 'valid zero session score was lost';
   END IF;
+END $$;
+'@
+  }
+  # Non-null summaries must retain the full original row as well.
+  Invoke-Psql $historySchema '' @'
+INSERT INTO roleplay_sessions(id,user_id,scenario_id,scenario_name,status,current_round,max_rounds)
+VALUES ('archive-full-nonnull','demo-user-001','implant-basic','Archive fixture','completed',1,10);
+INSERT INTO roleplay_summaries(session_id,status,summary,model_version,prompt_version)
+VALUES ('archive-full-nonnull','generating','{"legacy":true}','old-model','old-prompt');
+'@
+  Invoke-Psql $historySchema (Join-Path $migrations '005_pair_and_state_repair.sql') ''
+  Invoke-Psql $historySchema '' @'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM generation_state_repair_archive
+    WHERE source_id='archive-full-nonnull' AND source_table='roleplay_summaries'
+      AND source_row->>'model_version'='old-model' AND source_row->>'prompt_version'='old-prompt'
+      AND source_row->'summary'='{"legacy":true}'::jsonb AND source_row->>'status'='generating') THEN
+    RAISE EXCEPTION 'non-null summary lost original row metadata';
+  END IF;
+END $$;
+-- Simulate evidence already written by old 005, before the guard existed.
+INSERT INTO generation_state_repair_archive(source_table,source_id,repair_reason,source_row)
+VALUES ('roleplay_summaries','old-incomplete','fixture','{"legacyEvidence":"retained"}');
+UPDATE generation_state_repair_archive SET repair_reason='regenerate_inconsistent_state_v005'
+WHERE source_id='old-incomplete';
+'@
+  foreach ($rerun in 1..2) {
+    Invoke-Psql $historySchema (Join-Path $migrations '033_archive_integrity.sql') ''
+    Invoke-Psql $historySchema '' @'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM generation_state_repair_archive WHERE source_id='old-incomplete'
+    AND NOT source_row_complete AND source_row='{"legacyEvidence":"retained"}'::jsonb) THEN
+    RAISE EXCEPTION 'legacy incomplete evidence must be preserved and labelled';
+  END IF;
+  IF EXISTS (SELECT 1 FROM generation_state_repair_archive WHERE source_id='archive-full-nonnull'
+    AND NOT source_row_complete) THEN RAISE EXCEPTION 'complete archive incorrectly labelled'; END IF;
 END $$;
 '@
   }

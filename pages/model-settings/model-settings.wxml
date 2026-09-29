@@ -1,0 +1,35 @@
+<view class="page-shell model-settings-page">
+  <view class="settings-heading">
+    <text class="settings-title">LiteLLM 模型配置</text>
+    <text class="settings-description">设置你自己训练使用的模型网关，仅对当前账号生效。</text>
+  </view>
+  <view wx:if="{{loading}}" class="card settings-card">正在加载配置…</view>
+  <block wx:else>
+    <view class="card settings-card">
+      <view class="settings-status">
+        <text class="status-dot {{configured ? 'status-ready' : ''}}"></text>
+        <text>{{configured ? '已保存配置' : '尚未配置'}}</text>
+      </view>
+      <text class="settings-description">{{canEdit ? '修改将用于你后续的训练和报告生成，不影响其他账号。' : '请重新加载配置后继续。'}}</text>
+      <block wx:if="{{canEdit}}">
+        <text class="field-label">网关地址（Base URL）</text>
+        <input class="settings-input" value="{{baseUrl}}" data-field="baseUrl" bindinput="onInput" disabled="{{saving}}" maxlength="2048" placeholder="https://llm.example.com/v1" />
+        <text class="field-help">填写后端可访问的 LiteLLM 地址。本机网关可填 http://127.0.0.1:4000/v1。</text>
+        <text class="field-label">模型名称</text>
+        <input class="settings-input" value="{{model}}" data-field="model" bindinput="onInput" disabled="{{saving}}" maxlength="200" placeholder="例如 ds-primary" />
+        <text class="field-help">填写 LiteLLM 已配置的模型别名，区分大小写。</text>
+        <text class="field-label">API Key {{hasApiKey ? '· 已保存' : ''}}</text>
+        <input class="settings-input" value="{{apiKey}}" data-field="apiKey" bindinput="onInput" disabled="{{saving}}" password="{{true}}" maxlength="2048" placeholder="{{hasApiKey ? '留空保留原密钥；输入新密钥可替换' : '输入 LiteLLM 网关 API Key'}}" />
+        <text class="field-help">使用网关颁发的 API Key。密钥加密保存在后端，不会回显；更换网关地址需重新输入。</text>
+        <button class="primary-button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="saveSettings">保存配置</button>
+        <button wx:if="{{hasApiKey}}" class="clear-button" disabled="{{saving}}" bindtap="clearSettings">清除配置</button>
+      </block>
+      <text wx:elif="{{model}}" class="field-label">当前模型：{{model}}</text>
+    </view>
+    <view wx:if="{{error}}" class="settings-error">
+      <text>{{error}}</text>
+      <button class="reload-button" disabled="{{saving}}" bindtap="loadSettings">重新加载配置</button>
+    </view>
+    <view wx:if="{{notice}}" class="settings-notice"><text>{{notice}}</text></view>
+  </block>
+</view>

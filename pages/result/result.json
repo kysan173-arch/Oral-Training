@@ -3,6 +3,7 @@
   "navigationBarBackgroundColor": "#FFFFFF",
   "navigationBarTextStyle": "black",
   "usingComponents": {
-    "radar-chart": "/components/radar-chart/radar-chart"
+    "radar-chart": "/components/radar-chart/radar-chart",
+    "knowledge-report": "/components/knowledge-report/knowledge-report"
   }
 }

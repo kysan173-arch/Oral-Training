@@ -2,6 +2,14 @@
   <view class="loading-card card" wx:if="{{loading}}"><text>正在汇总训练数据…</text></view>
 
   <block wx:elif="{{isAdmin && supervisor}}">
+    <view class="knowledge-entry card" bindtap="goKnowledgeAdmin">
+      <view>
+        <text>知识与服务管理</text>
+        <text>维护模拟服务、专业知识、发布版本与生成任务</text>
+      </view>
+      <text>›</text>
+    </view>
+
     <!-- 头部 Banner：时间维度只作用于「团队洞察」模块 -->
     <view class="data-hero">
       <view class="hero-content">
@@ -47,7 +55,7 @@
       <view class="dimension-card card">
         <view class="dimension-row" wx:for="{{supervisor.dimensionAverages}}" wx:key="key">
           <view class="dimension-head"><text>{{item.name}}</text><text class="dim-score">{{item.valueText}}</text></view>
-          <view class="dimension-bar"><view class="dimension-fill fill-main" style="width:{{item.value}}%;"></view></view>
+          <view class="dimension-bar"><view class="dimension-fill fill-main" style="width:{{item.value === null ? 0 : item.value}}%;"></view></view>
         </view>
       </view>
 
@@ -250,10 +258,10 @@
           <text class="dim-name {{item.key === personal.weakestDimension.key ? 'dim-name-weak' : ''}}">{{item.name}}</text>
           <view class="dimension-head-right">
             <text class="dim-tag" wx:if="{{item.key === personal.weakestDimension.key}}">待提升</text>
-            <text class="dim-score">{{item.value}}</text>
+            <text class="dim-score">{{item.valueText}}</text>
           </view>
         </view>
-        <view class="dimension-bar"><view class="dimension-fill {{item.key === personal.weakestDimension.key ? 'fill-weak' : 'fill-main'}}" style="width:{{item.value}}%;"></view></view>
+        <view class="dimension-bar"><view class="dimension-fill {{item.key === personal.weakestDimension.key ? 'fill-weak' : 'fill-main'}}" style="width:{{item.value === null ? 0 : item.value}}%;"></view></view>
       </view>
       <view wx:if="{{personal.weaknessActionText}}" class="weakness-action-text">
         <text>{{personal.weaknessActionText}}</text>

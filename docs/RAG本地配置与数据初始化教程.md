@@ -2,7 +2,7 @@
 
 本文说明如何在 Windows 本机从零配置 Oral Training 的最小可用 RAG 环境，包括 PostgreSQL、数据库迁移、DeepSeek、后端构建、演示服务和知识初始化，以及微信小程序中的实际验证。
 
-当前 RAG 已接入“患者模拟”模式：学员扮演患者，AI 标准客服根据已发布的服务事实和专业知识回答，并返回可查看的证据。普通“客服训练”的 AI 患者初始化、RAG 知识核验评分和完整 RAG 复盘仍属于后续阶段。
+当前代码已接入两种模式：患者模拟使用有依据的 AI 客服；客服训练使用 AI 患者初始化、固定知识版本核验和 v2 报告。N07 新建开关默认关闭；已有 v2 会话继续按原快照运行。人工标注复核、DevTools 和真实模型验收未完成前，不等同正式发布。
 
 ## 1. 环境要求
 
@@ -223,6 +223,10 @@ $encodedPassword = [Uri]::EscapeDataString($appPassword)
 $env:DATABASE_URL = "postgresql://oral_training_app:$encodedPassword@127.0.0.1:5432/oral_training"
 $env:DEEPSEEK_API_KEY = '<DeepSeek API Key>'
 $env:DEEPSEEK_MODEL = 'deepseek-v4-flash'
+$env:RAG_ROLEPLAY_ENABLED = 'false'
+$env:RAG_PATIENT_ENABLED = 'false'
+$env:RAG_EVALUATION_V2_ENABLED = 'false'
+$env:MODEL_CALL_LIMIT = '0'
 $env:AUTH_MODE = 'demo'
 $env:PRODUCTION = 'false'
 $env:ALLOW_RUNTIME_API_KEY = 'false'
@@ -446,6 +450,8 @@ Remove-Item Env:PGPASSWORD
 
 在小程序中：
 
+演示新建前须完成文末 N07 的人工门槛与预算配置，并在独占测试后端开启相应开关；关闭状态会返回 RAG_NEW_SESSIONS_PAUSED。
+
 1. 打开训练场景；
 2. 切换为“患者模拟”；
 3. 选择已发布的“种植牙演示服务”；
@@ -570,3 +576,21 @@ Stop-Process -Id <PID>
 - 正式数据备份、迁移演练和回滚方案。
 
 不得把 `synthetic/unverified/demo` 数据描述为真实诊所价格、真实号源或正式医疗指南，也不得用演示知识替代医生诊断。
+
+
+## N07 分段开启与暂停
+
+后端启动时读取以下变量，修改后需重启。先完成 N06 人工复核及微信 DevTools 验收，再选择性开启：
+
+```dotenv
+RAG_ROLEPLAY_ENABLED=false
+RAG_PATIENT_ENABLED=false
+RAG_EVALUATION_V2_ENABLED=false
+MODEL_CALL_LIMIT=0
+```
+
+患者模拟只依赖 ROLEPLAY；客服训练的新建同时要求 PATIENT 和 EVALUATION_V2 为 true。只关闭 EVALUATION_V2 也会暂停新客服训练，不会停止旧会话的 v2 评分。旧消息、画像、null 报告与引用继续可读，旧会话不降级至 v1；关闭期间相同 clientSessionId 的已成功请求可以幂等重放，重新开始属于新建，返回 503 RAG_NEW_SESSIONS_PAUSED。无 serviceId 的旧 v1 入口保持兼容。
+
+受控联调用独占测试后端，设置明确的正数 MODEL_CALL_LIMIT（例如拟议的 16 次 HTTP 尝试，尚需确定批次预算），把 stderr 保留为审计文件。0 表示不限制，仅适用于正常运行配置；负数或非法数字导致启动失败。并发与重试共用上限，重启会清零，因此不得通过自动重启重复批次。达到上限返回 MODEL_CALL_BUDGET_EXHAUSTED，不自动发起队列重试。
+
+真实联调步骤、参数和回退演练见 [N07 联调与发布记录](rag-n07-validation.md)。不要用原 smoke.ps1 -WithModel 代替受控脚本：原脚本会遍历多个场景且不验证本次预算。
