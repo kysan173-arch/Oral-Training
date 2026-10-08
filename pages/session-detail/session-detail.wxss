@@ -81,3 +81,6 @@
 .loading-card { padding: 48rpx 32rpx; margin: 40rpx 24rpx; text-align: center; }
 .loading-title { display: block; color: var(--text-strong); font-size: 30rpx; font-weight: 600; }
 .retry-button { width: 100%; margin-top: 30rpx; }
+
+/* 从 master 并入：复盘依据文本此前缺块级排版，与「查看原始依据」按钮挤在一起 */
+.topic-text { display: block; margin-bottom: 14rpx; line-height: 1.6; }

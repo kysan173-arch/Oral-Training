@@ -27,7 +27,6 @@
       <view class="list-head">
         <view class="list-head-copy">
           <text class="list-title">训练场景</text>
-          <text class="list-caption">共 {{items.length}} 个 · 按序号排列 · 含已下线</text>
         </view>
         <view class="list-head-actions">
           <view class="list-ai-btn" bindtap="startAiDraft">AI 生成骨架</view>
@@ -40,7 +39,6 @@
       <view class="tpl-entry card" wx:if="{{templates.length}}" bindtap="openTemplates" hover-class="tpl-entry-hover">
         <view class="tpl-entry-copy">
           <text class="tpl-entry-title">按模板新建</text>
-          <text class="tpl-entry-desc">从 {{templates.length}} 个骨架里挑一个起点，改比重写快；机构红线仍需你填</text>
         </view>
         <text class="tpl-entry-arrow">›</text>
       </view>
@@ -100,11 +98,6 @@
       <view class="list-back-btn" bindtap="backToList">返回列表</view>
     </view>
 
-    <!-- 从模板新建时的来源说明：不替换占位符就上架，等于把骨架当成成品 -->
-    <view class="tpl-origin" wx:if="{{form.fromTemplateId}}">
-      <text class="tpl-origin-text">已按骨架模板预填。请替换所有【…】占位内容，并补上服务要点——机构红线是模板给不了的那一半。场景名称与标识需要你自己取。</text>
-    </view>
-
     <!-- AI 骨架来源说明。分工是这张提示词的全部设计：模型给教学方法论，主管给机构事实。
          所以这里的重点不是「AI 生成了什么」，而是「还差哪一半」。 -->
     <view class="tpl-origin ai-origin" wx:if="{{form.aiDraft}}">
@@ -115,19 +108,16 @@
     <view class="card form-section">
       <view class="form-section-head">
         <text class="form-section-title">基础信息</text>
-        <text class="form-section-hint">学员端会看到这里的内容</text>
       </view>
       <view class="form-row" wx:if="{{editingId === null}}">
         <view class="form-label-col">
           <text class="form-label">场景标识<text class="form-optional">（选填）</text></text>
-          <text class="form-helper">留空自动生成，无需填写；自定义仅限小写字母、数字、连字符，创建后不可修改。</text>
         </view>
         <input class="form-input form-input-text" placeholder="留空自动生成" value="{{form.id}}" bindinput="onFieldInput" data-field="id" />
       </view>
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">场景名称<text class="form-required">*</text></text>
-          <text class="form-helper">2-30 个字，示例：儿童牙科恐惧安抚</text>
         </view>
         <input class="form-input form-input-wide form-input-text" maxlength="30" placeholder="输入场景名称" value="{{form.name}}" bindinput="onFieldInput" data-field="name" />
       </view>
@@ -135,7 +125,6 @@
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">简介<text class="form-required">*</text></text>
-          <text class="form-label-hint">2-60 个字，一句话说明训练目标</text>
         </view>
         <textarea class="form-textarea" auto-height maxlength="60" placeholder="一句话说明这条场景练什么"
           value="{{form.summary}}" bindinput="onFieldInput" data-field="summary" />
@@ -155,7 +144,6 @@
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">训练重点<text class="form-required">*</text></text>
-          <text class="form-label-hint">每行一项，1-6 项，每项 ≤20 字</text>
         </view>
         <textarea class="form-textarea" auto-height placeholder="每行一项" value="{{form.focusText}}" bindinput="onFieldInput" data-field="focusText" />
       </view>
@@ -165,7 +153,6 @@
     <view class="card form-section">
       <view class="form-section-head">
         <text class="form-section-title">初始患者画像</text>
-        <text class="form-section-hint">训练开始时 AI 患者的基础设定</text>
       </view>
       <view class="form-row">
         <text class="form-label">年龄<text class="form-required">*</text></text>
@@ -181,7 +168,6 @@
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">描述<text class="form-required">*</text></text>
-          <text class="form-label-hint">2-60 个字</text>
         </view>
         <textarea class="form-textarea" auto-height maxlength="60" placeholder="如：缺失一颗后牙，平静但谨慎，主要担心价格"
           value="{{form.patientDescription}}" bindinput="onFieldInput" data-field="patientDescription" />
@@ -192,19 +178,16 @@
     <view class="card form-section">
       <view class="form-section-head">
         <text class="form-section-title">隐藏剧本</text>
-        <text class="form-section-hint">只有 AI 患者知道，训练中逐步透露</text>
       </view>
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">患者开场白<text class="form-required">*</text></text>
-          <text class="form-label-hint">5-200 字</text>
         </view>
         <textarea class="form-textarea" auto-height maxlength="200" placeholder="患者坐下来说的第一句原话" value="{{form.opening}}" bindinput="onFieldInput" data-field="opening" />
       </view>
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">隐藏顾虑<text class="form-required">*</text></text>
-          <text class="form-label-hint">逐条添加，最多 5 条，每条 ≤60 字</text>
         </view>
         <view class="chip-item" wx:for="{{form.hiddenItems}}" wx:key="*this">
           <text class="chip-index">{{index + 1}}</text>
@@ -223,7 +206,6 @@
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">初始情绪</text>
-          <text class="form-helper">开场时患者的外显情绪</text>
         </view>
         <picker range="{{emotionNames}}" value="{{emotionIndex}}" bindchange="onEmotionChange">
           <view class="form-picker">{{emotionNames[emotionIndex]}}</view>
@@ -232,21 +214,18 @@
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">情绪强度</text>
-          <text class="form-helper">-2（很强）到 2（缓和），0 为平稳</text>
         </view>
         <input class="form-input form-input-narrow" type="number" value="{{form.emotionLevel}}" bindinput="onEmotionLevelInput" />
       </view>
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">初始信任度</text>
-          <text class="form-helper">0（完全不信任）到 100（信任）</text>
         </view>
         <input class="form-input form-input-narrow" type="number" value="{{form.trustLevel}}" bindinput="onTrustLevelInput" />
       </view>
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">患者行为规则<text class="form-required">*</text></text>
-          <text class="form-label-hint">5-400 字</text>
         </view>
         <textarea class="form-textarea form-textarea-tall" auto-height maxlength="400"
           placeholder="按「若客服……应……」的格式逐条写"
@@ -261,9 +240,7 @@
     <view class="card form-section">
       <view class="form-section-head">
         <text class="form-section-title">复练变体池（可选）</text>
-        <text class="form-section-hint">同一场景，换一组隐藏顾虑</text>
       </view>
-      <text class="form-helper form-helper-warn" wx:if="{{form.variants.length < 2}}">还没凑够 2 组。学员复练到第三次很可能已经把隐藏顾虑背下来了，建议补到 2 组以上：同一场景骨架，换一组顾虑组合（仍要分情绪型/证据型/意愿型）、换一个松口条件。</text>
 
       <view class="variant-card" wx:for="{{form.variants}}" wx:for-item="group" wx:for-index="gi" wx:key="key">
         <view class="variant-head">
@@ -305,7 +282,6 @@
         <view class="form-row">
           <view class="form-label-col">
             <text class="form-label">进阶初始情绪</text>
-            <text class="form-helper">比标准档更强，开场即对抗</text>
           </view>
           <picker range="{{emotionNames}}" value="{{tierEmotionIndex}}" bindchange="onTierEmotionChange">
             <view class="form-picker">{{emotionNames[tierEmotionIndex]}}</view>
@@ -314,21 +290,18 @@
         <view class="form-row">
           <view class="form-label-col">
             <text class="form-label">进阶情绪强度</text>
-            <text class="form-helper">-2（很强）到 2（缓和）</text>
           </view>
           <input class="form-input form-input-narrow" type="number" value="{{form.tierEmotionLevel}}" bindinput="onTierEmotionLevelInput" />
         </view>
         <view class="form-row">
           <view class="form-label-col">
             <text class="form-label">进阶初始信任度</text>
-            <text class="form-helper">建议比标准档低 10-20</text>
           </view>
           <input class="form-input form-input-narrow" type="number" value="{{form.tierTrustLevel}}" bindinput="onTierTrustLevelInput" />
         </view>
         <view class="form-col">
           <view class="form-label-row">
             <text class="form-label">进阶开场白</text>
-            <text class="form-label-hint">每行一句，最多 3 句，每句 5-200 字</text>
           </view>
           <textarea class="form-textarea form-textarea-tall" auto-height maxlength="620"
             placeholder="留空则沿用标准档开场白——但患者第一句话和普通档一样，学员会以为档位没生效。"
@@ -345,23 +318,19 @@
     <view class="card form-section">
       <view class="form-section-head">
         <text class="form-section-title">服务要点与快捷提问</text>
-        <text class="form-section-hint">机构红线必须先写清，否则这条场景测不出合规</text>
       </view>
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">服务要点</text>
-          <text class="form-label-hint">每行一条，最多 6 条，每条 ≤100 字</text>
         </view>
         <textarea class="form-textarea form-textarea-tall" auto-height maxlength="700"
           placeholder="每条一行。写清这条场景里客服不能承诺什么、该转交给谁、多久答复。"
           value="{{form.serviceGuidanceText}}" bindinput="onFieldInput" data-field="serviceGuidanceText" />
         <text class="form-helper form-helper-example">示例：不得承诺具体金额或退费；不得承诺疗效或疼痛程度；涉及治疗判断时说明需由医生结合检查评估。</text>
-        <text class="form-helper form-helper-warn" wx:if="{{!form.serviceGuidanceText}}">留空的话学员拿不到红线，这条场景的合规分只会虚高，也无法用于弱项识别。</text>
       </view>
       <view class="form-col">
         <view class="form-label-row">
           <text class="form-label">快捷提问</text>
-          <text class="form-label-hint">每行一条，最多 6 条，每条 ≤60 字</text>
         </view>
         <textarea class="form-textarea" auto-height maxlength="500"
           placeholder="每条一行。学员在这条场景里可以怎么问，作为训练时的提问提示。"
@@ -375,7 +344,6 @@
     <view class="card form-section">
       <view class="form-section-head">
         <text class="form-section-title">维度侧重</text>
-        <text class="form-section-hint">决定会被哪种弱项推荐选中</text>
       </view>
       <block wx:if="{{dimensionCatalog.length}}">
         <text class="form-helper">按这条场景实际练到什么，给 1-3 个维度填权重即可（填 3 和填 0.6 等价，服务端按比例折算）。</text>
@@ -384,7 +352,6 @@
           <input class="form-input form-input-narrow" type="digit" placeholder="0"
             value="{{item.value}}" data-key="{{item.key}}" bindinput="onDimensionWeightInput" />
         </view>
-        <text class="form-helper" wx:if="{{dimensionPreviewText}}">{{dimensionPreviewText}}</text>
         <text class="form-helper form-helper-warn" wx:if="{{dimensionEmpty}}">全部为空 = 未标注：这条场景不会出现在任何维度的弱项推荐里（不是排在最后，是直接不出现）。</text>
       </block>
       <text class="form-helper form-helper-warn" wx:else>维度目录加载失败，本区暂不可编辑。保存不会改动现有侧重。</text>
@@ -398,14 +365,12 @@
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">训练轮数</text>
-          <text class="form-helper">1-10 轮</text>
         </view>
         <input class="form-input form-input-narrow" type="number" value="{{form.maxRounds}}" bindinput="onFieldInput" data-field="maxRounds" />
       </view>
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">排序号<text class="form-required">*</text></text>
-          <text class="form-helper">1-999，控制学员端展示顺序，需全表唯一</text>
           <text class="form-helper" wx:if="{{sortFreeText}}">{{sortFreeText}}</text>
           <text class="form-helper form-helper-warn" wx:if="{{sortConflictText}}">{{sortConflictText}}</text>
         </view>
@@ -414,7 +379,6 @@
       <view class="form-row">
         <view class="form-label-col">
           <text class="form-label">创建后立即上架</text>
-          <text class="form-helper">关闭则先保存为已下线，稍后可再上架</text>
         </view>
         <switch checked="{{form.isActive}}" bindchange="onActiveChange" />
       </view>

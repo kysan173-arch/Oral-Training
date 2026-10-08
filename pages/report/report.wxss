@@ -76,3 +76,9 @@
 .inline-feedback view { flex: 1; padding: 14rpx; border-radius: 12rpx; background: #f8f9fd; }
 .inline-feedback text { display: block; margin-top: 6rpx; color: #778098; font-size: 22rpx; line-height: 1.5; }
 .inline-feedback .inline-label { margin-top: 0; font-size: 22rpx; font-weight: 600; }
+/* 从 master 并入：此前 .conversation-row / .positive / .improve 全项目未定义，静默退化
+   （对话行无间距、反馈标签无颜色区分）。补上，与 session-detail 的语义一致。 */
+.conversation-row { margin-bottom: 16rpx; }
+.conversation-row:last-child { margin-bottom: 0; }
+.positive { color: var(--color-success); }
+.improve { color: var(--color-warning); }

@@ -21,3 +21,4 @@
 .result-note { margin-top: 12rpx; color: #53815f; font-size: 21rpx; }
 .error { margin-top: 10rpx; color: #b25f5f; font-size: 21rpx; line-height: 1.5; }
 .retry-button { width: 180rpx; height: 58rpx; margin: 16rpx 0 0; color: #5966bd; background: #edf0ff; font-size: 21rpx; line-height: 58rpx; }
+.job-card { display: block; }

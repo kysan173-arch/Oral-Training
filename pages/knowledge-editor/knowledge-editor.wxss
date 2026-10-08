@@ -26,3 +26,4 @@ textarea { min-height: 126rpx; padding: 16rpx 18rpx; }
 .action { width: 100%; height: 76rpx; margin-top: 14rpx; border: 0; font-size: 25rpx; }
 .publish-button { color: #fff; background: #4c9a68; border-radius: 40rpx; }
 .archive-button { color: #a25d5d; background: #faeeee; border-radius: 40rpx; }
+.section { display: block; }

@@ -157,7 +157,6 @@
 .tpl-entry-hover { opacity: 0.85; }
 .tpl-entry-copy { flex: 1; min-width: 0; }
 .tpl-entry-title { display: block; font-size: 28rpx; font-weight: 600; color: var(--text-strong); }
-.tpl-entry-desc { display: block; margin-top: 6rpx; font-size: 22rpx; line-height: 1.6; color: var(--text-secondary); }
 .tpl-entry-arrow { flex-shrink: 0; font-size: 32rpx; color: var(--text-secondary); }
 
 /* ── 从模板新建时的来源提示（表单页顶部） ── */

@@ -194,7 +194,7 @@ Page({
         draftVersion: result.draftVersion,
         form: Object.assign({}, this.data.form, result.payload || payload)
       });
-      if (!silent) wx.showToast({ title: '草稿已保存', icon: 'success' });
+      if (!silent) wx.showToast({ title: '已保存', icon: 'success' });
       return result;
     }).catch(error => {
       this.setData({ saving: false });
@@ -242,10 +242,7 @@ Page({
       this.setData({ job, generating: !['succeeded', 'dead'].includes(job.status) });
       if (job.status === 'succeeded') {
         if (job.resultApplied) this.loadDraft();
-        wx.showToast({
-          title: job.resultApplied ? '候选已写入草稿' : '新编辑已保留，候选未覆盖',
-          icon: 'none'
-        });
+        api.showCenterNotice({ title: job.resultApplied ? '候选已写入草稿' : '新编辑已保留，候选未覆盖' });
         return;
       }
       if (job.status === 'dead') return;
@@ -271,7 +268,7 @@ Page({
         this.saveDraft(true).then(result => api.publishAdminService(
           this.data.serviceId, result.draftVersion, requestKey('service-publish')
         )).then(() => {
-          wx.showToast({ title: '已发布新版本', icon: 'success' });
+          wx.showToast({ title: '已发布', icon: 'success' });
           this.loadDraft();
         }).catch(() => {});
       }
@@ -292,7 +289,7 @@ Page({
         if (!modal.confirm) return;
         api.archiveAdminService(this.data.serviceId).then(() => {
           this.setData({ status: 'archived' });
-          wx.showToast({ title: '服务已归档', icon: 'success' });
+          wx.showToast({ title: '已归档', icon: 'success' });
         }).catch(error => wx.showToast({ title: error.message || '归档失败', icon: 'none' }));
       }
     });

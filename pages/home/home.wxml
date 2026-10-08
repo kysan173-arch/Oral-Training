@@ -76,7 +76,6 @@
       <block wx:if="{{workbench.coachingTotal}}">
         <view class="wb-head">
           <text class="wb-title">待辅导成员</text>
-          <text class="wb-caption">按严重度排序</text>
         </view>
         <view class="wb-card card">
           <view class="wb-row" wx:for="{{workbench.coachingMembers}}" wx:key="id" bindtap="openWorkbenchMember" data-id="{{item.id}}" hover-class="wb-row-hover">
