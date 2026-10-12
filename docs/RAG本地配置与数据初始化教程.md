@@ -1,596 +1,344 @@
 # RAG 本地配置与数据初始化教程
 
-本文说明如何在 Windows 本机从零配置 Oral Training 的最小可用 RAG 环境，包括 PostgreSQL、数据库迁移、DeepSeek、后端构建、演示服务和知识初始化，以及微信小程序中的实际验证。
+本文对应支持 EmbeddingGemma 2 和迁移 `036_embeddinggemma_cache.sql` 的版本，更新于 2026-10-12。从仓库根目录执行命令；Windows 使用 PowerShell，Linux 使用 Bash。示例数据库为本机专用开发库 `oral_training`。
 
-当前代码已接入两种模式：患者模拟使用有依据的 AI 客服；客服训练使用 AI 患者初始化、固定知识版本核验和 v2 报告。N07 新建开关默认关闭；已有 v2 会话继续按原快照运行。人工标注复核、DevTools 和真实模型验收未完成前，不等同正式发布。
-
-## 1. 环境要求
-
-建议使用以下环境：
-
-- Windows 10 或 Windows 11；
-- Visual Studio 2022，安装“使用 C++ 的桌面开发”；
-- CMake；
-- PostgreSQL 18，包括 `psql.exe`、`pg_dump.exe` 和客户端开发库；
-- 微信开发者工具；
-- 可用的 DeepSeek API Key。
-
-本文假定：
+## 1. 先了解要启动什么
 
 ```text
-仓库目录：D:\myproject\Oral-Training-codex-mvp
-PostgreSQL：C:\Program Files\PostgreSQL\18
-数据库地址：127.0.0.1:5432
-后端地址：http://127.0.0.1:8080/api
+微信小程序 → Crow 后端（8080）→ PostgreSQL（5432）
+                         ├→ EmbeddingGemma 2（8765）：知识向量与语义检索
+                         └→ 个人模型网关：患者台词、客服回复、评分和复盘
 ```
 
-如果本机目录不同，请替换命令中的对应路径。
+后端、数据库、Embedding 服务分别启动。个人生成模型在小程序「我的 → LiteLLM 模型配置」中设置；Embedding 模型由后端统一配置。后端 `/api/health` 正常，并不证明 Embedding 或个人生成模型可用，需要分别验证。
 
-## 2. 凭据安全
+推荐顺序：数据库与迁移 → 构建和离线检查 → Embedding 服务 → 后端 → 测试数据 → 小程序个人模型 → 两种训练验收。
 
-不要把数据库密码、DeepSeek Key、Bearer Token 或本地 `.env` 文件提交到 Git。
+| 环境 | 要求 |
+|---|---|
+| Windows 后端 | Windows 10/11、Visual Studio 2022 C++ 桌面开发、CMake 3.20+、PostgreSQL 16/18 客户端及开发库 |
+| Linux 后端 | C++17 编译器、CMake 3.20+、OpenSSL/libpq 开发库、PostgreSQL；本文命令按 Ubuntu 24.04 / PostgreSQL 16 编写 |
+| 检查与数据脚本 | Python 3.12、Node.js。Windows 的 Python 若缺时区数据库需安装 `tzdata` |
+| 检索模型 | 独立 Python 环境与模型权重；安装、启动见 [EmbeddingGemma 教程](embeddinggemma-setup.md) |
+| 小程序 | 微信开发者工具；Linux 后端可供另一台开发机通过受控网络入口使用 |
+| 生成模型 | 已部署、支持 Chat Completions 和 JSON object 输出的模型网关，以及本账号的访问 Key |
 
-后端目前不会自动读取 `.env.example`。可以在仓库外创建本地配置文件：
+凭据、本地 `backend.env`、数据库备份、模型主密钥及生成文件都不要提交到 Git。
 
-```text
-C:\Users\<你的用户名>\oral-training-local.env
+## 2. 创建数据库，保留已有数据
+
+Linux 可安装构建依赖和数据库客户端/服务：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y cmake g++ libssl-dev libpq-dev postgresql-16 python3 nodejs
+sudo -u postgres psql
 ```
 
-内容示例：
-
-```dotenv
-POSTGRES_ADMIN_USER=postgres
-POSTGRES_ADMIN_PASSWORD=<PostgreSQL 管理员密码>
-ORAL_TRAINING_APP_PASSWORD=<应用数据库用户密码>
-DEEPSEEK_API_KEY=<DeepSeek API Key>
-```
-
-此文件只用于本地开发，不得复制到仓库。后面的命令也可以直接手工设置环境变量。
-
-## 3. 检查 PostgreSQL
-
-打开 PowerShell：
-
-```powershell
-Get-Service postgresql-x64-18
-Test-NetConnection 127.0.0.1 -Port 5432
-Test-Path 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
-```
-
-期望结果：
-
-- PostgreSQL 服务状态为 `Running`；
-- 5432 端口测试成功；
-- `psql.exe` 存在。
-
-如果服务未运行，以管理员身份执行：
-
-```powershell
-Start-Service postgresql-x64-18
-```
-
-## 4. 创建数据库和应用角色
-
-先连接管理数据库：
+Windows 安装 PostgreSQL 后连接管理数据库：
 
 ```powershell
 $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
-& $psql -h 127.0.0.1 -p 5432 -U postgres -d postgres
+& $psql -h 127.0.0.1 -U postgres -d postgres
 ```
 
-`psql` 会提示输入管理员密码。进入交互终端后，可以检查现有对象：
+在 `psql` 内先查询；**仅在不存在时**创建对应对象。用 `\password` 交互设置密码，不把真实密码写进 SQL 文件：
 
 ```sql
 SELECT datname FROM pg_database WHERE datname = 'oral_training';
 SELECT rolname FROM pg_roles WHERE rolname = 'oral_training_app';
-```
-
-仅在对象不存在时创建。把示例密码替换成强密码：
-
-```sql
-CREATE ROLE oral_training_app LOGIN PASSWORD '<应用数据库用户密码>';
-CREATE DATABASE oral_training OWNER oral_training_app;
+-- 仅首次创建时执行下面三行。
+CREATE ROLE oral_training_app LOGIN;
+\password oral_training_app
+CREATE DATABASE oral_training OWNER oral_training_app ENCODING 'UTF8';
 \q
 ```
 
-如果数据库已经存在，不要删除或重建。先执行下一节的备份，再补迁移。
+升级已有库前停止后端并备份。下面的 `pg_dump` 使用密码提示，备份放在仓库外；检查退出码和文件大小后再迁移。
 
-## 5. 升级已有数据库前备份
-
-对已有数据的数据库，先创建完整备份：
+```bash
+mkdir -p "$HOME/oral-training-backups"
+pg_dump -h 127.0.0.1 -U oral_training_app -W -d oral_training -Fc \
+  -f "$HOME/oral-training-backups/before-rag-$(date +%Y%m%d-%H%M%S).dump"
+```
 
 ```powershell
-$env:PGPASSWORD = '<PostgreSQL 管理员密码>'
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$backupDir = 'C:\Users\<你的用户名>\oral-training-backups'
+$backupDir = Join-Path $HOME 'oral-training-backups'
 New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 & 'C:\Program Files\PostgreSQL\18\bin\pg_dump.exe' `
-  -h 127.0.0.1 -p 5432 -U postgres -d oral_training `
-  -Fc -f "$backupDir\oral_training-before-rag-$stamp.dump"
-
-Remove-Item Env:PGPASSWORD
+  -h 127.0.0.1 -U oral_training_app -W -d oral_training -Fc `
+  -f "$backupDir\before-rag-$stamp.dump"
+if ($LASTEXITCODE -ne 0) { throw 'Backup failed' }
 ```
 
-确认命令退出码为 0，并检查备份文件不是空文件：
+如旧库表属于其他账号，改用具备完整读取权限的备份账号。不要删除或重建已有库。
 
-```powershell
-Get-ChildItem $backupDir | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+## 3. 配置后端并执行迁移
+
+首次复制模板；已有配置直接编辑，不覆盖：
+
+```bash
+test -f backend/backend.env || cp backend/.env.example backend/backend.env
+chmod 600 backend/backend.env
 ```
 
-备份保存在仓库外，不要加入 Git。
+```powershell
+if (-not (Test-Path backend/backend.env)) {
+  Copy-Item backend/.env.example backend/backend.env
+}
+```
 
-## 6. 执行数据库迁移
+编辑 `backend/backend.env`，将占位符替换为本机配置：
 
-执行迁移前停止正在运行的后端，避免旧二进制在迁移期间继续写数据库。
+```dotenv
+DATABASE_URL=postgresql://oral_training_app:<URL编码后的密码>@127.0.0.1:5432/oral_training
+PRODUCTION=false
+AUTH_MODE=demo
+BIND_ADDRESS=127.0.0.1
+PORT=8080
+DATABASE_POOL_SIZE=12
+DATABASE_POOL_WAIT_MS=3000
+AI_WORKER_CONCURRENCY=1
+KNOWLEDGE_WORKER_CONCURRENCY=1
+MODEL_CALL_LIMIT=0
 
-在仓库根目录打开 PowerShell：
+RAG_EMBEDDING_BASE_URL=http://127.0.0.1:8765/v1
+RAG_EMBEDDING_MODEL=embeddinggemma-2
+RAG_EMBEDDING_DIMENSIONS=768
+RAG_EMBEDDING_REVISION=1
+RAG_EMBEDDING_BATCH_SIZE=16
+RAG_EMBEDDING_TIMEOUT_SECONDS=30
+RAG_EMBEDDING_MIN_SIMILARITY=0.65
+```
+
+密码中的 `@`、`:`、`/`、`#`、`%` 等必须做 URI 编码，可用 Python `urllib.parse.quote(password, safe='')` 或 PowerShell `[Uri]::EscapeDataString($password)`；不要在终端输出实际连接字符串。文件只接受 `KEY=VALUE`，不执行 `$HOME`、`~` 或命令替换，路径应写绝对路径。
+
+### 3.1 Linux 主密钥与迁移
+
+第一次部署创建个人模型 Key 的加密主密钥；已有主密钥直接使用，恢复机器时应恢复原文件：
+
+```bash
+python3 backend/linux_runtime.py --init-key "$HOME/.config/oral-training/model.key"
+```
+
+在 `backend/backend.env` 增加 `MODEL_KEY_FILE=/home/<用户名>/.config/oral-training/model.key`，替换用户名。文件必须是运行账号所属、权限 `0600` 的 32 字节普通文件；单独备份，不能在每次启动时重新生成。
+
+从配置文件加载连接再迁移，避免把含密码的 URL 放到命令参数中：
+
+```bash
+python3 -B - <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, 'backend')
+from linux_runtime import load_env
+from migrate import migrate
+env = load_env(Path('backend/backend.env'))
+migrate(env['DATABASE_URL'], psql='/usr/lib/postgresql/16/bin/psql')
+PY
+```
+
+### 3.2 Windows 加载配置与迁移
+
+在仓库根目录的 PowerShell 中加载配置；后续启动也使用同一窗口：
 
 ```powershell
-Set-Location 'D:\myproject\Oral-Training-codex-mvp'
+foreach ($line in Get-Content backend/backend.env -Encoding UTF8) {
+  $line = $line.Trim()
+  if (-not $line -or $line.StartsWith('#')) { continue }
+  $parts = $line.Split('=', 2)
+  if ($parts.Count -ne 2) { throw 'Invalid backend.env line' }
+  Set-Item -Path "Env:$($parts[0].Trim())" -Value $parts[1].Trim()
+}
 $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
-$env:PGPASSWORD = '<PostgreSQL 管理员密码>'
-
-Get-ChildItem 'backend\migrations\[0-9][0-9][0-9]_*.sql' |
-  Sort-Object Name |
-  ForEach-Object {
-    Write-Host "Applying $($_.Name)"
-    & $psql -h 127.0.0.1 -p 5432 -U postgres `
-      -d oral_training -v ON_ERROR_STOP=1 -f $_.FullName
-    if ($LASTEXITCODE -ne 0) {
-      throw "Migration failed: $($_.Name)"
-    }
-  }
-
-Remove-Item Env:PGPASSWORD
+& backend/migrate.ps1 -DatabaseUrl $env:DATABASE_URL -PsqlPath $psql
+if ($LASTEXITCODE -ne 0) { throw 'Migration failed' }
 ```
 
-必须按编号执行到：
+Windows 使用 DPAPI 加密个人模型 Key，不需要 `MODEL_KEY_FILE`。密文绑定运行账号和机器；更换机器/账号或从 Windows 转到 Linux 后，应在个人配置页重新保存 Key。
 
-- `010_knowledge_catalog.sql`：服务目录、知识目录、版本、检索块、管理任务与审计；
-- `011_roleplay_rag_mvp.sql`：患者模拟的 RAG 上下文、证据 trace 和版本快照。
+### 3.3 迁移核对与权限
 
-`preflight_reliability.sql` 是检查脚本，不属于编号迁移，不要把它当作新 schema 迁移。
+统一迁移入口按编号执行全部 SQL、记录 SHA-256，重跑跳过已完成文件，并为旧迁移 005 安装完整源行归档保护。不要再次用循环直接重放全部 SQL，也不要修改已经发布的迁移。
 
-### 6.1 授予应用角色权限
+旧库没有 `schema_migrations` 时，先核实最后成功的迁移编号，再使用 Python `migrate(..., baseline=N)` 或 PowerShell `-BaselineThrough N`。例如**仅在确认 001–035 全部成功应用后**才能用 35；该参数只是登记历史，不能跳过缺失或失败的步骤。
 
-如果迁移由 `postgres` 管理员执行，新建表默认属于管理员，需要为应用角色授权：
+通过 `psql` 检查：
 
-```powershell
-$env:PGPASSWORD = '<PostgreSQL 管理员密码>'
+```sql
+SELECT name, baselined FROM schema_migrations ORDER BY name;
+SELECT to_regclass('knowledge_chunk_embeddings');
+```
 
-@'
+应至少完成到 `036_embeddinggemma_cache.sql`。它新增向量缓存表，**不需要 pgvector**。034–035 对应个人模型配置，032–033 对应患者初始化和归档完整性。
+
+新库推荐由数据库所有者执行迁移。若历史表由管理员创建，需要由对象所有者或管理员给应用角色授权：
+
+```sql
 GRANT CONNECT ON DATABASE oral_training TO oral_training_app;
 GRANT USAGE ON SCHEMA public TO oral_training_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO oral_training_app;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO oral_training_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO oral_training_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO oral_training_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO oral_training_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT EXECUTE ON FUNCTIONS TO oral_training_app;
-'@ | & $psql -h 127.0.0.1 -p 5432 -U postgres `
-  -d oral_training -v ON_ERROR_STOP=1
-
-Remove-Item Env:PGPASSWORD
 ```
 
-检查关键表：
+之后统一迁移执行账号，或为实际建表账号设置相应 `ALTER DEFAULT PRIVILEGES`。只授予数据库 CONNECT 并不会授予新表访问权限。
 
-```powershell
-& $psql -h 127.0.0.1 -p 5432 -U postgres -d oral_training `
-  -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;"
+## 4. 构建与离线检查
+
+Linux：
+
+```bash
+cmake -S backend -B backend/build -DCMAKE_BUILD_TYPE=Release
+cmake --build backend/build -j 2
+ctest --test-dir backend/build --output-on-failure
+python3 -B backend/tests/litellm_integration_test.py --pg-bin /usr/lib/postgresql/16/bin
+python3 -B backend/tests/run_embedding_checks.py
 ```
 
-应能看到 `clinic_services`、`service_revisions`、`knowledge_entries`、`knowledge_revisions`、`knowledge_chunks`、`training_contexts` 和 `rag_traces` 等表。
-
-## 7. 编译和测试后端
-
-在仓库根目录执行：
+Windows：
 
 ```powershell
-cmake -S backend -B backend\build-msvc `
-  -G 'Visual Studio 17 2022' -A x64 `
+cmake -S backend -B backend/build-msvc -G 'Visual Studio 17 2022' -A x64 `
   -DPostgreSQL_ROOT='C:/Program Files/PostgreSQL/18'
-
-cmake --build backend\build-msvc --config Release
+cmake --build backend/build-msvc --config Release
+ctest --test-dir backend/build-msvc -C Release --output-on-failure
+& backend/tests/static_checks.ps1
+python backend/tests/litellm_integration_test.py --pg-bin 'C:/Program Files/PostgreSQL/18/bin'
 ```
 
-构建成功后，可执行文件位于：
+首次 CMake 配置需联网获取固定版本的依赖。未设置测试数据库时部分 CTest 数据库用例会跳过；上述集成入口会建立临时 PostgreSQL 集群和模拟网关，覆盖数据库与 HTTP 流程，不调用真实生成模型，也不清理开发库。
 
-```text
-backend\build-msvc\Release\oral_training_backend.exe
+## 5. 启动并验证 EmbeddingGemma 2
+
+按照 [EmbeddingGemma 2 配置教程](embeddinggemma-setup.md) 完成安装或复用已有服务，至少验证：
+
+1. `GET http://127.0.0.1:8765/health` 成功。
+2. `POST /v1/embeddings` 的 `task=query` 和 `task=document` 都返回 `model=embeddinggemma-2`，每条向量为 768 维有限数值。
+3. 后端配置的 Base URL 是 `http://127.0.0.1:8765/v1`，不包含末尾 `/embeddings`。
+
+8765 是**后端所在机器**的地址。Windows 后端访问 Linux 上的服务时，不能直接把 Linux 的局域网 HTTP 地址填进去：后端只允许回环 HTTP 或远程 HTTPS。可建立受控 SSH 本地转发，再使用上述回环 URL；详见模型教程。
+
+## 6. 启动后端并检查健康状态
+
+Linux 启动器自动读取 `backend/backend.env`：
+
+```bash
+./backend/start-backend.sh
 ```
 
-执行离线测试：
+Windows 在第 3.2 节已加载配置的窗口启动：
 
 ```powershell
-ctest --test-dir backend\build-msvc -C Release --output-on-failure
-```
-
-默认没有配置专用测试数据库时，`database_feature` 可能显示 `Skipped`。不要为了运行数据库测试而清理或复用正式开发数据库。
-
-## 8. 设置运行环境并启动后端
-
-数据库密码包含 `@`、`:`、`/`、`#` 等 URI 特殊字符时必须编码。以下命令会自动编码密码：
-
-```powershell
-$appPassword = '<应用数据库用户密码>'
-$encodedPassword = [Uri]::EscapeDataString($appPassword)
-
-$env:DATABASE_URL = "postgresql://oral_training_app:$encodedPassword@127.0.0.1:5432/oral_training"
-$env:DEEPSEEK_API_KEY = '<DeepSeek API Key>'
-$env:DEEPSEEK_MODEL = 'deepseek-v4-flash'
-$env:RAG_ROLEPLAY_ENABLED = 'false'
-$env:RAG_PATIENT_ENABLED = 'false'
-$env:RAG_EVALUATION_V2_ENABLED = 'false'
-$env:MODEL_CALL_LIMIT = '0'
-$env:AUTH_MODE = 'demo'
-$env:PRODUCTION = 'false'
-$env:ALLOW_RUNTIME_API_KEY = 'false'
-$env:BIND_ADDRESS = '127.0.0.1'
-$env:PORT = '8080'
-$env:DATABASE_POOL_SIZE = '12'
-$env:AI_WORKER_CONCURRENCY = '1'
-$env:KNOWLEDGE_WORKER_CONCURRENCY = '1'
 $env:PATH = 'C:\Program Files\PostgreSQL\18\bin;' + $env:PATH
-
-& '.\backend\build-msvc\Release\oral_training_backend.exe'
+& backend/build-msvc/Release/oral_training_backend.exe
 ```
 
-必须在设置变量的同一个 PowerShell 窗口中启动后端。看到以下信息表示 HTTP 服务已监听：
+直接运行二进制不会读取 `.env` 文件。另开终端检查：
 
-```text
-Oral training API listening at http://127.0.0.1:8080/api
+```bash
+curl --fail --noproxy '*' http://127.0.0.1:8080/api/health
 ```
-
-不要关闭这个终端。按 `Ctrl+C` 可以停止后端。
-
-## 9. 检查健康状态
-
-另开一个 PowerShell：
 
 ```powershell
-$health = Invoke-RestMethod 'http://127.0.0.1:8080/api/health'
-$health.data | Format-List
+(Invoke-RestMethod 'http://127.0.0.1:8080/api/health').data | Format-List
 ```
 
-正常状态至少应满足：
+预期 `ready=true`、`database=true`、`workerRunning=true`，两个 Worker 的数据库退避计数为 0。`modelConfigured=null`、`modelConfigurationScope=personal` 是正常值；个人模型未配置不会让整个后端不就绪。
 
-```text
-status                          healthy
-ready                           True
-database                        True
-modelConfigured                 True
-workerRunning                   True
-knowledgeWorkerThreads          1
-workersInDatabaseBackoff        0
-knowledgeWorkersInDatabaseBackoff 0
+当前版本两种服务训练默认启用，旧 `RAG_ROLEPLAY_ENABLED`、`RAG_PATIENT_ENABLED`、`RAG_EVALUATION_V2_ENABLED` 不再读取。`MODEL_CALL_LIMIT=0` 表示不限制生成模型调用次数；受控真实测试应设置正数上限，重试也计入，上限随进程重启归零。达到上限时返回 `MODEL_CALL_BUDGET_EXHAUSTED`。
+
+## 7. 导入完整本地测试数据
+
+先保持数据库、后端、Embedding 服务运行，确认配置为 `PRODUCTION=false`、`AUTH_MODE=demo`。`psql` 应在 PATH 中。脚本读取同一份后端配置，数据库必须是回环地址，并与 `--database` 完全一致。
+
+Linux 从仓库根目录执行：
+
+```bash
+# 只读预检，不写入。
+python3 -B backend/seed_local_test_data.py --database oral_training
+# 确认预检显示的数据库无误后导入。
+python3 -B backend/seed_local_test_data.py --database oral_training --apply
 ```
 
-如果后端监听成功但健康检查返回 HTTP 503，应查看响应正文和后端日志。常见原因包括 DeepSeek Key 缺失、数据库连接失败、应用角色没有新表权限，或 Worker 正在数据库退避。
+Windows 对应使用 `python`；先确保 PostgreSQL 的 bin 目录在 PATH 中。若遇到 `ZoneInfoNotFoundError`，执行 `python -m pip install tzdata` 后重试。数据脚本本次实测平台为 Linux。
 
-## 10. 启动微信小程序
+`--as-of YYYY-MM-DD` 可固定历史和计划日期，省略时使用上海当天日期。可通过 `--env-file <配置文件>` 指定配置；已有后端必须使用同一数据库和端口。
 
-使用微信开发者工具打开仓库根目录。开发环境 API 已配置为：
+| 样本 | 内容 |
+|---|---|
+| 账号 | 1 名测试主管、3 名有历史学员、1 名空历史学员；原演示账号获得测试历史，原角色和模型配置保留 |
+| 服务 | 6 个：4 个可用已发布服务、1 个草稿、1 个下架样本；现有 19 个场景有服务映射 |
+| 知识 | 20 篇已发布合成知识、1 篇草稿、32 个正文分块，并预热实际向量缓存 |
+| 两种训练 | 新增 40 段客服训练、16 段患者模拟；进行中、完成、放弃、失败重试、证据不足等状态 |
+| 报告与引用 | 32 份评分状态记录、8 份复盘状态记录；服务版本、锁定资料、可查看的引用 |
+| 学习与主管页 | 5 份计划、12 条指派、28 次签到、8 条收藏、8 条错题掌握记录 |
 
-```text
-http://127.0.0.1:8080/api
-```
+脚本可重复运行，保留已有样本和后续训练进度，不清库、不复制个人模型密钥。重新指定日期也不会重写已经存在的历史。服务和知识走正常发布 API，保留不可变版本和审计记录。导入会调用本地 Embedding，但不会调用生成模型，也不创建待自动消费模型的任务。失败样本由用户主动重试后才进入正常任务流程。
 
-配置位置是 `utils/config.js`。本地调试时，如开发者工具阻止本地 HTTP 请求，可以开启“不校验合法域名、web-view、TLS 版本及 HTTPS 证书”。
+输出保存在 `backend/build/local-test-seed-result.json`。查看 `existingDataPreserved`、`apiChecks`、`embeddings` 和计数；在没有其他用户同时发起生成请求时，`modelCallsBefore` 与 `modelCallsAfter` 应一致。脚本只撤销自己生成的临时登录令牌。中途失败时先解决日志中的原因再重跑，无需清理整库。
 
-小程序启动后会调用 `wx.login`，然后通过 `/api/auth/wechat` 获取服务端 Bearer Token。`AUTH_MODE=demo` 时不会访问真实微信登录服务，而是登录保留的 demo 用户。
+所有价格、患者对话和报告均为合成测试资料，报告标记为 `synthetic-local-fixture-v1`，不能当作真实模型质量评估或真实诊所资料。
 
-## 11. 将 demo 用户切换为管理员
+## 8. 小程序和个人生成模型
 
-知识管理接口只允许 `admin`。本地初始化前，将 demo 用户临时切换为管理员：
+用微信开发者工具打开仓库根目录。开发 API 地址在 `utils/config.js`，本机默认为 `http://127.0.0.1:8080/api`。模拟器本地调试可关闭合法域名校验；手机上的 `127.0.0.1` 指手机本身，真机需配置可访问的 HTTPS 入口。
 
-```powershell
-$env:PGPASSWORD = '<PostgreSQL 管理员密码>'
+`AUTH_MODE=demo` 仍由后端签发 Bearer Token，不访问真实微信登录服务。导入数据后，在「我的 → 切换演示账号」选择 `Test 主管` 或 `Test 学员·…`。主管用于知识管理和聚合看板，学员用于训练；不需要反复修改原 demo 用户的角色。
 
-& $psql -h 127.0.0.1 -p 5432 -U postgres -d oral_training `
-  -v ON_ERROR_STOP=1 `
-  -c "UPDATE users SET role='admin' WHERE id='demo-user-001' AND status='active';"
+需要实时对话的每个账号分别进入「我的 → LiteLLM 模型配置」并保存：
 
-Remove-Item Env:PGPASSWORD
-```
+| 字段 | 填写方式 |
+|---|---|
+| Base URL | 自己已部署的兼容网关，如 `https://llm.example.com/v1`；后端追加 `/chat/completions` |
+| 模型 | 网关中已配置的 `model_name`，如 `ds-primary`；必须是该网关实际提供的别名 |
+| API Key | 该网关给本账号的 Key；不要把 Embedding 地址或其他人的 Key 填进来 |
 
-重新编译或重新进入小程序，使客户端获得包含新角色的新 Token。进入：
+保存后无需重启后端。后台报告/复盘使用会话所属账号的配置；知识草稿生成使用任务创建者的配置。新测试账号没有复制别人的密钥，阅读合成历史无需 Key，继续实时训练需自行配置。
 
-```text
-我的 → 管理后台 → 知识管理
-```
+`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`ALLOW_RUNTIME_API_KEY` 已停用，旧上传密钥接口返回 410。网关部署由其管理员完成，更多说明见 [后端个人模型配置](../backend/README.md#环境变量)。
 
-管理员不能使用学员训练接口。数据初始化完成后必须按第 14 节恢复为学员。
+## 9. 发布知识与验收 RAG
 
-## 12. 创建并发布演示服务
+测试数据已经提供服务和知识。手工增加资料时，使用主管账号进入「管理后台 → 知识管理」：
 
-在“知识管理”中选择新建服务。推荐使用一套自洽的演示参数，例如：
+1. 创建服务，录入结构化价格、包含/不包含项目、到诊时长、疗程、复诊和适用场景；金额单位是分。
+2. 保存并发布服务版本，保持服务为 `active`。草稿或下架服务不会出现在新训练选择中。
+3. 创建知识草稿，绑定本数据库的正确 `serviceId`；通用知识使用相应通用范围。
+4. 填写来源和适用条件，合成内容保持 `synthetic/unverified/demo`，不伪造真实出处。
+5. 保存草稿，检索预览通过后发布不可变版本。长正文可产生多个分块。
 
-```text
-服务名称：种植牙演示服务
-分类：implant
-资料来源：synthetic
-价格类型：range
-最低价格：890000 分
-最高价格：1230000 分
-价格单位：per_tooth
-单次到诊：30～90 minute
-完整疗程：3～8 month
-早期复诊间隔：10～14 day
-```
+仓库的 [12 条种植牙测试知识](rag-data/患者模拟_RAG测试知识库_具体参数版.json) 可作为手工输入参考；管理页面不提供 JSON 批量上传。服务价格和知识里的价格须自洽，不能混用另一套示例参数。
 
-金额字段使用人民币“分”：
+先预览「种植牙报价包含哪些项目？」和「隐形矫正需要多久？」，检查正确服务下的依据。没有相关资料可返回空结果；模型断连应报 `RAG_UNAVAILABLE`，不能伪装成正常无命中。
 
-```text
-890000 = 8900 元
-1230000 = 12300 元
-```
+随后覆盖以下流程，真实模型测试只在离线检查通过后受控执行：
 
-可以配置：
+- **患者模拟**：选已发布服务，追问费用、包含项目、疗程和预约，查看依据，结束并复盘。
+- **客服训练**：创建患者并完成初始化，多轮回答患者问题，结束后轮询评分报告，确认依据和证据不足状态。
+- **恢复与历史**：离开进行中会话后恢复；查看两种历史、失败样本、旧报告及引用。
+- **边界与隔离**：学员不能管理知识，也看不到其他学员私有记录；资料未知时不编造价格、实时号源或诊断。
 
-- 包含：种植体、基台、牙冠、种植手术、局部麻醉、基础口腔检查；
-- 不包含：CBCT、植骨或骨增量、临时修复、术后药品；
-- 场景：`implant-basic`、`post-treatment-discomfort`、`price-comparison`；
-- 预约：使用 `consultation_hours`，明确具体时段需人工确认；
-- `isLiveAvailability`：必须为 `false`，不能把演示数据描述成实时号源。
+新会话锁定服务 revision、知识时间点和 revision manifest。发布新知识后，用新会话验证；旧会话继续使用原快照。向量缓存按模型、地址、维度、版本等隔离；更换同名权重或服务侧提示前缀时应更新 `RAG_EMBEDDING_REVISION`，见 [缓存说明](embeddinggemma-setup.md#5-向量缓存与换模型)。
 
-保存草稿后点击“发布不可变版本”。只有发布后的服务才能被新训练会话选择。发布版本不可原地修改；后续修改会生成新版本。
+## 10. 常见问题
 
-记下页面或接口返回的服务 ID，格式类似：
+| 现象 | 优先检查 |
+|---|---|
+| 8080 连接失败 | 构建是否成功、启动日志、端口占用、是否正确加载配置；Linux 主密钥路径/权限 |
+| `/api/health` 为 503 | `database`、Worker 退避计数、连接池、应用账号表权限 |
+| `modelConfigured=null` | 正常，公共健康接口不泄露个人配置；去当前账号模型页面检查 |
+| `MODEL_NOT_CONFIGURED` | 当前账号未保存自己的生成模型配置 |
+| `MODEL_CONFIG_UNREADABLE` | DPAPI 运行身份改变或 Linux 主密钥丢失/更换；恢复原密钥或重新保存个人 Key |
+| `RAG_UNAVAILABLE` | 8765 是否运行、Base URL 是否误填完整接口、模型 ID/维度是否匹配、036 是否应用 |
+| 预览为空或串服务 | 发布状态、`scope/serviceId`、资料适用期与会话快照；检查语义内容及阈值，不能靠无限降阈值通过测试 |
+| 没有管理入口 | 当前是否主管账号；换账号后重新取得 Token |
+| 没有服务 | 服务是否 active/已发布、是否映射目标场景，是否使用学员账号 |
+| 导入脚本拒绝运行 | 非生产/demo 配置、准确数据库名、回环 URI、迁移账本和健康状态；不得绕过检查向生产库导入 |
+| 修改 env 不生效 | 重启后端；Embedding 的 `service.env` 改动还需单独重启 Embedding 服务 |
 
-```text
-svc-xxxxxxxxxxxxxxxxxxxxxxxx
-```
+## 11. 重启与部署边界
 
-## 13. 初始化专业知识
+前台后端按 `Ctrl+C` 停止，再运行对应启动步骤。Linux Embedding 的启停/日志见模型教程；长期后端部署可参考 `backend/systemd/oral-training.service`，配置与主密钥放仓库外。
 
-仓库提供测试资料：
-
-```text
-docs\rag-data\患者模拟_RAG测试知识库_具体参数版.json
-```
-
-该文件包含12条 `synthetic/unverified/demo` 种植牙知识。当前管理页面不支持直接上传 JSON 批量导入，因此有两种方式：
-
-1. 在知识编辑页面逐条复制；
-2. 由开发脚本逐条调用管理 API 创建和发布。
-
-每条知识的核心字段是：
-
-```json
-{
-  "topic": "implant-indications",
-  "scope": "service",
-  "serviceId": "svc-xxxxxxxxxxxxxxxxxxxxxxxx",
-  "title": "种植牙适用情况",
-  "body": "知识正文",
-  "metadata": {
-    "origin": "synthetic",
-    "verification": "unverified",
-    "sourceTitle": "",
-    "sourceUrl": null,
-    "sourceLocator": "",
-    "applicability": "适用说明",
-    "trainingScope": "demo",
-    "aliases": ["患者常见问法"]
-  }
-}
-```
-
-导入前检查：
-
-- 所有 `scope=service` 的条目必须使用当前数据库中真实存在的服务 ID；
-- 不要直接沿用另一台机器或另一数据库生成的服务 ID；
-- `synthetic` 内容只能标记为 `unverified/demo`；
-- 模拟内容不得伪造来源标题、章节或 URL；
-- 价格、时长、包含项目应与已发布服务事实一致；
-- 服务专属的术后知识不应错误设为 `general`。
-
-逐条录入时，先保存草稿，在“检索预览”中输入测试问题，确认能够命中，再点击“发布不可变版本”。发布时系统会生成 `zh-bigram-v1` 检索块。
-
-### 13.1 推荐预览问题
-
-```text
-种一颗牙多少钱，包含哪些项目？
-我这种情况能不能做种植牙？
-做种植牙需要多长时间？
-是不是每个人都需要植骨？
-种植以后疼痛和出血正常吗？
-做完以后多久需要复诊？
-```
-
-预览结果应返回 `retrievalStatus=ok`，并至少包含一个 evidence。
-
-### 13.2 数据库验收
-
-```sql
-SELECT COUNT(*) AS published_services
-FROM clinic_services
-WHERE current_revision_id IS NOT NULL;
-
-SELECT COUNT(*) AS published_knowledge
-FROM knowledge_entries
-WHERE current_revision_id IS NOT NULL;
-
-SELECT COUNT(*) AS knowledge_chunks
-FROM knowledge_chunks;
-```
-
-使用本文12条测试知识时，正常结果应至少为：
-
-```text
-published_services >= 1
-published_knowledge >= 12
-knowledge_chunks >= 12
-```
-
-正文长度超过单块目标时，一条知识会生成多个 chunk，因此 chunk 数通常高于知识条目数。
-
-## 14. 恢复 demo 学员角色
-
-完成管理操作后执行：
-
-```powershell
-$env:PGPASSWORD = '<PostgreSQL 管理员密码>'
-
-& $psql -h 127.0.0.1 -p 5432 -U postgres -d oral_training `
-  -v ON_ERROR_STOP=1 `
-  -c "UPDATE users SET role='learner' WHERE id='demo-user-001' AND status='active';"
-
-Remove-Item Env:PGPASSWORD
-```
-
-重新进入小程序，确保获取新的学员 Token。
-
-## 15. 执行一次完整 RAG 验证
-
-在小程序中：
-
-演示新建前须完成文末 N07 的人工门槛与预算配置，并在独占测试后端开启相应开关；关闭状态会返回 RAG_NEW_SESSIONS_PAUSED。
-
-1. 打开训练场景；
-2. 切换为“患者模拟”；
-3. 选择已发布的“种植牙演示服务”；
-4. 选择“种植牙基础咨询”；
-5. 开始模拟；
-6. 输入“种一颗牙多少钱，费用里包含哪些项目？”；
-7. 检查 AI 回复是否保留价格范围、单位、包含项目和附加费用条件；
-8. 点击“查看依据”，确认引用来自当前服务版本和种植牙知识；
-9. 点击“结束并复盘”；
-10. 在“历史记录 → 患者模拟”中检查会话和复盘。
-
-成功回复通常应满足：
-
-- `answerStatus=answered` 或资料不完整时为 `partial`；
-- 至少有一个 citation；
-- citation 中的 `traceId` 能读取 evidence；
-- 不引用其他服务的资料；
-- 资料未知时明确说明未知，不自由编造；
-- 数据库或检索故障返回可重试错误，而不是伪装成“没有资料”。
-
-## 16. 版本和生效规则
-
-服务与知识发布后只影响新创建的 RAG 会话。会话创建时会锁定：
-
-- 服务 revision；
-- `knowledgeAsOf`；
-- 完整知识 revision manifest；
-- tokenizer 和提示词版本。
-
-已经开始的患者模拟不会自动切换到新发布的资料。修改并发布知识后，应新建一场患者模拟验证新版本。这样可以保证同一场训练前后口径一致，并让历史证据可追溯。
-
-## 17. 常见问题
-
-### 17.1 后端没有监听 8080
-
-```powershell
-Test-NetConnection 127.0.0.1 -Port 8080
-Get-Process oral_training_backend -ErrorAction SilentlyContinue
-```
-
-检查启动终端中的首个错误。常见原因是 `DATABASE_URL` 无效、端口被占用或运行库路径缺失。
-
-### 17.2 健康检查为 503
-
-检查 `/api/health` 返回内容：
-
-- `modelConfigured=false`：未在当前后端进程中设置 DeepSeek Key；
-- `database=false`：连接字符串、密码或数据库服务异常；
-- Worker database backoff 大于 0：应用角色通常缺少表权限；
-- `knowledgeWorkerThreads=0`：知识 Worker 没有成功启动。
-
-### 17.3 日志显示“对表 ai_jobs 权限不够”
-
-重新执行第 6.1 节的授权。迁移由管理员执行时，不能只修改应用账号密码而忽略新表权限。
-
-### 17.4 管理入口不显示
-
-确认数据库中的 demo 用户角色为 `admin`，然后重新登录以获取新 Token。旧 Token 中仍可能携带旧角色信息。
-
-### 17.5 管理员不能开始患者模拟
-
-这是权限隔离的预期行为。按照第 14 节将 demo 用户恢复为 `learner` 并重新登录。
-
-### 17.6 看不到服务或场景
-
-检查：
-
-- 服务是否已经发布；
-- 服务是否处于 `active`；
-- `scenarioIds` 是否包含目标场景；
-- 当前是否使用 learner Token；
-- 数据库是否已执行迁移 010 和 011。
-
-### 17.7 知识预览没有命中
-
-检查：
-
-- 草稿是否已保存；
-- 问题关键词是否出现在标题、正文、适用范围或 aliases；
-- `scope/serviceId` 是否匹配；
-- `trainingScope` 是否为当前演示使用的 `demo`；
-- 发布后是否创建了 `knowledge_chunks`。
-
-### 17.8 更新知识后旧会话仍使用旧内容
-
-这是会话快照机制，不是缓存错误。结束旧会话并创建新会话。
-
-### 17.9 回复出现价格冲突
-
-结构化服务事实是价格和时间的主来源。检查知识正文是否复制了另一版价格，或是否错误关联了其他服务 ID。修订后发布新版本并新建会话，不要修改已发布 revision。
-
-## 18. 停止和重新启动
-
-启动终端中按 `Ctrl+C` 可正常停止后端。也可以查找进程：
-
-```powershell
-Get-NetTCPConnection -LocalPort 8080 -State Listen |
-  Select-Object LocalAddress, LocalPort, OwningProcess
-```
-
-只在确认 PID 属于 `oral_training_backend` 后停止：
-
-```powershell
-Get-Process -Id <PID>
-Stop-Process -Id <PID>
-```
-
-重新启动时，需要重新设置该 PowerShell 进程的 `DATABASE_URL`、`DEEPSEEK_API_KEY` 等环境变量，然后运行 Release 可执行文件。
-
-## 19. 上线前边界
-
-本文配置仅适用于本地 demo。生产环境至少还需要：
-
-- `AUTH_MODE=wechat`；
-- 正确的微信 App ID 和 Secret；
-- HTTPS 反向代理；
-- 精确 CORS Origin；
-- 禁止运行时上传 API Key；
-- 可信代理 IP；
-- 请求 ID 和结构化日志；
-- 经人工审核的 `reviewed/verified` 知识；
-- 正式数据备份、迁移演练和回滚方案。
-
-不得把 `synthetic/unverified/demo` 数据描述为真实诊所价格、真实号源或正式医疗指南，也不得用演示知识替代医生诊断。
-
-
-## N07 分段开启与暂停
-
-后端启动时读取以下变量，修改后需重启。先完成 N06 人工复核及微信 DevTools 验收，再选择性开启：
-
-```dotenv
-RAG_ROLEPLAY_ENABLED=false
-RAG_PATIENT_ENABLED=false
-RAG_EVALUATION_V2_ENABLED=false
-MODEL_CALL_LIMIT=0
-```
-
-患者模拟只依赖 ROLEPLAY；客服训练的新建同时要求 PATIENT 和 EVALUATION_V2 为 true。只关闭 EVALUATION_V2 也会暂停新客服训练，不会停止旧会话的 v2 评分。旧消息、画像、null 报告与引用继续可读，旧会话不降级至 v1；关闭期间相同 clientSessionId 的已成功请求可以幂等重放，重新开始属于新建，返回 503 RAG_NEW_SESSIONS_PAUSED。无 serviceId 的旧 v1 入口保持兼容。
-
-受控联调用独占测试后端，设置明确的正数 MODEL_CALL_LIMIT（例如拟议的 16 次 HTTP 尝试，尚需确定批次预算），把 stderr 保留为审计文件。0 表示不限制，仅适用于正常运行配置；负数或非法数字导致启动失败。并发与重试共用上限，重启会清零，因此不得通过自动重启重复批次。达到上限返回 MODEL_CALL_BUDGET_EXHAUSTED，不自动发起队列重试。
-
-真实联调步骤、参数和回退演练见 [N07 联调与发布记录](rag-n07-validation.md)。不要用原 smoke.ps1 -WithModel 代替受控脚本：原脚本会遍历多个场景且不验证本次预算。
+本教程使用本地 demo。生产部署还需真实微信登录、HTTPS 反向代理、精确 CORS、可信代理地址、独立受限数据库账号、备份恢复演练和经审核资料。不要把测试样本导入生产库。

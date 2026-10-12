@@ -5,7 +5,7 @@ $exampleFile = Join-Path $root 'backend.env.example'
 
 if (-not (Test-Path -LiteralPath $envFile)) {
   Copy-Item -LiteralPath $exampleFile -Destination $envFile
-  Write-Host 'Created backend.env. Edit the database password and DeepSeek API Key, then run start-backend.cmd again.' -ForegroundColor Yellow
+  Write-Host 'Created backend.env. Edit the database and embedding settings, then run start-backend.cmd again. Configure your personal model in the Mini Program.' -ForegroundColor Yellow
   exit 1
 }
 
