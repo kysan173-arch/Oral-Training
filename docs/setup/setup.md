@@ -11,4 +11,4 @@
 
 旧教程中的 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`ALLOW_RUNTIME_API_KEY` 和三个 `RAG_*_ENABLED` 开关已不生效。公共健康检查的 `modelConfigured=null` 表示模型配置属于个人账号，不代表所有用户都没配模型。
 
-开发与离线回归命令见 [后端说明](../backend/README.md)，请求格式见 [API 文档](api.md)。
+开发与离线回归命令见 [后端说明](../../backend/README.md)，请求格式见 [API 文档](../architecture/api.md)。

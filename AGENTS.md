@@ -10,7 +10,7 @@ This repository contains a WeChat Mini Program and a Windows C++ backend for den
 - `backend/src/identity.h`: WeChat/demo login, bearer sessions, roles and rate limits.
 - `backend/migrations/`: ordered, additive PostgreSQL migrations. Never edit a migration that has already shipped; add the next numbered file.
 - `backend/tests/`: CTest validation, static checks, migration/database tests and controlled smoke tests.
-- `docs/api.md`: current public API contract.
+- `docs/architecture/api.md`: current public API contract.
 
 DeepSeek request URL, request parameters, prompts, response parsing and the existing model-call retry loop are compatibility-sensitive. Do not change them unless a task explicitly requires a model contract change.
 

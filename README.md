@@ -4,14 +4,15 @@
 
 ## 配置教程
 
-首次运行请从 [RAG 本地配置与数据初始化教程](docs/RAG本地配置与数据初始化教程.md) 开始，按顺序完成数据库迁移、构建、模型服务、后端启动和测试数据导入。
+首次运行请从 [RAG 本地配置与数据初始化教程](docs/setup/RAG本地配置与数据初始化教程.md) 开始，按顺序完成数据库迁移、构建、模型服务、后端启动和测试数据导入。
 
 | 文档 | 内容 |
 |---|---|
-| [完整本地配置教程](docs/RAG本地配置与数据初始化教程.md) | Windows/Linux、备份与迁移、个人模型配置、完整测试数据、两种训练验收 |
-| [EmbeddingGemma 2 配置教程](docs/embeddinggemma-setup.md) | 已有服务检查、新机器安装、文本 API、向量验证、缓存版本及跨机连接 |
+| [完整本地配置教程](docs/setup/RAG本地配置与数据初始化教程.md) | Windows/Linux、备份与迁移、个人模型配置、完整测试数据、两种训练验收 |
+| [EmbeddingGemma 2 配置教程](docs/setup/embeddinggemma-setup.md) | 已有服务检查、新机器安装、文本 API、向量验证、缓存版本及跨机连接 |
 | [后端开发说明](backend/README.md) | 构建、集成测试、可靠 Worker、个人密钥存储和部署 |
-| [API 文档](docs/api.md) | 请求、响应、鉴权和错误码 |
+| [API 文档](docs/architecture/api.md) | 请求、响应、鉴权和错误码 |
+| [文档导航](docs/README.md) | 产品规划、配置教程、技术设计、训练规范、验证记录与成果汇报 |
 
 ## 运行架构
 

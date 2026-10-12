@@ -718,7 +718,7 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 **历史兼容**：不重写原始历史数据。旧 MD5 上下文须先校验原摘要，然后只在读取投影中按原服务 revision/manifest 计算规范化 SHA-256。旧 trace 的版本拼接串须与同一上下文相符，投影保留 `legacyManifestHash` 并返回规范化摘要。旧消息中仅有 traceId/evidenceId 的 citation 仍可读取；新回复、复盘及其引用使用规范化 SHA-256。没有服务范围元数据的旧 passage 不纳入新复盘，旧结构化事实经校验后可复用。旧 v2 自由文本复盘通过安全投影读取；v1 复盘不变。
 
-验证范围与未运行项见 [N01 验证记录](rag-n01-validation.md)。
+验证范围与未运行项见 [N01 验证记录](../validation/rag-n01-validation.md)。
 
 ## N02：客服训练异步患者初始化
 

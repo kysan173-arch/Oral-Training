@@ -1,6 +1,6 @@
 # Oral Training Backend
 
-首次部署见 [完整本地配置与数据初始化教程](../docs/RAG本地配置与数据初始化教程.md)；独立检索模型的安装、启动与诊断见 [EmbeddingGemma 2 配置教程](../docs/embeddinggemma-setup.md)。
+首次部署见 [完整本地配置与数据初始化教程](../docs/setup/RAG本地配置与数据初始化教程.md)；独立检索模型的安装、启动与诊断见 [EmbeddingGemma 2 配置教程](../docs/setup/embeddinggemma-setup.md)。
 
 单个 Windows / Linux 程序同时运行 Crow API 和可恢复 AI Worker。PostgreSQL 保存用户隔离的会话、消息租约、评分/复盘和任务尝试；生成模型按账号路由，独立 EmbeddingGemma 服务负责知识向量化。
 
@@ -192,7 +192,7 @@ ctest --test-dir build-msvc -C Release --output-on-failure
 .\tests\concurrency.ps1 -DatabaseUrl 'postgresql://.../oral_training_test'
 ```
 
-接口和错误码见 `../docs/api.md`。
+接口和错误码见 `../docs/architecture/api.md`。
 
 对话自然度用例：运行 service_reply_probe.exe --cases backend/tests/service_reply_cases.json。每批最多 12 个经过检查的模拟问题、每题最多两次 HTTP 尝试，保留原始回复和最终回复供人工逐项评估；字符数达标不等于自然度合格。
 
@@ -273,7 +273,7 @@ python3 -B backend/tests/evaluate_rag_conversations.py backend/build/rag-dev-01.
 
 当前客服提示词使用 `service-reply-rag-v8`，历史消息以带角色的 JSON 数据传入，避免模型模仿
 旧客服纯文字回复。检索使用 `embeddinggemma-context-cosine-v4`，只用患者问题补全追问上下文，
-不把历史客服输出当作依据。详见 [多轮迭代记录](../docs/rag-multiturn-validation.md)。
+不把历史客服输出当作依据。详见 [多轮迭代记录](../docs/validation/rag-multiturn-validation.md)。
 
 ### DeepSeek 双角色回归
 
@@ -296,4 +296,4 @@ python3 backend/tests/run_embedding_checks.py --live --provider deepseek \
 每次运行额外保存 `.suite.json` 测试集快照，生成和评分使用同一份快照，避免运行中编辑测试集
 改变评分依据。当前患者提示词为 `patient-reply-rag-v4`，检索为
 `embeddinggemma-context-cosine-v4`（增加陈述式初诊时长的字段召回）。实测结果及限制见
-[DeepSeek 双角色验证](../docs/deepseek-dual-role-validation.md)。
+[DeepSeek 双角色验证](../docs/validation/deepseek-dual-role-validation.md)。
