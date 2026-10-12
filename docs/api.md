@@ -322,6 +322,8 @@ Content-Type: application/json
 
 `recommendedPhrases` 从逐轮点评和违规项的已验证改写派生；`learningMistakes` 从违规项和未被违规项覆盖的改进项派生。它们不接受客户端写入，也不触发额外模型调用。已有历史报告在读取时兼容地从原有点评/违规字段提取可用项。
 
+`recommendedPhrases[].reason` 必须**脱离学员原话也能读懂**：它描述 `csReply` 这句推荐表达本身的沟通策略或规避的合规风险，不复述或批评学员当时说了什么。话术锦囊只展示「患者关切 / 推荐表达 / reason」三段，不呈现被点评的学员原话；若 `reason` 写成「回复无意义数字，未进行任何有效沟通」这类针对原话的点评，读者无从得知被点评的是哪句话，会显得割裂。评分提示词对此有显式约束。历史报告中的既有 `reason` 不受影响，新生成的报告才遵循。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/learning/phrases` | 本人话术锦囊；支持 `search`、`scenarioId`、`favoritesOnly`、`limit`（1—50） |
@@ -378,6 +380,8 @@ Content-Type: application/json
 ```
 
 `recommendedPhrases` 从逐轮点评和违规项的已验证改写派生；`learningMistakes` 从违规项和未被违规项覆盖的改进项派生。它们不接受客户端写入，也不触发额外模型调用。已有历史报告在读取时兼容地从原有点评/违规字段提取可用项。
+
+`recommendedPhrases[].reason` 必须**脱离学员原话也能读懂**：它描述 `csReply` 这句推荐表达本身的沟通策略或规避的合规风险，不复述或批评学员当时说了什么。话术锦囊只展示「患者关切 / 推荐表达 / reason」三段，不呈现被点评的学员原话；若 `reason` 写成「回复无意义数字，未进行任何有效沟通」这类针对原话的点评，读者无从得知被点评的是哪句话，会显得割裂。评分提示词对此有显式约束。历史报告中的既有 `reason` 不受影响，新生成的报告才遵循。
 
 分类筛选（`sceneCategory`）在 SQL 里、在 `limit` 截断之前生效。若改成前端按每条话术的 `category` 字段筛，会退化为「先截断再筛选」：训练量大的学员，50 条上限被单一分类占满后，其他分类会显示出少于实际的结果。
 
@@ -757,7 +761,9 @@ N03 替代上述 N02 阶段限制：个人模型网关支持患者初始化和�
 
 `GET /api/sessions/:id/evaluation` 对 `contextVersion=2` 的会话返回 `schemaVersion=2` 报告。知识核验固定使用会话 manifest，沟通四维单独评价；总分固定权重为知识 25%、合规 25%、共情 20%、需求 20%、礼仪 10%。知识无法核验时 `knowledgeAccuracy/totalScore/passed` 为 `null`，不重分配权重；`knowledgeAssessment.nullReason` 解释原因。
 
-新增报告字段：`serviceRevisionId`、`knowledgeManifestHash`、`knowledgeAssessment`（status、knowledgeAccuracy、assessableCount、unassessableCount、coverage、rubricVersion、nullReason）、`knowledgeChecks`。每条核验包含原始轮次和原句、verdict、reason、evidenceRefs、evidenceTexts、recommendedRewrite、scoringUnit、correctedInLaterRound。未回答项单独保留患者问题，不伪造客服原句。`learningMistakes` 只包含有引用、仍计分且未被后续纠正的 contradicted 项。
+新增报告字段：`serviceRevisionId`、`knowledgeManifestHash`、`knowledgeAssessment`（status、knowledgeAccuracy、assessableCount、unassessableCount、coverage、rubricVersion、nullReason）、`knowledgeChecks`、`deferredTopics`。每条核验包含原始轮次和原句、verdict、reason、evidenceRefs、evidenceTexts、recommendedRewrite、scoringUnit、correctedInLaterRound。未回答项单独保留患者问题，不伪造客服原句。`learningMistakes` 只包含有引用、仍计分且未被后续纠正的 contradicted 项。
+
+`verdict` 取值：`supported` / `contradicted` / `incomplete` / `evidence_missing` / `conflicted` / `not_applicable` / `deferred`。`deferred` 表示客服明确说明会核实后回复、或把话题转为费用构成说明且未编造数值——属合规应答，给0.5 分（与 `incomplete` 同档，既不惩罚正确行为也不给满分），并将该字段名记入 `deferredTopics`，用于让患者侧停止重复追问同一诉求。缺少这一步时，合规的「我确认后回复您」与敷衍的回答在患者眼里没有区别，会导致每轮都回到价格话题。`deferredTopics` 与 `knowledgeChecks` 同源，发布前的证据重放校验会比对它。
 
 `GET /api/sessions/:id/evidence/:traceId` 需要会话所有者身份，且会话已完成、报告 ready。仅返回当前报告实际引用的公开 claim_verification trace，响应为 `{traceId, manifestHash, citations:[{text,citation}]}`。不存在、其他用户、其他会话、初始化/患者回复私有 trace、未被当前报告引用的 trace 均返回 `404 EVIDENCE_NOT_FOUND`。
 

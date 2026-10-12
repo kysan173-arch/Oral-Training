@@ -22,7 +22,6 @@
   <view class="initialization-card" wx:if="{{loadError}}"><text>{{loadError}}</text><button bindtap="loadSession">刷新会话</button></view>
   <view class="initialization-card" wx:if="{{session.status === 'abandoned'}}">本次训练已放弃，请返回训练列表开始新会话。</view>
   <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" show-scrollbar="false">
-    <view class="chat-intro">本次训练最多{{maxRounds}}轮，含 {{hintLimit}} 次提示（每轮限 1 次）。辅助内容只提供沟通框架与合规边界，不替代医生进行诊断或方案判断。</view>
     <view class="message-item {{item.role === 'user' ? 'user-message' : 'patient-message'}}" wx:for="{{messages}}" wx:key="id">
       <view class="message-avatar {{item.role === 'user' ? 'avatar-user' : 'avatar-patient'}}">{{item.role === 'user' ? '客' : '患'}}</view>
       <view class="message-body">
@@ -69,6 +68,6 @@
     <button class="send-button" bindtap="sendMessage" disabled="{{interactionBlocked || sending || finishing}}">{{sending ? '发送中' : '发送'}}</button>
   </view>
   <view class="training-footer">
-    <button class="finish-button {{sending || finishing ? 'is-disabled' : ''}}" bindtap="exitTraining" aria-role="button" aria-label="结束训练，可选择生成报告、暂存并退出或强制结束" disabled="{{sending || finishing}}">{{finishing ? '生成报告中…' : (currentRound < 1 ? '结束训练（可暂存或强制结束）' : '结束训练')}}</button>
+    <button class="finish-button {{sending || finishing ? 'is-disabled' : ''}}" bindtap="exitTraining" aria-role="button" aria-label="结束训练，可选择生成报告、暂存并退出或强制结束" disabled="{{sending || finishing}}">{{finishing ? '生成报告中…' : '结束训练'}}</button>
   </view>
 </view>

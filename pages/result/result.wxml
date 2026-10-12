@@ -11,14 +11,11 @@
     </view>
     <text class="score-caption">{{evaluation.hasTotalScore ? '本次训练总分' : '知识依据不足，暂不形成综合分'}}</text>
     <view class="level-badge {{level.key}}"><text>{{level.name}}</text></view>
-    <text class="result-summary">{{level.note}}</text>
     <text class="result-time">{{session.rangeText}}</text>
   </view>
 
-  <view class="notice-box"><text class="notice-icon">i</text><text>自动评分基于固定 MVP 评分量表，仅用于演示和辅助反馈，不替代专家审核或正式考核。</text></view>
-
-  <view class="section-title-row"><text class="section-title">五维能力</text><text class="section-caption">按完整对话综合评价</text></view>
-  <view class="radar-card card" wx:if="{{dimensions.length >= 3}}"><radar-chart dimensions="{{dimensions}}" canvas-width="300" canvas-height="260"></radar-chart><text>仅展示本次报告中具备评分的维度。</text></view>
+  <view class="section-title-row"><text class="section-title">五维能力</text></view>
+  <view class="radar-card card" wx:if="{{dimensions.length >= 3}}"><radar-chart dimensions="{{dimensions}}" canvas-width="300" canvas-height="260"></radar-chart></view>
   <view class="dimensions-card card">
     <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
       <view class="dimension-head">
@@ -58,6 +55,7 @@
       </view>
     </view>
     <view class="fold-more" wx:if="{{!violationsExpanded && evaluation.violations.length > visibleViolations.length}}" bindtap="toggleViolations">还有 {{evaluation.violations.length - visibleViolations.length}} 项违规，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{violationsExpanded}}" bindtap="toggleViolations">收起严重违规 ▴</view>
   </block>
 
   <view class="section-title-row">
@@ -84,27 +82,20 @@
       </view>
     </view>
     <view class="fold-more" wx:if="{{!roundCommentsExpanded && evaluation.roundComments.length > visibleRoundComments.length}}" bindtap="toggleRoundComments">还有 {{evaluation.roundComments.length - visibleRoundComments.length}} 个回合点评，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{roundCommentsExpanded}}" bindtap="toggleRoundComments">收起关键轮次点评 ▴</view>
   </block>
 
-  <view class="section-title-row"><text class="section-title">本次优秀话术</text><text class="section-caption">已自动收进话术锦囊</text></view>
+  <view class="section-title-row"><text class="section-title">本次优秀话术</text></view>
   <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>本次暂无评优话术，完成更多训练后可在话术锦囊中回顾。</text></view>
-  <view class="phrase-card card" wx:for="{{evaluation.recommendedPhrases}}" wx:key="phraseKey">
-    <text class="phrase-patient" wx:if="{{item.patientSays}}">患者：{{item.patientSays}}</text>
-    <text class="phrase-copy">{{item.csReply}}</text>
-    <text class="phrase-reason">{{item.reason}}</text>
-  </view>
-
-  <view class="result-actions">
-    <button wx:if="{{nextScenario}}" class="primary-button result-btn-main" bindtap="startNextScenario">下一场：{{nextScenario.name}}</button>
-    <button wx:else class="primary-button result-btn-main" bindtap="restartTraining">重新训练</button>
-    <button class="secondary-button result-btn-sub" bindtap="viewMistakes">错题复练</button>
-    <button class="secondary-button result-btn-sub" bindtap="viewPhrases">查看话术锦囊</button>
-    <button class="secondary-button result-btn-sub" bindtap="viewProfile">查看个人成长</button>
-    <view class="result-link-row">
-      <text class="text-button" bindtap="viewHistory">历史记录</text>
+  <block wx:else>
+    <view class="phrase-card card" wx:for="{{visiblePhrases}}" wx:key="phraseKey">
+      <text class="phrase-patient" wx:if="{{item.patientSays}}">患者：{{item.patientSays}}</text>
+      <text class="phrase-copy">{{item.csReply}}</text>
+      <text class="phrase-reason">{{item.reason}}</text>
     </view>
-  </view>
-  <text class="disclaimer">AI模拟训练，不构成医疗建议。</text>
+    <view class="fold-more" wx:if="{{!phrasesExpanded && evaluation.recommendedPhrases.length > visiblePhrases.length}}" bindtap="togglePhrases">还有 {{evaluation.recommendedPhrases.length - visiblePhrases.length}} 条优秀话术，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{phrasesExpanded}}" bindtap="togglePhrases">收起优秀话术 ▴</view>
+  </block>
 </view>
 
 <view class="page-shell result-page loading-result" wx:if="{{loading}}">

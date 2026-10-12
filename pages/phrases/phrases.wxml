@@ -1,7 +1,6 @@
 <view class="page-shell phrases-page">
   <view class="page-header">
     <text class="page-title">{{favoritesOnly ? '我的话术收藏' : '话术锦囊'}}</text>
-    <text class="page-intro">从你已完成的训练报告中提炼的合规表达，可复制后结合实际情境调整使用。</text>
   </view>
 
   <view class="phrase-view-switch"><text class="phrase-view {{!favoritesOnly ? 'selected' : ''}}" bindtap="selectPhraseView" data-favorites="false">全部话术</text><text class="phrase-view {{favoritesOnly ? 'selected' : ''}}" bindtap="selectPhraseView" data-favorites="true">我的收藏</text></view>

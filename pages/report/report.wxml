@@ -6,14 +6,13 @@
     <view class="admin-blocked-btn" bindtap="goAdminDashboard">前往数据看板</view>
   </view>
   <block wx:else>
-  <view class="history-header"><text class="page-title">历史记录</text><text class="page-intro">两种训练模式独立保存，评分与患者模拟复盘不会混在一起。</text></view>
+  <view class="history-header"><text class="page-title">历史记录</text></view>
   <view class="history-mode-switch"><view class="history-mode {{historyMode === 'customer_service' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="customer_service">客服训练</view><view class="history-mode {{historyMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchHistoryMode" data-mode="patient_simulation">患者模拟</view></view>
   <view class="history-filter-card">
     <view class="status-filter-row"><text wx:for="{{statusFilters}}" wx:key="id" class="status-filter {{selectedStatus === item.id ? 'selected' : ''}}" bindtap="selectStatus" data-id="{{item.id}}">{{item.name}}</text></view>
     <view class="filter-divider" wx:if="{{historyMode === 'customer_service'}}"></view>
     <scroll-view class="scenario-filter-scroll" wx:if="{{historyMode === 'customer_service'}}" scroll-x="true" enable-flex="true"><view class="scenario-filter-row"><text wx:for="{{categoryFilters}}" wx:key="id" class="scenario-filter {{selectedCategory === item.id ? 'selected' : ''}}" bindtap="selectCategory" data-id="{{item.id}}">{{item.name}}</text></view></scroll-view>
   </view>
-  <view class="history-tip"><text>状态说明：</text><text>{{historyMode === 'patient_simulation' ? '进行中可续练，已完成可查看学习复盘，已放弃记录仅用于回看。' : '进行中可续练，已完成可查看报告，已放弃记录仅用于回看。'}}</text></view>
 
   <!-- 加载骨架 -->
   <view class="history-skeleton" wx:if="{{loading}}">
@@ -38,12 +37,10 @@
       <view class="history-actions">
         <view class="history-links">
           <text class="conversation-link" catchtap="toggleConversation" data-id="{{item.id}}">{{expandedId === item.id ? '收起对话' : '查看完整对话'}} ›</text>
-          <text wx:if="{{!item.isRoleplay && item.status === 'completed'}}" class="evaluation-link" catchtap="toggleEvaluation" data-id="{{item.id}}">{{expandedEvaluationId === item.id ? '收起摘要' : '查看摘要'}} ›</text>
         </view>
         <button class="history-button {{item.statusClass}}" catchtap="handleAction" data-id="{{item.id}}">{{item.actionText}}</button>
       </view>
-      <view class="conversation" wx:if="{{expandedId === item.id}}"><view class="conversation-row {{message.role === 'user' || message.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{item.messages}}" wx:for-item="message" wx:key="id"><text class="conversation-role">{{message.role === 'user' ? '客服' : message.role === 'patient' ? '患者' : message.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}}</text><text class="conversation-text">{{message.content}}</text><view class="history-learning" wx:if="{{message.role === 'standard_customer' && message.learningPoints.length}}"><text wx:for="{{message.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text><text wx:if="{{message.complianceBoundary}}" class="history-boundary">合规边界：{{message.complianceBoundary}}</text></view></view></view>
-      <view class="inline-evaluation" wx:if="{{expandedEvaluationId === item.id}}"><text wx:if="{{item.evaluationLoading}}" class="inline-loading">正在读取报告摘要…</text><block wx:elif="{{item.evaluationDetail && !item.evaluationDetail.pending}}"><text class="inline-loading" wx:if="{{item.evaluationDetail.schemaVersion === 2 && item.evaluationDetail.totalScore === null}}">知识依据不足，本次不形成综合分。</text><radar-chart wx:if="{{item.evaluationDetail.dimensions.length >= 3}}" dimensions="{{item.evaluationDetail.dimensions}}" canvas-width="260" canvas-height="230"></radar-chart><knowledge-report report="{{item.evaluationDetail}}" session-id="{{item.id}}"></knowledge-report><text class="inline-summary">{{item.evaluationDetail.summary}}</text><view class="inline-feedback"><view><text class="inline-label positive">做得好</text><text wx:for="{{item.evaluationDetail.strengths}}" wx:for-item="strength" wx:key="round">• {{strength.content}}</text></view><view><text class="inline-label improve">下一步</text><text wx:for="{{item.evaluationDetail.improvements}}" wx:for-item="improvement" wx:key="round">• {{improvement.content}}</text></view></view></block><text wx:else class="inline-loading">报告{{item.evaluationDetail.status === 'failed' ? '生成失败，可从结果页重新评分' : '仍在生成中，请稍后再试'}}</text></view>
+      <view class="conversation" wx:if="{{expandedId === item.id}}"><view class="conversation-row {{message.role === 'user' || message.role === 'learner_patient' ? 'mine' : ''}}" wx:for="{{item.messages}}" wx:for-item="message" wx:key="id"><view class="bubble-wrap"><text class="conversation-role">{{message.role === 'user' ? '客服' : message.role === 'patient' ? '患者' : message.role === 'learner_patient' ? '模拟患者（我）' : '标准客服'}}</text><text class="conversation-text">{{message.content}}</text></view><view class="history-learning" wx:if="{{message.role === 'standard_customer' && message.learningPoints.length}}"><text wx:for="{{message.learningPoints}}" wx:for-item="point" wx:key="*this">• {{point}}</text><text wx:if="{{message.complianceBoundary}}" class="history-boundary">合规边界：{{message.complianceBoundary}}</text></view></view></view>
     </view>
   </view>
   <text class="disclaimer">完整对话仅保存在当前演示环境，不包含真实患者信息。</text>

@@ -173,6 +173,26 @@ button::after { border: none; }
 }
 .secondary-button:active { opacity: .85; }
 
+/* 卡片内的次级操作按钮
+   裸 <button>（不带 class）会落到微信默认底 #F8F8F8，叠在白色卡片上
+   （#F8F8F8 vs #FFF 对比度仅约 1.04:1）几乎看不出边界，视觉上糊成一片。
+   统一改为「描边胶囊」：不给底色，靠 --color-primary 细线界定边界
+   （与 .plan-banner 同一手法），因此不会跟 .primary-button 抢视觉权重。 */
+.quiet-button {
+  display: inline-block;
+  margin: 0;
+  padding: 12rpx 32rpx;
+  border: 1rpx solid var(--color-primary);
+  border-radius: 999rpx;
+  background: none;
+  color: var(--color-primary);
+  font-size: 26rpx;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.quiet-button:active { background: var(--color-primary-light); }
+.quiet-button.is-disabled { opacity: .45; }
+
 /* ── 7. 标签 ─────────────────────────────────── */
 .tag {
   display: inline-flex;

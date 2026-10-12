@@ -2,13 +2,12 @@ const api = require('../../utils/api.js');
 const datetime = require('../../utils/datetime.js');
 /* 分类中文名唯一来源（勿在本页另写副本）：与后端 reliable_store.h sceneCategories() 对齐。 */
 const { CATEGORY_CONFIG } = require('../../utils/scenario.js');
-/* 数值格式化与主管端派生（辅导判定 / 等级 / 原因文案）都走单一来源，
+/* 数值格式化与主管端派生（辅导判定 / 原因文案）都走单一来源，
    本页不再自持副本——否则首页工作台与这里会给出不一致的结论。 */
 const {
   SEVERITY_TEXT,
   COACHING_IDLE_DAYS,
   PASS_SCORE,
-  memberLevel,
   isCoachingNeeded,
   coachingProfile
 } = require('../../utils/supervisor.js');
@@ -246,7 +245,6 @@ Page({
     sceneCategoryFilters: [],
     reportCategory: '',
     phrases: [],
-    phraseTotal: 0,
     leaderboardDimension: 'weekly_sessions',
     leaderboardDimensions: [
       { id: 'weekly_sessions', name: '周训练次数', unit: '次' },
@@ -350,24 +348,14 @@ Page({
     ];
 
     const rawMembers = (memberData.members || []).map(item => {
-      const hasAdvanced = Number(item.advancedCount) > 0;
       const member = Object.assign({}, item, {
         initial: (item.displayName || '学').slice(0, 1),
         averageScoreText: api.formatScore(item.averageScore),
-        /* 分档均分（P1-1）：混在一起的平均分会把「主动挑战更难档」读成「退步」。
-           进阶均分为 null（没练过）时显示「未挑战进阶档」，绝不能显示 0——
-           「没练过」和「练过但很差」是两种完全不同的信号。 */
-        scoreLine: hasAdvanced
-          ? `标准 ${item.standardAvgScore === null ? '—' : api.formatScore(item.standardAvgScore)} 分` +
-            ` · 进阶 ${api.formatScore(item.advancedAvgScore)} 分`
-          : `平均 ${api.formatScore(item.averageScore)} 分 · 未挑战进阶档`,
-        passRateText: api.formatScore(item.passRate),
-        latestText: item.lastTrainingDate ? `最近训练：${item.lastTrainingDate}` : '暂未开始训练'
+        passRateText: api.formatScore(item.passRate)
       });
       const needCoaching = isCoachingNeeded(member);
       const profile = needCoaching ? coachingProfile(member) : null;
       return Object.assign(member, {
-        levelText: memberLevel(member),
         needCoaching,
         coachingText: profile ? profile.text : '',
         coachingSeverity: profile ? profile.severity : ''
@@ -398,12 +386,14 @@ Page({
         ? '暂无' : `${api.formatScore(supervisor.passRate)}%`
     });
 
-    /* 指标卡：学员数是全量口径，其余三项跟随时间维度 */
+    /* 指标卡：学员数是全量口径（不随时间筛选），其余三项跟随所选时间范围。
+       四张卡原本各带一行 hint 小字说明口径，2026-10-12 起整行删除（视觉去噪）；
+       口径提示改由上方 section-caption 的 rangeName 承载，「学员数为全量」现在只剩「总学员数」的「总」字。 */
     const metricCards = [
-      { key: 'students', icon: '/static/image/data/students.png', value: supervisor.studentCount, label: '总学员数', hint: '全量活跃账户' },
-      { key: 'sessions', icon: '/static/image/data/sessions.png', value: supervisor.totalSessions, label: '总训练次数', hint: `${rangeName}累计` },
-      { key: 'score', icon: '/static/image/data/score.png', value: normalized.averageScoreText, label: '团队平均分', hint: '已完成报告的均值' },
-      { key: 'pass', icon: '/static/image/data/target.png', value: normalized.passRateText, label: '团队通关率', hint: '综合分 ≥ 60 占比' }
+      { key: 'students', icon: '/static/image/data/students.png', value: supervisor.studentCount, label: '总学员数' },
+      { key: 'sessions', icon: '/static/image/data/sessions.png', value: supervisor.totalSessions, label: '总训练次数' },
+      { key: 'score', icon: '/static/image/data/score.png', value: normalized.averageScoreText, label: '团队平均分' },
+      { key: 'pass', icon: '/static/image/data/target.png', value: normalized.passRateText, label: '团队通关率' }
     ];
 
     this.setData({
@@ -434,8 +424,6 @@ Page({
       const scoredDimensions = dimensionAverages.filter(item => item.value !== null);
       const weakest = scoredDimensions.length
         ? scoredDimensions.reduce((prev, curr) => prev.value <= curr.value ? prev : curr) : null;
-      const strongest = scoredDimensions.length
-        ? scoredDimensions.reduce((prev, curr) => prev.value >= curr.value ? prev : curr) : null;
       const completionRate = data.totalSessions > 0
         ? Math.round(data.completedSessions / data.totalSessions * 100) : 0;
       const recentSessions = (data.recentSessions || []).map(item => {
@@ -458,10 +446,6 @@ Page({
         sceneStats,
         dimensionAverages,
         weakestDimension: weakest,
-        strongestDimension: strongest,
-        dimensionSummaryText: weakest && strongest && weakest.key !== strongest.key
-          ? `你最强的是${strongest.name}（${strongest.value}分），可以多练${weakest.name}`
-          : '',
         weaknessActionText: weakest ? `建议在后续训练中重点关注「${weakest.name}」能力提升` : '',
         recentSessions
       };
@@ -509,7 +493,6 @@ Page({
         .filter(item => item.id === this.data.leaderboardDimension)[0];
       this.setData({
         phrases: normalizePhrases(phraseData.phrases || []),
-        phraseTotal: Number(phraseData.countedViolations) || 0,
         phraseCategories: phraseData.violationCategories || [],
         sceneCategoryFilters: [{ id: '', name: '全部场景' }].concat(phraseData.sceneCategories || []),
         leaderboard: normalizeLeaderboard(boardData.entries || [], filters ? filters.unit : ''),

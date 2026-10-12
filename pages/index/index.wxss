@@ -6,6 +6,8 @@
 .blocked-title { display: block; color: var(--text-strong); font-size: 32rpx; font-weight: 600; margin-bottom: 14rpx; }
 .blocked-desc { display: block; color: var(--text-secondary); font-size: 26rpx; line-height: 1.6; max-width: 520rpx; }
 .blocked-action { margin-top: 32rpx; padding: 22rpx 56rpx; border-radius: 46rpx; color: #fff; background: var(--color-primary); font-size: 26rpx; font-weight: 600; }
+/* 空态卡里的次级按钮：与上方说明文字留出呼吸位（原先 margin 为 0，读起来像贴在正文上） */
+.role-blocked-card .quiet-button { margin-top: 28rpx; }
 
 /* ── 顶部标题区 ── */
 .scene-header { padding: 8rpx 8rpx 22rpx; }
@@ -19,10 +21,6 @@
 .mode-indicator-right { transform: translateX(100%); }
 .mode-option { position: relative; z-index: 1; flex: 1; padding: 16rpx 12rpx; border-radius: 16rpx; color: var(--text-secondary); font-size: 26rpx; text-align: center; transition: color .25s; }
 .mode-option.selected { color: #fff; font-weight: 600; background: transparent; box-shadow: none; }
-
-/* ── 提示条 ── */
-.boundary-tip { display: flex; align-items: center; padding: 20rpx 24rpx; margin-bottom: 24rpx; border-radius: 16rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; line-height: 1.5; }
-.boundary-icon { width: 32rpx; height: 32rpx; line-height: 32rpx; flex-shrink: 0; margin-right: 14rpx; border-radius: 50%; text-align: center; color: #fff; background: var(--color-primary); font-size: 22rpx; }
 
 /* 培训计划横幅样式已收敛到 app.wxss 第 9 节（首页与训练中心共用） */
 
@@ -156,5 +154,9 @@
 
 /* ── 从 master 并入：下列选择器的类名在 app.wxss 与本页 wxss 里都不存在，追加不会覆盖任何既有规则 ──*/
 .service-picker { margin: 18rpx 0; padding: 22rpx; }
+/* 只装一颗次级按钮的窄条：收掉卡片空腔，避免「一整张白卡里躺一粒小胶囊」。
+   必须写在 .service-picker 之后——同权重，靠顺序覆盖（也不要动 .service-picker 本身，
+   上面那张「本次训练服务」卡还共用它）。 */
+.service-picker-narrow { margin: 10rpx 0; padding: 10rpx 18rpx; }
 .service-picker-label,.service-picker-meta { display: block; color: #858ca0; font-size: 21rpx; }
 .service-picker-value { margin: 10rpx 0; color: #414a61; font-size: 28rpx; font-weight: 700; }

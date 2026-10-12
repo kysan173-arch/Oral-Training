@@ -35,7 +35,6 @@
           <view class="summary-icon"><image class="summary-icon-img" src="{{item.icon}}" mode="aspectFit"></image></view>
           <text class="summary-value">{{item.value}}</text>
           <text class="summary-label">{{item.label}}</text>
-          <text class="summary-hint">{{item.hint}}</text>
         </view>
       </view>
 
@@ -131,11 +130,8 @@
         <view class="member-copy">
           <view class="member-name-row">
             <text class="member-name">{{item.displayName}}</text>
-            <text class="member-level">{{item.levelText}}</text>
             <text class="member-warn-tag" wx:if="{{item.needCoaching}}">待辅导</text>
           </view>
-          <text class="member-meta-line1">累计训练 {{item.totalSessions}} 次 · {{item.scoreLine}}</text>
-          <text class="member-meta">{{item.latestText}}</text>
         </view>
         <view class="member-side"><text>{{item.passRateText}}%</text><text>详情 ›</text></view>
       </view>
@@ -155,7 +151,6 @@
           <text class="filter-chip-label">场景</text>
           <text class="filter-chip {{reportCategory === item.id ? 'selected' : ''}}" wx:for="{{sceneCategoryFilters}}" wx:key="id" bindtap="selectReportCategory" data-id="{{item.id}}">{{item.name}}</text>
         </view>
-        <text class="filter-summary" wx:if="{{phraseTotal}}">共统计到 {{phraseTotal}} 次违规表达</text>
       </view>
 
       <view class="loading-card card" wx:if="{{reportLoading}}"><text>正在汇总报表数据…</text></view>
@@ -175,7 +170,6 @@
             <view class="phrase-bar"><view class="phrase-fill" style="width:{{item.barWidth}}%;"></view></view>
           </view>
           <empty-state wx:if="{{phrases.length === 0}}" title="本期没有违规记录" text="换个时间周期或场景分类看看，或等待新的训练报告产生。"></empty-state>
-          <text class="phrase-hint" wx:if="{{phrases.length}}">点击任意一类可查看涉及的成员明细。</text>
         </view>
 
         <view class="section-title-row"><text class="section-title">团队排行榜</text></view>
@@ -249,9 +243,6 @@
     <!-- 五维能力图（带弱项提示） -->
     <view class="section-title-row"><text class="section-title">五维能力</text></view>
     <view class="dimension-card card">
-      <view wx:if="{{personal.dimensionSummaryText}}" class="dimension-summary-text">
-        <text>{{personal.dimensionSummaryText}}</text>
-      </view>
       <!-- 五维横条（统一主色，最弱项标橙） -->
       <view class="dimension-row" wx:for="{{personal.dimensionAverages}}" wx:key="key">
         <view class="dimension-head">
@@ -294,7 +285,6 @@
   <view class="history-banner" wx:if="{{!isAdmin}}" bindtap="viewHistory">
     <view class="history-banner-text">
       <text class="history-banner-title">查看训练历史</text>
-      <text class="history-banner-desc">回顾完整对话、评分与复盘报告</text>
     </view>
     <text class="history-banner-arrow">›</text>
   </view>

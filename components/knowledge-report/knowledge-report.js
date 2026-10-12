@@ -1,5 +1,5 @@
 const api = require('../../utils/api.js');
-const verdicts = { supported: '有依据', contradicted: '与依据矛盾', incomplete: '表达不完整', evidence_missing: '依据不足', conflicted: '资料冲突', not_applicable: '不计分' };
+const verdicts = { supported: '有依据', contradicted: '与依据矛盾', incomplete: '表达不完整', evidence_missing: '依据不足', conflicted: '资料冲突', not_applicable: '不计分', deferred: '合规待回复' };
 Component({
   properties: { report: Object, sessionId: String },
   data: { checks: [], coverageText: '暂无可核验项' },

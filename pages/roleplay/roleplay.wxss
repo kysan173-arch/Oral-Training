@@ -42,12 +42,14 @@
 .fail-retry { padding: 4rpx 18rpx; margin-left: 16rpx; border-radius: 999rpx; color: #fff; background: var(--color-warning, #e6a23c); font-size: 22rpx; }
 .fail-content { display: block; margin-top: 6rpx; color: var(--text-secondary); font-size: 22rpx; line-height: 1.5; }
 .training-note { padding: 10rpx 24rpx; color: var(--text-secondary); background: var(--bg-grad, var(--color-bg)); font-size: 22rpx; text-align: center; }
-.input-area { display: flex; align-items: flex-end; gap: 14rpx; padding: 16rpx 22rpx; background: #fff; border-top: 1rpx solid var(--color-border); }
+.input-area { display: flex; align-items: flex-end; gap: 12rpx; padding: 16rpx 22rpx; background: #fff; border-top: 1rpx solid var(--color-border); }
 .input-wrap { flex: 1; min-width: 0; }
 .input-field { flex: 1; height: 72rpx; padding: 0 22rpx; box-sizing: border-box; border-radius: 36rpx; background: var(--color-bg); font-size: 26rpx; }
 .input-textarea { width: 100%; height: auto; min-height: 72rpx; max-height: 240rpx; padding: 16rpx 22rpx; border-radius: 20rpx; line-height: 40rpx; }
-.char-count { display: block; margin-top: 4rpx; color: var(--text-muted); font-size: 20rpx; text-align: right; }
-.send-button { width: 128rpx; height: 72rpx; line-height: 72rpx; padding: 0; border-radius: 36rpx; color: #fff; background: var(--color-primary); font-size: 26rpx; }
+/* char-count 高度写死，作为按钮下移量的唯一常量来源（见 .send-button 的 margin-bottom） */
+.char-count { display: block; height: 32rpx; line-height: 32rpx; color: var(--text-muted); font-size: 20rpx; text-align: right; }
+/* 与 pages/training 的发送条保持同一套口径：宽度钉死 + 抵消 char-count 造成的底部错位 */
+.send-button { flex: 0 0 104rpx; width: 104rpx; height: 72rpx; line-height: 72rpx; margin: 0 0 32rpx; padding: 0; border-radius: 36rpx; color: #fff; background: var(--color-primary); font-size: 26rpx; }
 .send-button[disabled] { background: var(--color-border); }
 .roleplay-footer { display: flex; align-items: center; justify-content: center; padding: 14rpx 22rpx 22rpx; background: #fff; }
 .finish-button { width: 300rpx; height: 64rpx; line-height: 64rpx; padding: 0; border: 1rpx solid var(--color-border); border-radius: 32rpx; color: var(--color-primary); background: var(--color-primary-light); font-size: 26rpx; text-align: center; font-weight: 600; }

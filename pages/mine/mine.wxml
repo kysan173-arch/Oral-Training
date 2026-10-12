@@ -71,7 +71,7 @@
       <view><text>管理中心</text></view>
     </view>
     <view class="tool-card card" bindtap="goTeamMembers">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
+      <view class="tool-icon-wrap tool-icon-wrap-team"><image class="tool-icon-img" src="/static/image/data/sessions.png" mode="aspectFit"></image></view>
       <view class="tool-body">
         <text class="tool-title">我的团队</text>
         <text class="tool-sub">添加 / 移出成员 · 维护团队名单</text>
@@ -146,45 +146,42 @@
 
     <!-- 学习工具（置顶：训练相关入口优先） -->
     <view class="section-heading"><view><text>学习工具</text></view></view>
-    <view class="tool-card card" bindtap="goTrainingPlans">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/train.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">培训计划</text>
-        <text class="tool-sub">主管发布的要求与我的进度</text>
+    <view class="tool-list card">
+      <view class="tool-card" bindtap="goTrainingPlans">
+        <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/train.png" mode="aspectFit"></image></view>
+        <view class="tool-body">
+          <text class="tool-title">培训计划</text>
+        </view>
+        <text class="tool-arrow">›</text>
       </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card tool-prominent" bindtap="goProfile">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/growth.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">个人成长</text>
-        <text class="tool-sub">五维能力与训练走势</text>
+      <view class="tool-card" bindtap="goProfile">
+        <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/growth.png" mode="aspectFit"></image></view>
+        <view class="tool-body">
+          <text class="tool-title">个人成长</text>
+        </view>
+        <text class="tool-arrow">›</text>
       </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card" bindtap="goMistakes">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">错题复练</text>
-        <text class="tool-sub">回到需要调整的表达</text>
+      <view class="tool-card" bindtap="goMistakes">
+        <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/mistake.png" mode="aspectFit"></image></view>
+        <view class="tool-body">
+          <text class="tool-title">错题复练</text>
+        </view>
+        <text class="tool-arrow">›</text>
       </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card" bindtap="goPhrases">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">话术锦囊</text>
-        <text class="tool-sub">从报告中提炼的合规表达</text>
+      <view class="tool-card" bindtap="goPhrases">
+        <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/phrase.png" mode="aspectFit"></image></view>
+        <view class="tool-body">
+          <text class="tool-title">话术锦囊</text>
+        </view>
+        <text class="tool-arrow">›</text>
       </view>
-      <text class="tool-arrow">›</text>
-    </view>
-    <view class="tool-card card" bindtap="goFavorites">
-      <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/favorite.png" mode="aspectFit"></image></view>
-      <view class="tool-body">
-        <text class="tool-title">我的话术收藏</text>
-        <text class="tool-sub">已收藏 {{mine.favoritesCount}} 条</text>
+      <view class="tool-card" bindtap="goFavorites">
+        <view class="tool-icon-wrap"><image class="tool-icon-img" src="/static/image/tools/favorite.png" mode="aspectFit"></image></view>
+        <view class="tool-body">
+          <text class="tool-title">我的话术收藏</text>
+        </view>
+        <text class="tool-arrow">›</text>
       </view>
-      <text class="tool-arrow">›</text>
     </view>
 
     <!-- 签到板块 -->
