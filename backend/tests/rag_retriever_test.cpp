@@ -47,6 +47,24 @@ int main() {
     require(customerRetrievalQuestion(request).find("untrusted") == std::string::npos, "assistant text not evidence");
     request.current_question = "我预算不多，太贵了。";
     require(customerRetrievalQuestion(request) == request.current_question, "new topic does not inherit old question");
+    request.current_question = "那要再收钱吗？";
+    request.recent_question_answers = nlohmann::json::array({
+      {{"role", "learner_patient"}, {"content", "种植术后什么时候拆线？"}},
+      {{"role", "standard_customer"}, {"content", "untrusted assistant facts"}},
+      {{"role", "learner_patient"}, {"content", request.current_question}}});
+    require(customerRetrievalQuestion(request).find("拆线") != std::string::npos, "fee follow-up lost postoperative context");
+    request.recent_question_answers.push_back({{"role", "standard_customer"}, {"content", "unknown"}});
+    request.current_question = "如果一直流血怎么办？";
+    request.recent_question_answers.push_back({{"role", "learner_patient"}, {"content", request.current_question}});
+    const auto chained = customerRetrievalQuestion(request);
+    require(chained.find("拆线") != std::string::npos && chained.find("收钱") != std::string::npos &&
+            chained.find("untrusted") == std::string::npos, "follow-up chain must retain patient anchor only");
+    request.current_question = "不说价格了，我改问种植后复查。";
+    require(customerRetrievalQuestion(request) == request.current_question, "explicit topic switch inherited old subject");
+    request.purpose = RetrievalPurpose::Scoring;
+    request.current_question = "那要再收钱吗？";
+    require(customerRetrievalQuestion(request) == request.current_question, "evaluation scope must not inherit dialogue");
+    request.current_question = "我预算不多，太贵了。";
     require(has(tokenizeChinese(request.current_question), "a_price"), "colloquial price question retrieves prices");
     require(has(tokenizeChinese("能当天弄完吗"), "a_duration"), "colloquial duration question retrieves duration");
     bool mismatched_hash_rejected = false;

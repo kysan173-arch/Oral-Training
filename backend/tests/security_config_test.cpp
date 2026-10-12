@@ -1,3 +1,4 @@
+#include "test_environment.h"
 #define ORAL_TRAINING_NO_MAIN
 #include "../src/main.cpp"
 
@@ -6,7 +7,7 @@
 namespace {
 
 void setEnvironment(const char* name, const char* value) {
-  if (_putenv_s(name, value) != 0) throw std::runtime_error("failed to set test environment");
+  setTestEnvironment(name, value);
 }
 
 void setValidProductionEnvironment() {

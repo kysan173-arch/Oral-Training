@@ -1,5 +1,6 @@
 #pragma once
 #include "evidence_validator.h"
+#include <sstream>
 
 namespace oral_training::rag {
 inline bool patientContains(const std::string& text, std::initializer_list<const char*> terms) {
@@ -125,6 +126,12 @@ inline json initializeGroundedPatient(const json& source, const json& context, c
       {"opening",openings.at(concern)}};
 }
 
+inline bool patientClosingInvitation(const std::string& question) {
+  if (patientContains(question,{"？","?","不是要结束","不是要告别","不是要再见"})) return false;
+  return patientContains(question,{"再见","先到这里","先聊到这里","就聊到这里",
+      "想好了再联系","考虑好了再联系"});
+}
+
 inline json patientView(const json& profiles, const std::string& question, int round) {
   const auto& state=profiles.at("state");
   const auto& private_profile=profiles.at("privateProfile");
@@ -147,7 +154,33 @@ inline json patientView(const json& profiles, const std::string& question, int r
         {"trustLevel",state.value("trustLevel",50)},
         {"patienceRounds",state.value("patienceRounds",0)},
         {"revealedInformation",revealed},{"triggeredObjections",state.value("triggeredObjections",json::array())}}},
-      {"round",round}};
+      {"round",round},{"closingInvitation",round>=3 && patientClosingInvitation(question)}};
+}
+
+// Scope a denial to its own clause and distinguish a rejected third-party quote
+// from the learner making a fresh promise. Do not erase an entire utterance:
+// a positive promise after "但" must still trigger the objection.
+inline bool patientAbsolutePromise(std::string text) {
+  const auto quote_start=text.find("“"), quote_end=text.find("”");
+  if(quote_start!=std::string::npos && quote_end>quote_start && quote_end!=std::string::npos &&
+     patientContains(text.substr(0,quote_start),{"别家","其他诊所","有人","网上"}) &&
+     patientContains(text.substr(quote_end),{"不可信","不要相信","不能相信","不认同","不认可","不作这种承诺"}))
+    text.erase(quote_start,quote_end+std::string("”").size()-quote_start);
+  for(const auto* boundary:{"。","！","？","，","；",",",";","但是","不过","然而","但","而且"}) {
+    size_t pos=0;
+    while((pos=text.find(boundary,pos))!=std::string::npos) {
+      text.replace(pos,std::string(boundary).size(),"\n"); ++pos;
+    }
+  }
+  std::istringstream clauses(text);
+  std::string clause;
+  while(std::getline(clauses,clause)) {
+    const bool double_negative=patientContains(clause,{"不是不能","并非不能","不是不保证","并非不保证"});
+    if(!double_negative && patientContains(clause,{"不能保证","无法保证","没法保证","不保证","不会保证",
+        "不作保证","不做保证","无法承诺","不能承诺","不承诺","不能说绝对","不是绝对","并非无风险","不是无风险"})) continue;
+    if(patientContains(clause,{"保证","百分之百","100%","绝对","无风险","肯定治好","guarantee"})) return true;
+  }
+  return false;
 }
 
 inline json groundedPatientReply(const json& source, const json& profiles, const json& evidence,
@@ -163,16 +196,9 @@ inline json groundedPatientReply(const json& source, const json& profiles, const
     auto& values=state[key];
     if(std::find(values.begin(),values.end(),value)==values.end()) values.push_back(value);
   };
-  // Strip explicitly negated assurances before checking for absolute promises.
-  auto assertions=question;
-  for (const auto* negated:{"不能保证完全不疼","不能保证百分之百","不能保证100%","不能保证无风险",
-       "不能保证","不保证","无法保证","不能说绝对","不是绝对","并非无风险","不是无风险"}) {
-    std::size_t pos=0;
-    while ((pos=assertions.find(negated,pos))!=std::string::npos) assertions.erase(pos,std::string(negated).size());
-  }
-  const bool promise=patientContains(assertions,{"保证","百分之百","100%","绝对","无风险","肯定治好","guarantee"});
-  const bool money=patientContains(question,{"价格","费用","元","块钱","收费","price"}) ||
-      std::any_of(question.begin(),question.end(),[](unsigned char c){return c>='0'&&c<='9';});
+  const bool promise=patientAbsolutePromise(question);
+  // A bare number, duration or percentage is not a service quote.
+  const bool money=patientContains(question,{"价格","费用","报价","多少钱","元","块钱","收费","price"});
   const bool conflict=evidence.contains("conflicts")&&!evidence["conflicts"].empty();
   const auto intent=patientChoice(source,"intent",{"clarify","price","pain","time","process","followup","finish"},"clarify");
   static const std::map<std::string,std::string> replies={
@@ -230,7 +256,10 @@ inline json groundedPatientReply(const json& source, const json& profiles, const
   }
   if(mentions_competitor && safe_prose && !promise && !conflict && reply==prose)
     add("revealedInformation","competitor");
-  const bool ending=intent=="finish" && round>=3 && !promise && !conflict;
+  const bool invited_to_close=view.value("closingInvitation",false);
+  const bool ending=(intent=="finish" || invited_to_close) && round>=3 && !promise && !conflict;
+  if(ending && invited_to_close && (intent!="finish" || !safe_prose ||
+      patientContains(reply,{"？","?"}))) reply=replies.at("finish");
   if(intent=="finish"&&!ending && reply.rfind(replies.at("finish"),0)==0)
     reply="好，我再了解一下。";
   evolvePatientState(state,promise,conflict,money,intent,round);

@@ -1,3 +1,4 @@
+#include "test_environment.h"
 #define ORAL_TRAINING_NO_MAIN
 #include "../src/main.cpp"
 #include <future>
@@ -7,6 +8,10 @@ void checkSetting(bool condition) {
 }
 
 int main() {
+#ifndef _WIN32
+  std::unique_ptr<TestKeyFile> test_key;
+  if (!std::getenv("MODEL_KEY_FILE")) test_key = std::make_unique<TestKeyFile>();
+#endif
   const auto local = gatewayEndpoint("http://127.0.0.1:4000/v1/");
   checkSetting(local.port == 4000 && !local.secure && local.path == L"/v1/chat/completions");
   const auto remote = gatewayEndpoint("https://llm.example.com/gateway/v1");
@@ -28,11 +33,29 @@ int main() {
   GatewaySettings settings{"https://gateway.example/v1", "ds-primary", encrypted, 3};
   checkSetting(settings.status().dump().find(secret) == std::string::npos);
   checkSetting(!settings.status().contains("apiKey") && settings.status()["scope"] == "personal");
-  _putenv_s("DEEPSEEK_API_KEY", secret.c_str());
-  _putenv_s("DEEPSEEK_MODEL", "ignored-model");
+  setTestEnvironment("DEEPSEEK_API_KEY", secret.c_str());
+  setTestEnvironment("DEEPSEEK_MODEL", "ignored-model");
   checkSetting(!ModelGateway(Config{}).configured());
   const auto request = buildCompletionRequest("ds-primary", json::array(), 1000, 0.2, true);
   checkSetting(request["model"] == "ds-primary" && !request.contains("thinking") && !request.contains("user_id"));
+  // Wire-level fixture verifies the platform HTTP implementation, not a mock of it.
+  if (const char* base = std::getenv("LITELLM_TEST_TRANSPORT_URL")) {
+    auto endpoint = gatewayEndpoint(base);
+    auto redirect = postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-redirect"})");
+    checkSetting(redirect.status == 307);
+    bool failed = false;
+    try { postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-truncated"})"); }
+    catch (const ApiError& error) { failed = error.code == "MODEL_TIMEOUT"; }
+    checkSetting(failed);
+  }
+#ifndef _WIN32
+  if (const char* base = std::getenv("LITELLM_TEST_UNTRUSTED_TLS_URL")) {
+    bool failed = false;
+    try { postLiteLlm(gatewayEndpoint(base), "sk-offline-key-12345", R"({"model":"transport-tls"})"); }
+    catch (const ApiError& error) { failed = error.code == "MODEL_TIMEOUT"; }
+    checkSetting(failed);
+  }
+#endif
   // Optional integration mode runs only against the disposable harness database.
   const auto* database_url = std::getenv("LITELLM_TEST_DATABASE_URL");
   if (database_url && *database_url) {

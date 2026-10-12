@@ -2,6 +2,7 @@
 
 #include "database_pool.h"
 #include "rag_types.h"
+#include "embedding_client.h"
 
 #include <nlohmann/json.hpp>
 
@@ -33,8 +34,9 @@ void insertKnowledgeChunks(pqxx::transaction_base& tx, const std::string& revisi
 
 class RagRetriever {
  public:
-  explicit RagRetriever(std::shared_ptr<DatabasePool> database_pool)
-      : database_pool_(std::move(database_pool)) {}
+  explicit RagRetriever(std::shared_ptr<DatabasePool> database_pool,
+                        std::shared_ptr<EmbeddingClient> embeddings = std::make_shared<EmbeddingClient>())
+      : database_pool_(std::move(database_pool)), embeddings_(std::move(embeddings)) {}
 
   EvidenceBundle retrieve(const std::string& service_revision_id,
                           const std::vector<std::string>& knowledge_revision_ids,
@@ -48,6 +50,7 @@ class RagRetriever {
 
  private:
   std::shared_ptr<DatabasePool> database_pool_;
+  std::shared_ptr<EmbeddingClient> embeddings_;
 };
 
 }  // namespace oral_training::rag

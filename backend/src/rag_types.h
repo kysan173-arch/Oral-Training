@@ -19,9 +19,9 @@ inline constexpr std::string_view kKnowledgeRubricVersion = "knowledge-rubric-v1
 namespace prompt_version {
 inline constexpr std::string_view kServiceDraft = "service-draft-v1";
 inline constexpr std::string_view kKnowledgeDraft = "knowledge-draft-v1";
-inline constexpr std::string_view kPatientInitialization = "patient-init-v1";
-inline constexpr std::string_view kPatientReply = "patient-rag-v1";
-inline constexpr std::string_view kServiceReply = "service-reply-rag-v3";
+inline constexpr std::string_view kPatientInitialization = "patient-init-v2";
+inline constexpr std::string_view kPatientReply = "patient-reply-rag-v4";
+inline constexpr std::string_view kServiceReply = "service-reply-rag-v8";
 inline constexpr std::string_view kClaimExtraction = "claim-extract-v1";
 inline constexpr std::string_view kScoring = "score-rag-v1";
 inline constexpr std::string_view kRoleplaySummary = "roleplay-summary-rag-v1";
@@ -184,6 +184,10 @@ struct EvidenceBundle {
   RetrievalPurpose purpose = RetrievalPurpose::CustomerReply;
   std::string manifest_hash;
   std::string tokenizer_version = std::string(kTokenizerVersion);
+  std::string retriever_version;
+  std::string embedding_model;
+  std::string embedding_cache_key;
+  int embedding_dimensions = 0;
   std::vector<FactEvidence> facts;
   std::vector<PassageEvidence> passages;
   std::vector<std::string> missing_fields;
@@ -297,6 +301,8 @@ inline void to_json(json& output, const EvidenceBundle& value) {
   output = {{"serviceId", value.service_id}, {"trainingScope", value.training_scope}, {"contextId", value.context_id}, {"serviceRevisionId", value.service_revision_id},
             {"knowledgeAsOf", value.knowledge_as_of}, {"purpose", toString(value.purpose)},
             {"manifestHash", value.manifest_hash}, {"tokenizerVersion", value.tokenizer_version},
+            {"retrieverVersion", value.retriever_version}, {"embeddingModel", value.embedding_model},
+            {"embeddingDimensions", value.embedding_dimensions}, {"embeddingCacheKey", value.embedding_cache_key},
             {"facts", value.facts}, {"passages", value.passages},
             {"missingFields", value.missing_fields}, {"conflicts", value.conflicts},
             {"retrievalStatus", toString(value.retrieval_status)}};

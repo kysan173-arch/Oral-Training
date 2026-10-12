@@ -64,8 +64,31 @@ int main() {
         "刚才说错了，不能保证完全不疼，具体要检查后确认。",4);
     check(corrected["trustLevel"]==50 && corrected["riskTriggered"]==false,"negated promise penalized");
     check(corrected["reply"]=="没关系，那我先去检查。","natural reply lost");
+    for(const auto* denial:{"无法保证完全无风险，也不能保证百分之百成功。",
+        "我们不会保证完全无痛，每个人感受不同。",
+        "别家说“保证成功”，这种说法不可信，我也不作这种承诺。"}) {
+      check(!patientAbsolutePromise(denial),"denial or rejected third-party quote treated as promise");
+      auto response=groundedPatientReply({{"intent","clarify"},{"reply","明白了，我先了解一下。"}},p,evidence,"denial",denial,2);
+      check(response["trustLevel"]==50 && response["riskTriggered"]==false,"denial reduced trust");
+    }
+    for(const auto* promise:{"不能保证时间，但我们保证成功。",
+        "别家说“保证成功”，不可信，但我们保证无风险。","并非不能保证百分之百成功。"})
+      check(patientAbsolutePromise(promise),"positive promise hidden by negative or quoted clause");
+    auto timing=groundedPatientReply({{"intent","time"},{"reply","那我知道怎么安排了。"}},p,evidence,"duration","初诊30～45分钟。",2);
+    check(timing["patientState"]["triggeredObjections"].empty() && timing["citations"].empty(),
+          "duration acquired a price objection or unrelated price citation");
     auto goodbye=groundedPatientReply({{"intent","finish"},{"reply","好，我想好了再联系您。"}},p,absent,"t12","您先考虑，不急着预约。",6);
     check(goodbye["shouldEnd"]==true,"farewell requires irrelevant evidence");
+    check(!patientClosingInvitation("您先考虑费用，我接着介绍流程。"),"ordinary consideration is not a farewell");
+    check(!patientClosingInvitation("今天先到这里，您的预算是多少？"),"a remaining explicit question needs an answer");
+    auto invited=groundedPatientReply({{"intent","price"},{"reply","那还有额外费用吗？"}},p,absent,"close-invitation",
+        "没关系，您想好了再联系，不用现在预约。",4);
+    check(invited["shouldEnd"]==true && invited["reply"]=="好的，我先考虑一下，谢谢。",
+          "clear closing invitation should not restart a pricing conversation");
+    auto unsafe_close=groundedPatientReply({{"intent","finish"},{"reply","好的，再见。"}},p,evidence,"unsafe-close",
+        "保证百分之百成功，今天先到这里，再见。",4);
+    check(unsafe_close["shouldEnd"]==false && unsafe_close["riskTriggered"]==true,
+          "closing invitation cannot hide an absolute promise");
     auto long_reply=groundedPatientReply({{"intent","time"},{"reply",std::string(200,'a')},{"evidenceIds",{"E2"}}},p,evidence,"t13","疗程呢",2);
     check(textLength(long_reply["reply"].get<std::string>())<=80,"verbose reply allowed");
     auto numeric=groundedPatientReply({{"intent","price"},{"reply","你们收费只要1元。"}},p,evidence,"t14","介绍费用",1);

@@ -1,5 +1,7 @@
 # 口腔客服智能陪练：服务与专业知识 RAG 完整设计
 
+> 2026-10-08 更新：本文的关键词召回设计已由 EmbeddingGemma 语义检索替代；当前配置、缓存和验证方式以 `backend/README.md` 为准，知识快照和引用约束继续保留。
+
 版本：1.0 · 2026-09-14
 状态：待实施的架构设计；本文不表示功能已经开发完成。
 代码基线：`chinesemisaka/Oral-Training`，`master@317440512c6dc47a477af1a99b085226ed119348`。
@@ -538,7 +540,7 @@ verified 范围没有足够已核验知识时允许未知回答，不能自动�
 | `pages/knowledge-admin`、编辑页面 | 内容管理及发布 |
 | `pages/phrases`、`pages/mistakes` | 引用、旧版本提示、按服务复练 |
 | `app.json`、`pages/mine`、`utils/api.js` | 页面注册、入口与 API 契约 |
-| `docs/api.md` | 实现时同步新增/变化契约 |
+| `docs/architecture/api.md` | 实现时同步新增/变化契约 |
 
 上述拆分为新代码职责划分，不要求先把整个 main.cpp 重构。现有内部类型若位于匿名 namespace，需要提取最小 DTO/接口到头文件，避免新增模块反向 include main.cpp。
 
@@ -615,7 +617,7 @@ verified 范围没有足够已核验知识时允许未知回答，不能自动�
 - 新 ai_jobs 类型的全部目标表分支、锁与错误处理一起修改。
 - 空知识分的数据库、前端、聚合和历史修复兼容一起上线。
 - 首次真实模型联调前确认模型 ID、JSON 输出及费用预算。
-- 本文是设计交付；后续开发应按阶段落实，并在 `docs/api.md` 与验收记录中同步实际结果。
+- 本文是设计交付；后续开发应按阶段落实，并在 `docs/architecture/api.md` 与验收记录中同步实际结果。
 
 ## 17. 参考资料
 

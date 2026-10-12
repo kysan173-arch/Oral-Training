@@ -1,5 +1,6 @@
 #define ORAL_TRAINING_NO_MAIN
 #include "../src/main.cpp"
+#include "fixtures/embedding_stub.h"
 #include <future>
 #include <iostream>
 
@@ -210,7 +211,7 @@ int main() {
     Config config{};
     config.worker_concurrency=1; config.knowledge_worker_concurrency=0;
     {
-      Service service(config,pool,std::make_unique<InitGateway>());
+      Service service(config,pool,std::make_unique<InitGateway>(),stubEmbeddings());
       for (int i=0;i<100 && store.get("init-user",next)["status"]!="ready";++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       requireInit(store.get("init-user",next)["status"]=="ready","worker did not initialize");
@@ -314,7 +315,7 @@ int main() {
     {
       // N05 read-only service seam uses a deterministic extractor and locked DB retrieval.
       Config offline{}; offline.worker_concurrency=0; offline.knowledge_worker_concurrency=0;
-      Service service(offline,pool,std::make_unique<InitGateway>());
+      Service service(offline,pool,std::make_unique<InitGateway>(),stubEmbeddings());
       const auto assessed=service.assessTrainingKnowledge(final_id);
       requireInit(assessed["knowledgeAssessment"]["knowledgeAccuracy"].is_null(),"missing knowledge received a score");
       requireInit(assessed["knowledgeChecks"].size()==1 && assessed["knowledgeTraces"].size()==1,"claim retrieval not exercised");
@@ -375,7 +376,7 @@ int main() {
         oral_training::rag::groundedPatientReply(json::object(),store.profiles(scored_id),scored_evidence,makeId("trace"),"费用5000元。",1));
     {
       Config offline{};offline.worker_concurrency=0;offline.knowledge_worker_concurrency=0;
-      Service service(offline,pool,std::make_unique<InitGateway>());
+      Service service(offline,pool,std::make_unique<InitGateway>(),stubEmbeddings());
       const auto assessment=service.assessTrainingKnowledge(scored_id);
       const auto job=*queue.claim("n06-score");
       json report={{"schemaVersion",2},{"_knowledgeAssessment",assessment},
@@ -446,7 +447,7 @@ int main() {
     const auto restored_roleplay=roleplay.createSession("init-other","implant-basic","","init-service","n07-restored");
     requireInit(restored_roleplay["session"]["contextVersion"]==2,"restored roleplay downgraded");
     std::cout<<"N07 gates passed: new creation/restart blocked, replay/snapshot/null history/old messages preserved\n";
-    // Fixed synthetic professional retrieval set: 10 independently assigned relevant revisions, 20 queries.
+    // Retrieval wiring with deterministic embeddings (not a semantic quality benchmark): 10 independently assigned relevant revisions, 20 queries.
     const std::vector<std::pair<std::string,std::vector<std::string>>> retrieval_cases={
       {"种植牙组成",{"种植牙组成","种牙组成"}}, {"正畸托槽",{"正畸托槽","托槽"}},
       {"牙周维护",{"牙周维护","牙周"}}, {"根管治疗沟通",{"根管治疗沟通","根管"}},
@@ -468,7 +469,7 @@ int main() {
       }
       tx.commit();
     }
-    oral_training::rag::RagRetriever retriever(pool);
+    oral_training::rag::RagRetriever retriever(pool, stubEmbeddings());
     int hits=0,queries=0;
     for(std::size_t i=0;i<retrieval_cases.size();++i) for(const auto& query:retrieval_cases[i].second) {
       oral_training::rag::RetrievalRequest request;
@@ -483,7 +484,7 @@ int main() {
       ++queries;if(hit)++hits;
     }
     requireInit(hits*100>=queries*90,"professional Recall@6 below 90%");
-    std::cout<<"N06 synthetic professional Recall@6: "<<hits<<"/"<<queries<<"\n";
+    std::cout<<"N06 deterministic embedding fixture Recall@6: "<<hits<<"/"<<queries<<"\n";
     std::cout<<"N06 rejected evidence reads: "<<rejectedReads["EVIDENCE_NOT_FOUND"]<<"; unauthorized successes: 0; concurrent report winners: 1/2; stale report visible writes: 0\n";
     std::cout << "patient initialization tests passed: concurrent create, isolation, snapshot, lease, retry, worker, public projection\n";
     return 0;

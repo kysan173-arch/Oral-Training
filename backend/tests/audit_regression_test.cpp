@@ -1,5 +1,6 @@
 #define ORAL_TRAINING_NO_MAIN
 #include "../src/main.cpp"
+#include "fixtures/embedding_stub.h"
 #include <iostream>
 
 namespace {
@@ -114,7 +115,7 @@ int main() {
     request.context_id=context["contextId"].get<std::string>();
     request.current_question="价格多少？是否包含拍片？";
     request.purpose=oral_training::rag::RetrievalPurpose::CustomerReply;
-    oral_training::rag::RagRetriever retriever(pool);
+    oral_training::rag::RagRetriever retriever(pool, stubEmbeddings());
     const json bundle=retriever.retrieve(revision,manifest,context["knowledgeAsOf"].get<std::string>(),
       context["manifestHash"].get<std::string>(),request,"demo");
     check(!bundle["facts"].empty(), "valid price disappeared");

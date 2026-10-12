@@ -1,11 +1,11 @@
 #pragma once
 
 // Included in main.cpp after its HTTP/JSON helpers. Secrets are bound to the
-// backend Windows service account; no application encryption environment key.
+// Windows service account (DPAPI), or the separately provisioned Linux key file.
 struct GatewayEndpoint {
   std::wstring host;
   std::wstring path;
-  INTERNET_PORT port;
+  unsigned short port;
   bool secure;
 };
 
@@ -14,6 +14,7 @@ GatewayEndpoint gatewayEndpoint(const std::string& base_url) {
       base_url.find_first_of("\r\n\t ?#\\") != std::string::npos)
     throw ApiError(400, "INVALID_ARGUMENT", "请输入有效的 LiteLLM Base URL，不含查询参数");
   const auto wide = toWide(base_url);
+#ifdef _WIN32
   URL_COMPONENTS parts{};
   parts.dwStructSize = sizeof(parts);
   parts.dwHostNameLength = parts.dwUrlPathLength = parts.dwUserNameLength =
@@ -33,9 +34,33 @@ GatewayEndpoint gatewayEndpoint(const std::string& base_url) {
   if (path.find(L"/chat/completions") != std::wstring::npos)
     throw ApiError(400, "INVALID_ARGUMENT", "请输入 Base URL（例如 /v1），不要包含 /chat/completions");
   return {host, path + L"/chat/completions", parts.nPort, secure};
+#else
+  static const std::regex pattern(R"(^(https?)://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9][A-Za-z0-9.-]*)(:([0-9]{1,5}))?(/[^\s?#\\]*)?$)", std::regex::icase);
+  std::smatch match;
+  if (!std::regex_match(base_url, match, pattern))
+    throw ApiError(400, "INVALID_ARGUMENT", "LiteLLM 地址须使用 HTTP/HTTPS，且不能包含用户名或密码");
+  const auto host = lowercaseAscii(match[2].str());
+  const bool secure = lowercaseAscii(match[1].str()) == "https";
+  if (host.front() == '[') {
+    struct in6_addr address{};
+    if (inet_pton(AF_INET6, host.substr(1, host.size() - 2).c_str(), &address) != 1)
+      throw ApiError(400, "INVALID_ARGUMENT", "无效的网关 IPv6 地址");
+  }
+  if (!secure && host != "127.0.0.1" && host != "localhost" && host != "[::1]")
+    throw ApiError(400, "INVALID_ARGUMENT", "远程 LiteLLM 网关必须使用 HTTPS；本机可使用 HTTP");
+  const auto port = match[4].matched ? std::stoi(match[4].str()) : (secure ? 443 : 80);
+  if (port < 1 || port > 65535) throw ApiError(400, "INVALID_ARGUMENT", "无效的网关端口");
+  auto path = match[5].str();
+  while (!path.empty() && path.back() == '/') path.pop_back();
+  if (path.empty()) path = "/v1";
+  if (path.find("/chat/completions") != std::string::npos)
+    throw ApiError(400, "INVALID_ARGUMENT", "请输入 Base URL（例如 /v1），不要包含 /chat/completions");
+  return {toWide(host), toWide(path + "/chat/completions"), static_cast<unsigned short>(port), secure};
+#endif
 }
 
 std::string protectGatewayKey(const std::string& key) {
+#ifdef _WIN32
   DATA_BLOB input{static_cast<DWORD>(key.size()), reinterpret_cast<BYTE*>(const_cast<char*>(key.data()))};
   DATA_BLOB output{};
   if (!CryptProtectData(&input, L"Oral Training LiteLLM", nullptr, nullptr, nullptr,
@@ -49,10 +74,17 @@ std::string protectGatewayKey(const std::string& key) {
   }
   LocalFree(output.pbData);
   return encrypted;
+#else
+  try { return oral_training::secrets::encrypt(key); }
+  catch (const std::exception&) {
+    throw ApiError(503, "MODEL_CONFIG_ENCRYPTION_FAILED", "模型密钥加密失败，配置未保存");
+  }
+#endif
 }
 
 std::string unprotectGatewayKey(const std::string& encrypted) {
   auto fail = [] { throw ApiError(503, "MODEL_CONFIG_UNREADABLE", "模型密钥无法解密，请在个人配置中重新保存 API Key"); };
+#ifdef _WIN32
   if (encrypted.empty() || encrypted.size() % 2) fail();
   std::vector<BYTE> bytes;
   auto digit = [&](char c) -> int {
@@ -69,6 +101,11 @@ std::string unprotectGatewayKey(const std::string& encrypted) {
   SecureZeroMemory(output.pbData, output.cbData);
   LocalFree(output.pbData);
   return key;
+#else
+  try { return oral_training::secrets::decrypt(encrypted); }
+  catch (const std::exception&) { fail(); }
+  return {};
+#endif
 }
 
 struct GatewaySettings {

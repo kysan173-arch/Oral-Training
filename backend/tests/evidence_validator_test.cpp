@@ -100,6 +100,16 @@ int main() {
     require(unavailabilityText("抱歉，刚才没说清楚。周六的实时号源我这里看不到，还得由门诊确认。"), "natural apology retains uncertainty");
     require(unavailabilityText("不能保证完全不疼，这点我得跟您说清楚。"), "honest refusal is not a pain guarantee");
     require(unavailabilityText("没法保证完全不疼。"), "colloquial refusal retains its meaning");
+    require(unavailabilityText("不能保证按指定时间完成，具体需医生检查评估。"),
+            "negative completion guarantee is an honest capability limit");
+    require(!unavailabilityText("不能保证按期完成，但保证治愈。"),
+            "a negative clause must not hide a positive clinical guarantee");
+    require(conversationOnlyText("可以先核对两家报价包含的项目明细，确认是否在同等条件下比较。"),
+            "complete quote-comparison advice is not an inclusion claim");
+    require(conversationOnlyText("不同报价可能包含的项目不同，可以先核对两家的项目明细，看看是否在同等条件下比较。"),
+            "generic comparison preface is not a specific clinic inclusion claim");
+    require(!conversationOnlyText("可以先核对两家报价包含的项目明细，确认是否在同等条件下比较。我们包含拍片。"),
+            "quote advice cannot hide an unsupported inclusion claim");
     const json no_slot={{"reply","明天已约好"},{"evidenceIds",json::array()},{"unavailableTopic","appointment"}};
     const auto first_slot=groundedReply(no_slot,c,b,"first-slot","明天能约吗？");
     const auto next_slot=groundedReply(no_slot,c,b,"next-slot","怎么又是确认？",first_slot["reply"]);
@@ -109,9 +119,28 @@ int main() {
     const auto third_slot=groundedReply(no_slot,c,b,"third-slot","还是不知道吗？",next_slot["reply"],
         json::array({first_slot["reply"],next_slot["reply"]}));
     require(third_slot["reply"]!=first_slot["reply"] && third_slot["reply"]!=next_slot["reply"],"fallback cycles between old replies");
+    const json repeated_slot={{"reply","抱歉，我能解释已有服务资料，但看不到实时号源，也不能代为预约。"},
+        {"replyKind","unavailable"},{"evidenceIds",json::array()},{"unavailableTopic","appointment"}};
+    const auto slot1=groundedReply(repeated_slot,c,b,"slot1","周六能约吗？");
+    const auto slot2=groundedReply(repeated_slot,c,b,"slot2","替我占位。",slot1["reply"]);
+    const auto slot3=groundedReply(repeated_slot,c,b,"slot3","怎么又要确认？",slot2["reply"],
+        json::array({slot1["reply"],slot2["reply"]}));
+    require(slot3["reply"].get<std::string>().find("抱歉")!=std::string::npos &&
+            slot3["reply"].get<std::string>().find("我能")!=std::string::npos && slot3["citations"].empty(),
+            "repeated booking fallback loses acknowledgement and capability explanation");
     const auto fake_followup=groundedReply({{"reply","我看不到实时号源，需要帮您跟门诊确认一下。"},
         {"replyKind","unavailable"},{"evidenceIds",json::array()},{"unavailableTopic","appointment"}},c,b,"no-followup");
     require(fake_followup["reply"].get<std::string>().find("帮您")==std::string::npos,"unsupported follow-up promise accepted");
+    const json honest_limit = {{"reply", "抱歉让您重复确认。我这边只能解释已有的服务资料，看不到实时号源，也无法替您预约。"},
+        {"replyKind", "unavailable"}, {"evidenceIds", json::array()}, {"unavailableTopic", "appointment"}};
+    require(groundedReply(honest_limit,c,b,"honest-limit")["reply"] == honest_limit["reply"],
+            "negated booking capability is not an invented booking action");
+    for (const auto* text : {"无法替您预约，但可以安排。", "不能帮您查询，不过我会联系门诊。", "不是不能替您预约。", "并非无法替您预约。"}) {
+      auto unsafe_limit = honest_limit;
+      unsafe_limit["reply"] = text;
+      require(groundedReply(unsafe_limit,c,b,"unsafe-limit")["reply"] != text,
+              "negated capability must not hide a later or double-negative action claim");
+    }
     require(!unavailabilityText("没法确定，但保证完全不疼。"), "positive guarantee still rejected");
     require(!unavailabilityText("不能确定，但我已经预约成功。"), "uncertainty cannot mask invented action");
     for (const auto* unsafe : {"保证无痛。", "只需3个月。", "支持分期。", "已经预约成功。", "当天完成。"}) {
@@ -132,6 +161,20 @@ int main() {
     reply = groundedReply(concise, c, b, "t1");
     require(reply["reply"] == concise["reply"] && reply["answerStatus"] == "answered", "use concise model answer, not raw sources");
     require(reply["citations"].size() == 1 && reply["evidenceBundle"] == b, "keep full audit evidence outside bubble");
+    auto budget_reply = concise;
+    budget_reply["reply"] = "您的3000元预算不够。每颗3980元起，具体费用需检查后确认。";
+    const auto budget_result = groundedReply(budget_reply, c, b, "t1", "我只有三千预算够吗？");
+    require(budget_result["reply"] == "这个预算不够。每颗3980元起，具体费用需检查后确认。" &&
+            budget_result["citations"].size() == 1, "patient budget echo must not invalidate a supported quote");
+    require(groundedReply(budget_reply,c,b,"t1","种植多少钱？")["answerStatus"] == "unknown",
+            "budget rewriting requires an actual budget question");
+    budget_reply["reply"] = "您的3000元预算不足。每颗3000元起，检查后确认。";
+    require(groundedReply(budget_reply,c,b,"t1","三千预算够吗？")["answerStatus"] == "unknown",
+            "patient amount cannot authorize a fabricated service price");
+    require(omitRepeatedBudget("费用3000元。", "三千预算够吗？") == "费用3000元。",
+            "ordinary price claims must never be removed by budget normalization");
+    require(omitRepeatedBudget("每颗3980元起，3000元的预算不够，需检查确认。", "三千预算够吗？") ==
+            "每颗3980元起，这个预算不够，需检查确认。", "mid-sentence budget echo retains published price and condition");
     require(reply["reply"].get<std::string>().find("2026-12-31") == std::string::npos, "do not append unrelated source details");
     for (const auto* attack : {"3980元总价。", "每颗398元起，需检查确认。", "每颗3980元起，保证治愈。",
          "三个月完成。", "资料原文：3980元起。", "明天有号。", "每颗3980元起，无需检查。"}) {

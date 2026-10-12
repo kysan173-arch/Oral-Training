@@ -12,6 +12,8 @@ $RECYCLE.BIN/
 
 # Node.js
 node_modules/
+__pycache__/
+*.pyc
 
 # Local backend runtime files
 backend/build/
