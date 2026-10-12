@@ -2,8 +2,7 @@
 #include "rag_retriever.h"
 #include "sha256.h"
 
-#include <windows.h>
-#include <bcrypt.h>
+#include "secure_random.h"
 
 #include <algorithm>
 #include <array>
@@ -180,10 +179,7 @@ void validateAppointment(const json& appointment) {
 
 std::string randomId(const std::string& prefix) {
   std::array<unsigned char, 12> bytes{};
-  if (BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()),
-                      BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
-    throw std::runtime_error("secure random generation failed");
-  }
+  oral_training::secureRandom(bytes.data(), bytes.size());
   std::ostringstream output;
   output << prefix << '-';
   for (const auto value : bytes) output << std::hex << std::setw(2) << std::setfill('0')

@@ -59,6 +59,49 @@ find_package(PostgreSQL REQUIRED)
 
 FetchContent_MakeAvailable(crow nlohmann_json libpqxx)
 
+add_library(embedding_client src/embedding_client.cpp)
+target_link_libraries(embedding_client PUBLIC nlohmann_json::nlohmann_json)
+if(WIN32)
+  target_link_libraries(embedding_client PUBLIC winhttp bcrypt)
+  target_compile_definitions(embedding_client PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
+  if(MSVC)
+    target_compile_options(embedding_client PRIVATE /utf-8)
+  endif()
+else()
+  find_package(OpenSSL REQUIRED)
+  set(HTTPLIB_REQUIRE_OPENSSL ON CACHE BOOL "" FORCE)
+  set(HTTPLIB_USE_ZLIB_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+  set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(httplib GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+                      GIT_TAG v0.18.1 GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(httplib)
+  target_link_libraries(embedding_client PUBLIC httplib::httplib OpenSSL::Crypto)
+endif()
+
+add_executable(embedding_client_test tests/embedding_client_test.cpp)
+target_link_libraries(embedding_client_test PRIVATE embedding_client)
+add_executable(rag_conversation_probe tests/rag_conversation_probe.cpp src/rag_retriever.cpp)
+target_link_libraries(rag_conversation_probe PRIVATE embedding_client pqxx PostgreSQL::PostgreSQL)
+add_executable(embedding_rag_probe tests/embedding_rag_probe.cpp src/rag_retriever.cpp)
+target_link_libraries(embedding_rag_probe PRIVATE embedding_client pqxx PostgreSQL::PostgreSQL)
+add_executable(embedding_rag_test tests/embedding_rag_test.cpp src/rag_retriever.cpp)
+target_link_libraries(embedding_rag_test PRIVATE embedding_client pqxx PostgreSQL::PostgreSQL)
+enable_testing()
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME rag_conversation_evaluator
+    COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/rag_conversation_evaluator_test.py)
+endif()
+add_test(NAME embedding_client COMMAND embedding_client_test)
+add_test(NAME embedding_rag COMMAND embedding_rag_test)
+set_tests_properties(embedding_rag PROPERTIES SKIP_RETURN_CODE 77)
+if(MSVC)
+  target_compile_options(embedding_client_test PRIVATE /utf-8)
+  target_compile_options(rag_conversation_probe PRIVATE /utf-8)
+  target_compile_options(embedding_rag_probe PRIVATE /utf-8)
+  target_compile_options(embedding_rag_test PRIVATE /utf-8)
+endif()
+
 add_executable(oral_training_backend
   src/main.cpp
   src/knowledge_store.cpp
@@ -102,14 +145,14 @@ add_executable(scenario_draft_test
 
 set(ORAL_TRAINING_LIBRARIES
   Crow::Crow
+  embedding_client
   pqxx
   nlohmann_json::nlohmann_json
   PostgreSQL::PostgreSQL
-  ws2_32
-  winhttp
-  bcrypt
-  crypt32
 )
+if(WIN32)
+  list(APPEND ORAL_TRAINING_LIBRARIES ws2_32 winhttp bcrypt crypt32)
+endif()
 
 target_link_libraries(oral_training_backend PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(report_validation_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
@@ -117,8 +160,10 @@ target_link_libraries(security_config_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(variant_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(litellm_settings_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(service_reply_probe PRIVATE ${ORAL_TRAINING_LIBRARIES})
-target_compile_definitions(service_reply_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
-target_compile_definitions(litellm_settings_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
+if(WIN32)
+  target_compile_definitions(service_reply_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
+  target_compile_definitions(litellm_settings_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
+endif()
 target_link_libraries(database_feature_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(patient_initialization_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
 target_link_libraries(audit_regression_test PRIVATE ${ORAL_TRAINING_LIBRARIES})
@@ -180,11 +225,15 @@ add_test(NAME knowledge_evaluator COMMAND knowledge_evaluator_test)
 add_test(NAME roleplay_evidence COMMAND node ${CMAKE_CURRENT_SOURCE_DIR}/tests/roleplay_evidence_test.js)
 add_test(NAME rag_retriever COMMAND rag_retriever_test)
 add_test(NAME knowledge_store COMMAND knowledge_store_test)
-add_test(
-  NAME client_static_checks
-  COMMAND powershell -NoProfile -ExecutionPolicy Bypass
-          -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/static_checks.ps1
-)
+if(WIN32)
+  add_test(NAME client_static_checks COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+    -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/static_checks.ps1)
+else()
+  add_test(NAME client_static_checks COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/static_checks.py)
+  add_executable(linux_key_store_test tests/linux_key_store_test.cpp)
+  target_link_libraries(linux_key_store_test PRIVATE OpenSSL::Crypto)
+  add_test(NAME linux_key_store COMMAND linux_key_store_test)
+endif()
 
 if(MSVC)
   target_compile_options(service_reply_probe PRIVATE /utf-8 /bigobj)

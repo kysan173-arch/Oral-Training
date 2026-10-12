@@ -209,6 +209,12 @@ inline bool conciseGroundedText(const std::string& reply, const std::string& aut
 }
 
 inline bool conversationOnlyText(const std::string& reply) {
+  // These complete utterances ask to compare quote contents; they do not
+  // assert that any service includes a particular item. Do not exempt arbitrary
+  // sentences containing both a clarification and an unsupported policy claim.
+  static const std::regex compare_advice(
+      R"(^(?:不同报价可能包含的项目不同(?:，|,))?(?:可以先|建议您|您可以先|建议先)核对(?:(?:两家|双方)?报价包含(?:的具体|的|哪些)项目(?:明细|清单)?|(?:两家|双方)的项目明细)(?:，|,)(?:确认|看看)(?:是否|是不是)在同(?:等)?条件下比较(?:。|\.|！|!)?$)");
+  if (textLength(reply) <= 70 && std::regex_match(reply, compare_advice)) return true;
   auto checked = reply;
   // Asking about an unspecified period is a clarification, not a duration claim.
   if (reply.find("？") != std::string::npos)
@@ -235,6 +241,11 @@ inline bool unavailabilityText(const std::string& reply) {
     const auto pos = checked.find(refusal);
     if (pos != std::string::npos) checked.replace(pos, std::string(refusal).size(), "不能承诺");
   }
+  for (const auto* refusal : {"不能保证", "无法保证", "没法保证"}) {
+    size_t pos;
+    while ((pos = checked.find(refusal)) != std::string::npos)
+      checked.replace(pos, std::string(refusal).size(), "不能承诺");
+  }
   return uncertain && conversationOnlyText(checked);
 }
 
@@ -252,6 +263,32 @@ inline bool isSimpleThanks(std::string question) {
       question == "好谢谢你" || question == "谢谢了";
 }
 
+inline std::string omitRepeatedBudget(std::string reply, const std::string& question) {
+  if (question.find("预算") == std::string::npos) return reply;
+  // A patient's budget is not a published service price. Omit only the explicit
+  // budget echo; never whitelist user numbers as evidence or remove
+  // numbers from the quote, units, conditions or the rest of the answer.
+  static const std::regex budget_echo("(?:(?:您|你)的)?[0-9]+(?:\\.[0-9]+)?元(?:的)?预算");
+  return std::regex_replace(reply, budget_echo, "这个预算");
+}
+
+inline bool unsupportedActionClaim(const std::string& reply, const std::string& claim) {
+  for (size_t pos = reply.find(claim); pos != std::string::npos; pos = reply.find(claim, pos + claim.size())) {
+    bool negated = false;
+    for (const std::string refusal : {"无法", "不能", "不会", "没法", "不可以", "不能够"}) {
+      if (pos < refusal.size() || reply.compare(pos - refusal.size(), refusal.size(), refusal) != 0) continue;
+      const auto start = pos - refusal.size();
+      bool double_negative = false;
+      for (const std::string prefix : {"不是", "并非"})
+        if (start >= prefix.size() && reply.compare(start - prefix.size(), prefix.size(), prefix) == 0)
+          double_negative = true;
+      if (!double_negative) negated = true;
+    }
+    if (!negated) return true;
+  }
+  return false;
+}
+
 inline json groundedReply(const json& source, const json& context,
                            const json& bundle, const std::string& trace_id,
                            const std::string& question = "", const std::string& previous_reply = "",
@@ -264,7 +301,7 @@ inline json groundedReply(const json& source, const json& context,
     return !value.empty() && (value==previous_reply ||
         std::find(previous_replies.begin(),previous_replies.end(),json(value))!=previous_replies.end());
   };
-  std::string reply = evidenceString(source, "reply"), authority;
+  std::string reply = omitRepeatedBudget(evidenceString(source, "reply"), question), authority;
   json citations = json::array();
   std::set<std::string> selected;
   bool invalid_selection = false;
@@ -287,7 +324,7 @@ inline json groundedReply(const json& source, const json& context,
   for (const auto* claim : {"可以安排", "可以约上", "肯定能约", "肯定有号",
        "帮您跟门诊", "帮您联系", "帮您核实", "帮您查询", "帮您查", "替您联系", "替您预约",
        "我会联系", "稍后回复", "确认后回复", "回头通知"})
-    if (reply.find(claim) != std::string::npos) usable = false;
+    if (unsupportedActionClaim(reply, claim)) usable = false;
   // An exact, standalone thank-you has no factual question to defer for verification.
   // Never apply this fallback to messages that also contain a substantive question.
   if (!usable && !conflicted && isSimpleThanks(question)) {
@@ -334,7 +371,7 @@ inline json groundedReply(const json& source, const json& context,
       const auto limit=limitations.find(evidenceString(source,"unavailableTopic"));
       reply=conflicted?"现有信息有矛盾，我不能选一个说法当作确定答案。请向门诊核实。":
           limit!=limitations.end()?limit->second:"抱歉，我这里没有更多可确认的信息，继续猜测会误导您。";
-      if(already_said(reply)) reply="这项暂时没有更多可确认的信息。您还有其他想了解的吗？";
+      if(already_said(reply)) reply="抱歉反复让您确认。我能解释已有服务资料，但这项信息目前无法核实。";
     }
   }
   return {{"reply", reply}, {"replyKind", conversation && usable && !conflicted ? "conversation" : "answer"},

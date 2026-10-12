@@ -2397,7 +2397,7 @@ class ReliableDatabase {
       if (averages.contains(key) && averages[key].is_number()) ordered_keys.push_back(key);
     }
     std::sort(ordered_keys.begin(), ordered_keys.end(), [&](const auto& left, const auto& right) {
-      return averages[left].get<double>() < averages[right].get<double>();
+      return averages[left].template get<double>() < averages[right].template get<double>();
     });
     json weaknesses = json::array();
     if (!ordered_keys.empty()) {
@@ -4082,7 +4082,7 @@ class ReliableDatabase {
       if (averages.contains(key) && averages[key].is_number()) ordered.push_back(key);
     }
     std::sort(ordered.begin(), ordered.end(), [&](const auto& left, const auto& right) {
-      return averages[left].get<double>() < averages[right].get<double>();
+      return averages[left].template get<double>() < averages[right].template get<double>();
     });
     json weaknesses = json::array();
     for (size_t index = 0; index < ordered.size() && index < 2; ++index) {

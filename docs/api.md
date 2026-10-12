@@ -113,7 +113,7 @@ Content-Type: application/json
 
 `DELETE /config/litellm`：清除本人的配置；请求 `{"revision":1}`，递增个人版本并保留配置变更审计，不影响其他账号。本账号后续生成返回 `MODEL_NOT_CONFIGURED`，已有模型调用完成其原配置快照。不会回退到系统变量或其他人的 Key。
 
-配置和不含密钥的变更审计按 user_id 隔离，在同一事务内保存。凭据由 Windows DPAPI 按后端运行账号加密，重启仍有效；迁移机器/运行账号后无法解密时返回 `MODEL_CONFIG_UNREADABLE`，需本人重新保存 Key。旧机构配置及审计原样保留，迁移 023 只向最后保存者复制配置，不向其他用户分发 Key。后台模型任务从数据库中的会话所有者或知识生成任务创建者确定用户。后端不再读取 DEEPSEEK_API_KEY、DEEPSEEK_MODEL、ALLOW_RUNTIME_API_KEY。`POST /config/deepseek-key` 在鉴权后返回 410 `MODEL_CONFIG_MOVED`。
+配置和不含密钥的变更审计按 user_id 隔离，在同一事务内保存。凭据在 Windows 上由 DPAPI 按后端运行账号加密，在 Linux 上由独立的 `MODEL_KEY_FILE` 主密钥使用 AES-256-GCM 加密，重启仍有效。Linux 主密钥必须是运行账号独占的 32 字节文件（0600）；跨平台迁移或丢失原密钥导致无法解密时返回 `MODEL_CONFIG_UNREADABLE`，需本人重新保存 Key。旧机构配置及审计原样保留，迁移 035 只向最后保存者复制配置，不向其他用户分发 Key。后台模型任务从数据库中的会话所有者或知识生成任务创建者确定用户。后端不再读取 DEEPSEEK_API_KEY、DEEPSEEK_MODEL、ALLOW_RUNTIME_API_KEY。`POST /config/deepseek-key` 在鉴权后返回 410 `MODEL_CONFIG_MOVED`。
 
 后端调用 `{baseUrl}/chat/completions`（无路径时补 `/v1`），保留公共 Chat Completions 参数和业务 JSON 修复流程，不再发送 DeepSeek 专属 thinking 或固定 user_id。HTTP 仅限回环网关，其他地址要求 HTTPS，禁止携带 URL 用户凭据/查询参数和自动重定向。模型日志含 provider、requestedModel、actualModel、configRevision、usage；modelVersion 记录 `litellm:<模型别名>@<配置版本>`。上游推理参数由 LiteLLM 管理。
 
@@ -774,3 +774,12 @@ health 新增 `rag.roleplayNewSessions/patientNewSessions/evaluationV2Enabled`�
 每次实际 HTTP 尝试输出一个 `event=model_call` JSON 审计记录：logicalCallId、attempt、callNumber、requestedModel、actualModel、promptVersion、maxOutputTokens、usage、httpStatus、finishReason、latencyMs、retry、errorType。缺失的提供商 usage 保持缺失，不能当 0；无返回时 actualModel 为 null。日志不记录密钥、对话、资料正文或完整模型响应。该记录反映传输/JSON 解析结果，后续领域验证失败还需关联 Worker 失败日志。v2 复盘为确定性证据汇总，本身不增加模型调用。
 
 角色互换聊天中的学习要点/合规说明默认收起，可逐条展开，恢复历史时同样默认收起；查看依据入口独立保留。RAG 客服连续生成相同的资料不足答复时，后端结合上一条客服回复说明具体能力限制，不声称已经联系或会自动回访门诊。
+
+
+### EmbeddingGemma 检索元数据
+
+证据 bundle 保留原有 facts、passages、manifestHash、tokenizerVersion 等字段，新增
+`retrieverVersion`（`embeddinggemma-cosine-v1`）、`embeddingModel`、`embeddingDimensions` 和
+`embeddingCacheKey`。`tokenizerVersion` 仅描述已有片段的词项格式，不再代表召回算法。
+草稿预览也返回 retrieverVersion、embeddingModel 和 embeddingDimensions，其 score 为余弦相似度。
+向量服务无法生成有效向量时返回 HTTP 503 / `RAG_UNAVAILABLE`，不以 `no_hit` 伪装成功。

@@ -2,6 +2,7 @@
 #include "evidence_validator.h"
 #include "knowledge_validity.h"
 #include "evidence_conflicts.h"
+#include "sha256.h"
 
 #include <algorithm>
 #include <cctype>
@@ -127,44 +128,72 @@ std::set<std::string> requestedFields(const std::string& question,
     fields.insert("visitDuration");
     fields.insert("treatmentDuration");
   }
+  if (containsAny(normalized, {"初诊", "到诊", "就诊时长", "来一趟"})) fields.insert("visitDuration");
   if (containsAny(normalized, {"复诊", "复查", "间隔"})) fields.insert("followupInterval");
   if (containsAny(normalized, {"预约", "挂号", "号源", "营业时间"})) fields.insert("appointment");
   return fields;
 }
 
-std::string tsQuery(const std::vector<std::string>& terms) {
-  return join(terms, " | ");
-}
-
-double overlapScore(const std::vector<std::string>& query, const std::string& terms) {
-  if (query.empty()) return 0.0;
-  std::set<std::string> document;
-  std::istringstream input(terms);
-  for (std::string value; input >> value;) document.insert(value);
-  int matches = 0;
-  for (const auto& value : query) if (document.count(value) != 0) ++matches;
-  return static_cast<double>(matches) / static_cast<double>(query.size());
+std::string embeddingText(const std::string& title, const std::string& body, const json& metadata) {
+  return title + "\n" + body + "\n" + metadataString(metadata, "applicability");
 }
 
 }  // namespace
 
-std::string customerRetrievalQuestion(const RetrievalRequest& request) {
-  std::string query = request.current_question;
+namespace {
+std::vector<std::string> customerQuestionContext(const RetrievalRequest& request) {
+  const auto& current = request.current_question;
   if (request.purpose != RetrievalPurpose::CustomerReply ||
-      !containsAny(query, {"太长", "简单点", "简短", "一句话", "说清楚", "说人话", "什么意思"}) ||
-      !request.recent_question_answers.is_array()) return query;
-  // Resolve requests to rephrase using the latest substantive patient question.
-  // Never index a previous assistant's answer as if it were published evidence.
+      !request.recent_question_answers.is_array()) return {};
+  const auto follows = [](const std::string& question) {
+    if (containsAny(question, {"换个话题", "不说价格", "我改问", "我是问", "改成问"})) return false;
+    return containsAny(question, {"太长", "简单点", "简短", "说短", "一句话", "说清楚", "说人话", "什么意思",
+        "那", "这笔", "这回", "这趟", "这个", "刚才", "里面", "其中", "还要", "再收费", "再收钱", "如果"});
+  };
+  if (!follows(current)) return {};
+  // Resolve short follow-ups through a bounded chain of patient questions. Stop
+  // at the most recent independent subject; never copy assistant claims into
+  // retrieval or carry a price discussion across an explicit topic correction.
+  std::vector<std::string> context;
   int scanned = 0;
+  bool skipped_current = false;
   for (auto i = request.recent_question_answers.rbegin();
-       i != request.recent_question_answers.rend() && scanned++ < 8; ++i) {
+       i != request.recent_question_answers.rend() && scanned++ < 10 && context.size() < 3; ++i) {
     if (!i->is_object() || i->value("role", "") != "learner_patient") continue;
     const auto previous = i->value("content", "");
-    if (previous.empty() || previous == query ||
-        containsAny(previous, {"太长", "简单点", "简短", "一句话", "说清楚", "说人话", "什么意思"})) continue;
-    return previous + " " + query;
+    if (!skipped_current && previous == current) { skipped_current = true; continue; }
+    if (previous.empty() || previous.size() > 1800 || isSimpleThanks(previous)) break;
+    context.push_back(previous);
+    if (!follows(previous)) break;
   }
-  return query;
+  std::reverse(context.begin(), context.end());
+  return context;
+}
+
+
+bool implicitFeeFollowup(const std::string& current, const std::string& anchor) {
+  if (anchor.empty() || !containsAny(current, {"收钱", "收费", "付钱", "花钱", "交钱", "另算钱"})) return false;
+  std::string remainder = current;
+  const auto remove = [&](const std::string& word) {
+    size_t pos;
+    while ((pos = remainder.find(word)) != std::string::npos) remainder.erase(pos, word.size());
+  };
+  // Explicit new subjects (e.g. 植骨) must remain independent. A repeated noun
+  // can refer to the same prior procedure, never to an assistant's claim.
+  for (const auto* noun : {"复查", "拆线", "拍片", "检查", "手术"})
+    if (anchor.find(noun) != std::string::npos) remove(noun);
+  for (const auto* word : {"要不要", "另外", "额外", "这个", "这次", "那次", "刚才", "需要",
+       "收钱", "收费", "付钱", "花钱", "交钱", "另算钱", "单独", "那", "这", "还", "要", "再", "会", "也", "吗", "么", "呢", "？", "?", "。", "，", " "}) remove(word);
+  return remainder.empty();
+}
+}  // namespace
+
+std::string customerRetrievalQuestion(const RetrievalRequest& request) {
+  auto context = customerQuestionContext(request);
+  context.push_back(request.current_question);
+  // Extra discourse labels measurably changed cosine ranking toward generic
+  // follow-up policies. Embed only the actual patient questions.
+  return join(context, " ");
 }
 
 std::vector<std::string> tokenizeChinese(const std::string& text) {
@@ -287,94 +316,164 @@ EvidenceBundle RagRetriever::retrieve(const std::string& service_revision_id,
     throw std::runtime_error("RAG manifest hash mismatch");
   bundle.manifest_hash = locked_manifest_hash;
   bundle.training_scope = training_scope;
-  auto connection = database_pool_->acquire();
-  pqxx::read_transaction tx(connection.get());
-
-  const auto as_of_date = std::string(tx.exec_params(
-      "SELECT to_char($1::timestamptz AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS date",
-      knowledge_as_of)[0]["date"].c_str());
-  std::string service_id;
-  json service_payload;
-  if (!service_revision_id.empty()) {
-    const auto service = tx.exec_params(
-        "SELECT service_id, payload FROM service_revisions WHERE id = $1", service_revision_id);
-    if (service.empty()) throw std::runtime_error("service revision not found");
-    service_id = service[0]["service_id"].c_str();
-    service_payload = json::parse(service[0]["payload"].c_str());
-  }
-
-  // Validate the complete locked set before retrieval; missing or foreign revisions
-  // are a snapshot failure, not a legitimate no-hit response.
-  const auto canonical = canonicalManifest(service_revision_id, knowledge_revision_ids, training_scope);
-  const auto revisions = tx.exec_params(R"(
-    SELECT r.id FROM knowledge_revisions r
-    JOIN knowledge_entries e ON e.id = r.entry_id
-    WHERE r.id IN (SELECT jsonb_array_elements_text($1::jsonb))
-      AND r.metadata->>'trainingScope' = $2
-      AND (e.scope = 'general' OR e.service_id = $3)
-  )", canonical["knowledgeRevisionIds"].dump(), training_scope, service_id);
-  if (revisions.size() != canonical["knowledgeRevisionIds"].size())
-    throw std::runtime_error("RAG locked revisions unavailable or outside service scope");
-  bundle.service_id = service_id;
-  int evidence = 1;
+  bundle.retriever_version = "embeddinggemma-context-cosine-v4";
+  bundle.embedding_model = embeddings_->config().model;
+  bundle.embedding_dimensions = embeddings_->config().dimensions;
+  const auto cache_key = embeddings_->config().cacheKey();
+  bundle.embedding_cache_key = cache_key;
+  struct Candidate { PassageEvidence passage; std::string topic; std::string input; std::string hash;
+                     Embedding vector; double score = 0; bool needs_cache = false; };
+  std::vector<Candidate> candidates;
   const auto retrieval_question = customerRetrievalQuestion(request);
-  for (const auto& field : requestedFields(retrieval_question, request.field)) {
-    if (!service_payload.contains(field)) {
-      bundle.missing_fields.push_back(field);
-      continue;
-    }
-    const auto& value = service_payload[field];
-    if (!effectiveOnDate(value, "validFrom", "validUntil", as_of_date)) {
-      bundle.missing_fields.push_back(field);
-      continue;
-    }
-    if (value.is_object() && value.value("status", "known") == "unknown") {
-      bundle.missing_fields.push_back(field);
-      continue;
-    }
-    const auto display = renderFact(field, value);
-    if (display.empty()) {
-      bundle.missing_fields.push_back(field);
-      continue;
-    }
-    bundle.facts.push_back({"E" + std::to_string(evidence++), field, value, display,
-                            service_revision_id, service_payload.value("dataOrigin", "manual")});
-  }
+  int evidence = 1;
+  {
+    auto connection = database_pool_->acquire();
+    pqxx::read_transaction tx(connection.get());
 
-  const auto query_terms = tokenizeChinese(retrieval_question);
-  if (!knowledge_revision_ids.empty() && !query_terms.empty()) {
-    const json manifest = knowledge_revision_ids;
-    const auto rows = tx.exec_params(R"(
-      SELECT c.id, c.revision_id, c.body, c.section, r.title, r.metadata, e.scope, e.service_id, e.topic,
-        ts_rank_cd(c.search_vector, to_tsquery('simple', $2)) AS rank
-      FROM knowledge_chunks c
-      JOIN knowledge_revisions r ON r.id = c.revision_id
-      JOIN knowledge_entries e ON e.id = r.entry_id
-      WHERE c.revision_id IN (SELECT jsonb_array_elements_text($1::jsonb))
-        AND c.tokenizer_version = $3
-        AND r.metadata->>'trainingScope' = $4
-        AND (e.scope = 'general' OR e.service_id = $5)
-        AND ($6 = '' OR e.topic = $6)
-        AND COALESCE(NULLIF(r.metadata->>'effectiveFrom', ''), '0001-01-01') <= to_char($7::timestamptz AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
-        AND COALESCE(NULLIF(r.metadata->>'effectiveUntil', ''), '9999-12-31') >= to_char($7::timestamptz AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
-        AND c.search_vector @@ to_tsquery('simple', $2)
-      ORDER BY rank DESC, c.revision_id, c.ordinal
-    )", manifest.dump(), tsQuery(query_terms), std::string(kTokenizerVersion), training_scope,
-        service_id, request.topic.value_or(""), knowledge_as_of);
-    std::map<std::string, std::string> topics;
-    for (const auto& row : rows) {
-      const auto metadata = json::parse(row["metadata"].c_str());
-      bundle.passages.push_back({"E" + std::to_string(evidence++), row["id"].c_str(),
-          row["revision_id"].c_str(), row["title"].c_str(), row["body"].c_str(),
-          metadataString(metadata, "applicability"), metadataString(metadata, "sourceTitle"),
-          metadataString(metadata, "sourceUrl").empty() ? std::nullopt
-              : std::optional<std::string>(metadataString(metadata, "sourceUrl")),
-          metadataString(metadata, "sourceLocator").empty() ? std::nullopt
-              : std::optional<std::string>(metadataString(metadata, "sourceLocator")),
-          row["scope"].c_str(), row["service_id"].is_null() ? "" : row["service_id"].c_str(),
-          training_scope});
-      topics[bundle.passages.back().evidence_id] = row["topic"].c_str();
+    const auto as_of_date = std::string(tx.exec_params(
+        "SELECT to_char($1::timestamptz AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS date",
+        knowledge_as_of)[0]["date"].c_str());
+    std::string service_id;
+    json service_payload;
+    if (!service_revision_id.empty()) {
+      const auto service = tx.exec_params(
+          "SELECT service_id, payload FROM service_revisions WHERE id = $1", service_revision_id);
+      if (service.empty()) throw std::runtime_error("service revision not found");
+      service_id = service[0]["service_id"].c_str();
+      service_payload = json::parse(service[0]["payload"].c_str());
     }
+
+    // Validate the complete locked set before retrieval; missing or foreign revisions
+    // are a snapshot failure, not a legitimate no-hit response.
+    const auto canonical = canonicalManifest(service_revision_id, knowledge_revision_ids, training_scope);
+    const auto revisions = tx.exec_params(R"(
+      SELECT r.id FROM knowledge_revisions r
+      JOIN knowledge_entries e ON e.id = r.entry_id
+      WHERE r.id IN (SELECT jsonb_array_elements_text($1::jsonb))
+        AND r.metadata->>'trainingScope' = $2
+        AND (e.scope = 'general' OR e.service_id = $3)
+    )", canonical["knowledgeRevisionIds"].dump(), training_scope, service_id);
+    if (revisions.size() != canonical["knowledgeRevisionIds"].size())
+      throw std::runtime_error("RAG locked revisions unavailable or outside service scope");
+    bundle.service_id = service_id;
+    for (const auto& field : requestedFields(retrieval_question, request.field)) {
+      if (!service_payload.contains(field)) {
+        bundle.missing_fields.push_back(field);
+        continue;
+      }
+      const auto& value = service_payload[field];
+      if (!effectiveOnDate(value, "validFrom", "validUntil", as_of_date)) {
+        bundle.missing_fields.push_back(field);
+        continue;
+      }
+      if (value.is_object() && value.value("status", "known") == "unknown") {
+        bundle.missing_fields.push_back(field);
+        continue;
+      }
+      const auto display = renderFact(field, value);
+      if (display.empty()) {
+        bundle.missing_fields.push_back(field);
+        continue;
+      }
+      bundle.facts.push_back({"E" + std::to_string(evidence++), field, value, display,
+                              service_revision_id, service_payload.value("dataOrigin", "manual")});
+    }
+
+    if (!knowledge_revision_ids.empty() && !retrieval_question.empty()) {
+      const json manifest = knowledge_revision_ids;
+      // Semantic retrieval considers every eligible chunk, including those with no lexical overlap.
+      const auto rows = tx.exec_params(R"(
+        SELECT c.id, c.revision_id, c.body, c.section, r.title, r.metadata, e.scope, e.service_id, e.topic,
+               v.input_sha256, v.embedding
+        FROM knowledge_chunks c
+        JOIN knowledge_revisions r ON r.id = c.revision_id
+        JOIN knowledge_entries e ON e.id = r.entry_id
+        LEFT JOIN knowledge_chunk_embeddings v ON v.chunk_id = c.id AND v.cache_key = $6
+        WHERE c.revision_id IN (SELECT jsonb_array_elements_text($1::jsonb))
+          AND r.metadata->>'trainingScope' = $2
+          AND (e.scope = 'general' OR e.service_id = $3)
+          AND ($4 = '' OR e.topic = $4)
+          AND COALESCE(NULLIF(r.metadata->>'effectiveFrom', ''), '0001-01-01') <= to_char($5::timestamptz AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
+          AND COALESCE(NULLIF(r.metadata->>'effectiveUntil', ''), '9999-12-31') >= to_char($5::timestamptz AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')
+        ORDER BY c.revision_id, c.ordinal
+      )", manifest.dump(), training_scope, service_id, request.topic.value_or(""), knowledge_as_of, cache_key);
+      for (const auto& row : rows) {
+        const auto metadata = json::parse(row["metadata"].c_str());
+        Candidate candidate;
+        candidate.passage = {"", row["id"].c_str(), row["revision_id"].c_str(),
+            row["title"].c_str(), row["body"].c_str(), metadataString(metadata, "applicability"),
+            metadataString(metadata, "sourceTitle"),
+            metadataString(metadata, "sourceUrl").empty() ? std::nullopt
+                : std::optional<std::string>(metadataString(metadata, "sourceUrl")),
+            metadataString(metadata, "sourceLocator").empty() ? std::nullopt
+                : std::optional<std::string>(metadataString(metadata, "sourceLocator")),
+            row["scope"].c_str(), row["service_id"].is_null() ? "" : row["service_id"].c_str(), training_scope};
+        candidate.topic = row["topic"].c_str();
+        candidate.input = embeddingText(candidate.passage.title, candidate.passage.body, metadata);
+        candidate.hash = oral_training::sha256Hex(candidate.input);
+        if (!row["embedding"].is_null() && !row["input_sha256"].is_null() &&
+            candidate.hash == row["input_sha256"].c_str()) {
+          try { candidate.vector = EmbeddingClient::validatedVector(json::parse(row["embedding"].c_str()),
+                                                                    embeddings_->config().dimensions); }
+          catch (const std::exception&) { candidate.vector.clear(); }
+        }
+        candidate.needs_cache = candidate.vector.empty();
+        candidates.push_back(std::move(candidate));
+      }
+    }
+  } // Release both transaction and pooled connection BEFORE calling embedding services.
+
+  if (!candidates.empty()) {
+    const auto context_questions = customerQuestionContext(request);
+    const auto anchor = context_questions.empty() ? "" : context_questions.front();
+    const bool focus_previous_topic = implicitFeeFollowup(request.current_question, anchor);
+    std::vector<std::string> queries = {retrieval_question};
+    if (focus_previous_topic) queries.push_back(anchor);
+    const auto query_vectors = embeddings_->embed(queries, "query");
+    const auto& query_vector = query_vectors.front();
+    std::string anchor_topic;
+    double anchor_score = embeddings_->config().min_similarity;
+    std::vector<std::string> missing_inputs;
+    for (const auto& candidate : candidates) if (candidate.needs_cache) missing_inputs.push_back(candidate.input);
+    const auto computed = embeddings_->embed(missing_inputs, "document");
+    size_t next = 0;
+    for (auto& candidate : candidates) {
+      if (candidate.needs_cache) candidate.vector = computed.at(next++);
+      candidate.score = EmbeddingClient::cosine(query_vector, candidate.vector);
+      if (focus_previous_topic) {
+        const auto score = EmbeddingClient::cosine(query_vectors.back(), candidate.vector);
+        if (score > anchor_score) { anchor_score = score; anchor_topic = candidate.topic; }
+      }
+    }
+    if (!computed.empty()) {
+      auto connection = database_pool_->acquire();
+      pqxx::work tx(connection.get());
+      for (const auto& candidate : candidates) if (candidate.needs_cache) {
+        tx.exec_params(R"(
+          INSERT INTO knowledge_chunk_embeddings(chunk_id,cache_key,input_sha256,model,dimensions,embedding)
+          VALUES($1,$2,$3,$4,$5,$6::jsonb)
+          ON CONFLICT(chunk_id,cache_key) DO UPDATE SET input_sha256=EXCLUDED.input_sha256,
+            model=EXCLUDED.model, dimensions=EXCLUDED.dimensions, embedding=EXCLUDED.embedding, created_at=NOW()
+        )", candidate.passage.chunk_id, cache_key, candidate.hash, embeddings_->config().model,
+            embeddings_->config().dimensions, json(candidate.vector).dump());
+      }
+      tx.commit();
+    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+      return a.score > b.score;
+    });
+    std::map<std::string, std::string> topics;
+    for (auto& candidate : candidates) {
+      if (candidate.score < embeddings_->config().min_similarity) continue;
+      // A subject-free fee follow-up stays within the semantically resolved
+      // previous topic. Keep every eligible chunk in that topic for conflict
+      // detection; a new explicit subject is never constrained this way.
+      if (focus_previous_topic && !anchor_topic.empty() && candidate.topic != anchor_topic) continue;
+      candidate.passage.evidence_id = "E" + std::to_string(evidence++);
+      topics[candidate.passage.evidence_id] = candidate.topic;
+      bundle.passages.push_back(std::move(candidate.passage));
+    }
+    // Existing conflict-aware selection checks every qualifying candidate before limiting to six.
     detectEvidenceConflicts(bundle, topics);
   }
   bundle.retrieval_status = bundle.facts.empty() && bundle.passages.empty()
@@ -384,28 +483,37 @@ EvidenceBundle RagRetriever::retrieve(const std::string& service_revision_id,
 
 json RagRetriever::previewKnowledge(const std::string& actor_id, const std::string& entry_id,
                                     int draft_version, const std::string& question) const {
-  auto connection = database_pool_->acquire();
-  pqxx::read_transaction tx(connection.get());
-  const auto rows = tx.exec_params(R"(
-    SELECT e.topic, e.scope, e.service_id, d.title, d.body, d.metadata, d.draft_version
-    FROM users u, knowledge_entries e JOIN knowledge_drafts d ON d.entry_id = e.id
-    WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND e.id = $2
-  )", actor_id, entry_id);
-  if (rows.empty()) throw std::runtime_error("knowledge draft not found");
-  if (rows[0]["draft_version"].as<int>() != draft_version) {
-    throw std::invalid_argument("draft version conflict");
+  std::string title, body;
+  json metadata;
+  {
+    auto connection = database_pool_->acquire();
+    pqxx::read_transaction tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      SELECT e.topic, e.scope, e.service_id, d.title, d.body, d.metadata, d.draft_version
+      FROM users u, knowledge_entries e JOIN knowledge_drafts d ON d.entry_id = e.id
+      WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND e.id = $2
+    )", actor_id, entry_id);
+    if (rows.empty()) throw std::runtime_error("knowledge draft not found");
+    if (rows[0]["draft_version"].as<int>() != draft_version) {
+      throw std::invalid_argument("draft version conflict");
+    }
+    title = rows[0]["title"].c_str();
+    body = rows[0]["body"].c_str();
+    metadata = json::parse(rows[0]["metadata"].c_str());
   }
-  const auto title = std::string(rows[0]["title"].c_str());
-  const auto body = std::string(rows[0]["body"].c_str());
-  const auto metadata = json::parse(rows[0]["metadata"].c_str());
   const auto chunks = chunkKnowledge(title, body, metadata);
   const auto effective_query = question.empty() ? title : question;
-  const auto query_terms = tokenizeChinese(effective_query);
   struct Hit { double score; const KnowledgeChunkDraft* chunk; };
   std::vector<Hit> hits;
-  for (const auto& chunk : chunks) {
-    const auto score = overlapScore(query_terms, chunk.terms);
-    if (score > 0.0 || question.empty()) hits.push_back({score, &chunk});
+  if (!chunks.empty()) {
+    std::vector<std::string> inputs;
+    for (const auto& chunk : chunks) inputs.push_back(embeddingText(title, chunk.body, metadata));
+    const auto documents = embeddings_->embed(inputs, "document");
+    const auto query = embeddings_->embed({effective_query}, "query").at(0);
+    for (size_t i = 0; i < chunks.size(); ++i) {
+      const auto score = EmbeddingClient::cosine(query, documents[i]);
+      if (score >= embeddings_->config().min_similarity) hits.push_back({score, &chunks[i]});
+    }
   }
   std::sort(hits.begin(), hits.end(), [](const Hit& left, const Hit& right) {
     if (std::abs(left.score - right.score) > 0.000001) return left.score > right.score;
@@ -422,10 +530,13 @@ json RagRetriever::previewKnowledge(const std::string& actor_id, const std::stri
   }
   const auto status = evidence.empty() ? "no_hit" : "ok";
   const auto answer = evidence.empty()
-      ? "当前草稿没有命中该问题，请补充更明确的资料或关键词。"
+      ? "当前草稿没有命中该问题，请补充资料或调整问题表述。"
       : "已命中当前草稿中的可引用内容，训练回答将只使用下方依据。";
   return {{"entityId", entry_id}, {"draftVersion", draft_version},
           {"query", effective_query}, {"tokenizerVersion", kTokenizerVersion},
+          {"retrieverVersion", "embeddinggemma-context-cosine-v4"},
+          {"embeddingModel", embeddings_->config().model},
+          {"embeddingDimensions", embeddings_->config().dimensions},
           {"retrievalStatus", status}, {"answer", answer}, {"evidence", evidence}};
 }
 

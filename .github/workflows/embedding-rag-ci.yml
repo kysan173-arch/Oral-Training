@@ -1,0 +1,18 @@
+name: Embedding RAG offline checks
+on:
+  push:
+  pull_request:
+
+jobs:
+  embedding-rag:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and isolated database dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libssl-dev libpq-dev postgresql-16
+      - name: Build production RAG components
+        run: |
+          cmake -S backend -B backend/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build backend/build -j 2
+      - name: Validate embeddings, locked evidence and migrations without model APIs
+        run: python3 backend/tests/run_embedding_checks.py

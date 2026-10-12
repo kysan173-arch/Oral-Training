@@ -68,17 +68,28 @@ $environmentNames = @(
   'PGOPTIONS', 'DATABASE_URL', 'PRODUCTION', 'AUTH_MODE', 'ALLOW_RUNTIME_API_KEY',
   'BIND_ADDRESS', 'PORT', 'ALLOWED_ORIGIN', 'REQUIRE_HTTPS', 'AI_WORKER_CONCURRENCY',
   'KNOWLEDGE_WORKER_CONCURRENCY', 'DATABASE_POOL_SIZE', 'DATABASE_POOL_WAIT_MS',
-  'DEEPSEEK_API_KEY', 'RAG_ROLEPLAY_ENABLED', 'RAG_PATIENT_ENABLED', 'RAG_EVALUATION_V2_ENABLED'
+  'RAG_EMBEDDING_BASE_URL', 'DEEPSEEK_API_KEY', 'RAG_ROLEPLAY_ENABLED', 'RAG_PATIENT_ENABLED', 'RAG_EVALUATION_V2_ENABLED'
 )
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) {
   $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $backend = $null
+$embeddingFixture = $null
+$embeddingReady = Join-Path $env:TEMP "knowledge-embedding-$schema.ready"
 $stdout = Join-Path $env:TEMP "knowledge-api-$schema.stdout.log"
 $stderr = Join-Path $env:TEMP "knowledge-api-$schema.stderr.log"
 
 try {
+  $embeddingFixture = Start-Process -FilePath 'python' -PassThru -WindowStyle Hidden -ArgumentList @(
+    ('"' + (Join-Path $PSScriptRoot 'embedding_http_fixture.py') + '"'),
+    '--ready-file', ('"' + $embeddingReady + '"')
+  )
+  for ($wait = 0; $wait -lt 50 -and -not (Test-Path $embeddingReady); $wait++) {
+    Start-Sleep -Milliseconds 100
+  }
+  if (-not (Test-Path $embeddingReady)) { throw 'Offline embedding fixture did not start.' }
+  $env:RAG_EMBEDDING_BASE_URL = (Get-Content -Raw $embeddingReady).Trim()
   $env:RAG_ROLEPLAY_ENABLED = 'true'
   $env:RAG_PATIENT_ENABLED = 'true'
   $env:RAG_EVALUATION_V2_ENABLED = 'true'
@@ -260,6 +271,10 @@ VALUES ('$adminHash', 'knowledge-api-admin', NOW() + INTERVAL '1 hour'),
   Invoke-Api POST "/admin/services/$serviceId/archive" $adminToken @{} 200 | Out-Null
   [pscustomobject]@{ Result = 'passed'; Schema = $schema; Port = $port } | ConvertTo-Json -Compress
 } finally {
+  if ($embeddingFixture -and -not $embeddingFixture.HasExited) {
+    Stop-Process -Id $embeddingFixture.Id -Force
+  }
+  Remove-Item -LiteralPath $embeddingReady -ErrorAction SilentlyContinue
   if ($backend -and -not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
   if (Test-Path -LiteralPath $stderr) {
     $errors = Get-Content -LiteralPath $stderr -ErrorAction SilentlyContinue

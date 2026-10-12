@@ -1,0 +1,23 @@
+name: Linux backend
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install build and test dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libssl-dev libpq-dev postgresql-16
+      - name: Build full API and regressions
+        run: |
+          cmake -S backend -B backend/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build backend/build -j 2
+      - name: Offline unit and client checks
+        run: ctest --test-dir backend/build --output-on-failure
+      - name: Isolated database and HTTP integration (no real model calls)
+        run: python3 backend/tests/litellm_integration_test.py --pg-bin /usr/lib/postgresql/16/bin

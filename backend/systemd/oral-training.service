@@ -1,0 +1,21 @@
+[Unit]
+Description=Oral training API and workers
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=oral-training
+Group=oral-training
+WorkingDirectory=/opt/oral-training
+ExecStart=/usr/bin/python3 /opt/oral-training/backend/linux_runtime.py --env-file /etc/oral-training/backend.env --binary /opt/oral-training/backend/build/oral_training_backend
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
