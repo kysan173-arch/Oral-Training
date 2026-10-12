@@ -172,6 +172,10 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
   std::map<std::string,int> asked;
   std::map<std::string,std::string> asked_quotes;
   std::set<std::string> deferred_to_doctor;
+  // 已被「会核实后回复」这类合规应答处理过的价格类字段。
+  // 与 deferred_to_doctor 分开：那个是医疗判断的转交，这个是「价格问过了、
+  // 对方已承诺回复」，用于让患者侧停止重复追问同一诉求。
+  std::set<std::string> deferred_price_topics;
   int last_user_round=0;
   std::vector<json> ordered(history.begin(),history.end());
   std::stable_sort(ordered.begin(),ordered.end(),[](const json& a,const json& b){return a.value("round",0)<b.value("round",0);});
@@ -243,6 +247,25 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
         if(verdict=="incomplete") reason="陈述遗漏范围、单位或适用条件";
         if(verdict=="not_applicable") reason="疑问、假设、否定或转述，不作为本诊所事实承诺计分";
         if(verdict=="conflicted") reason="证据存在冲突，暂不计分";
+        // 合规地不报价：明确说明会核实后回复、或把话题转到「费用包含什么」，
+        // 且没有说出任何被资料否定的数值。这类应答此前落进 evidence_missing
+        // 或 incomplete，既不计分也不告诉患者「这个话题已经回应过」，
+        // 于是患者每轮都回来追问。判为 deferred：给中性 credit，
+        // 并写入 deferredTopics 让患者侧收敛。
+        // 两种起点都要覆盖：「价格我稍后回复」是 evidence_missing，
+        // 「费用包含哪些项目我回头说明」因为「包含」被识别成 includedItems
+        // 而判 incomplete —— 两者都是「承诺稍后答」而非「答错了」。
+        // 注意关键词必须精确：早期版本含「帮您确认」，但「预约我帮您确认」是
+        // 合规且正确的应答（既有夹具期望 supported），会被误判。
+        // 因此只保留「确认后回复」这类明确指向「稍后答复」的组合。
+        if((verdict=="evidence_missing" || verdict=="incomplete") && claimHas(span.text,
+            {"核实后回复","确认后回复","稍后回复","回头回复","回头说明",
+             "具体费用以","以实际为准","以面诊为准"}))
+          verdict="deferred";
+        if(verdict=="deferred") {
+          reason="已说明会核实后回复或转为费用构成说明，未编造数值；属合规应答，不因未给价扣分";
+          if(field=="price"||field=="includedItems") deferred_price_topics.insert(field);
+        }
         if(verdict=="not_applicable" && claimHas(span.text,{"需要医生","医生检查","医生评估","检查后评估"}))
           deferred_to_doctor.insert(field);
         json check={{"checkId","kc-"+std::to_string(checks.size()+1)},{"round",round},{"originalQuote",span.text},
@@ -293,24 +316,70 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
     const bool clinical_risk=field.rfind("professional:",0)==0 &&
         check["expectedFact"].is_string() && claimHas(check["expectedFact"].get<std::string>(),{"风险","禁忌","急诊"});
     const double weight=field=="price"||field=="includedItems"||clinical_risk?2:1;
-    const double credit=verdict=="supported"?1:verdict=="incomplete"&&!check.value("unanswered",false)?0.5:0;
+    // deferred 与 incomplete 同给 0.5：合规地承诺稍后回复是合格应答（不该拿 0 分，
+    // 那等于惩罚正确行为），但确实没有陈述可核验的事实，所以不给满分。
+    const double credit=verdict=="supported"?1:
+        (verdict=="incomplete"&&!check.value("unanswered",false))||verdict=="deferred"?0.5:0;
     ++assessable; weight_sum+=weight; earned+=weight*credit;
     check["unitWeight"]=weight; check["unitCredit"]=credit;
   }
   for(auto& check:checks) if(check.contains("unitWeight"))
     check["scoreImpact"]=-100.0*check["unitWeight"].get<double>()*(1-check["unitCredit"].get<double>())/weight_sum;
   const json score=assessable?json(static_cast<int>(std::lround(100*earned/weight_sum))):json(nullptr);
+  json deferred_topics=json::array();
+  for(const auto& field:deferred_price_topics) deferred_topics.push_back(field);
   return {{"knowledgeChecks",checks},{"knowledgeTraces",traces},{"knowledgeManifestHash",context.at("manifestHash")},
+      // 患者侧用它收敛话题：这些字段已被「会核实后回复」处理过，别再重复追问。
+      {"deferredTopics",deferred_topics},
       {"knowledgeAssessment",{{"status",assessable?"partial":"insufficient_evidence"},{"knowledgeAccuracy",score},
         {"assessableCount",assessable},{"unassessableCount",unassessable},
         {"coverage",units.empty()?json(nullptr):json(static_cast<double>(assessable)/units.size())},
         {"rubricVersion","knowledge-rubric-v1"}}}};
 }
-inline json applyKnowledgeScores(json report,const json& assessment,int pass_score=60) {
+// 信任度正向信号汇总。信任度每轮由 patient_grounding.h 结算，只按违规扣分
+// （承诺-10 / 冲突 -5），没有任何正向边—— 学员说对话、答得准、共情到位，
+// 数值一动不动。它衡量的是「没犯规几次」而不是「患者多信任你」，打几十场
+// 曲线单边向下。这里在结算期把已有的确定性判定汇成一句可展示的评价：
+// 不改每轮状态机，不碰 profiles 表，也不额外调模型。
+inline json summarizeTrustBuilding(const json& assessment,const json& patient_state) {
+  int accurate = 0, corrected = 0, deferred = 0;
+  for (const auto& check : assessment.value("knowledgeChecks", json::array())) {
+    if (!check.is_object()) continue;
+    // 只认「被采为计分单位」的 supported：重复陈述的同一字段会去重，
+    // 拿它当加分项会让学员靠重复刷分。
+    if (check.value("scoringUnit", false) && evidenceString(check, "verdict") == "supported") ++accurate;
+    if (check.value("correctedInLaterRound", false)) ++corrected;
+  }
+  // 正确转诊：承认需要医生判断而不是自己给结论。deferred_to_doctor 是核验器
+  // 内部的集合，不在输出里，因此按「无违规且未被判incomplete 的治疗类字段」近似。
+  for (const auto& check : assessment.value("knowledgeChecks", json::array())) {
+    if (!check.is_object() || evidenceString(check, "verdict") == "not_applicable") continue;
+    const auto topic = evidenceString(check, "topic");
+    if (topic == "treatmentDuration" || topic == "visitDuration" || topic == "followupInterval")
+      if (evidenceString(check, "reason").find("医生") != std::string::npos) ++deferred;
+  }
+  const auto objections = patient_state.value("triggeredObjections", json::array());
+  const int penalty = (patient_state.value("riskTriggered", false) ? 10 : 0)
+                    + static_cast<int>(objections.size()) * 5;
+  const int gain = accurate * 2 + corrected * 3 + deferred * 2;
+  const int net = gain - penalty;
+  // 档位只描述「这场建立了多少信任」，不换算成百分制—— 避免与五维分数混淆，
+  // 也避免学员把它当成可以刷的考核项。
+  const char* band = net >= 12 ? "strong" : net >= 5 ? "fair" : net >= 0 ? "neutral" : "damaged";
+  return {{"band", band}, {"net", net}, {"accurateStatements", accurate},
+          {"selfCorrections", corrected}, {"properDeferrals", deferred},
+          {"triggeredObjections", objections.size()}, {"penalty", penalty},
+          {"gain", gain}, {"rubricVersion", "trust-building-v1"}};
+}
+
+inline json applyKnowledgeScores(json report,const json& assessment,int pass_score=60,
+                                 const json& patient_state=json::object()) {
   const auto score=assessment.at("knowledgeAssessment").at("knowledgeAccuracy");
   report["schemaVersion"]=2;
-  for(const auto* key:{"knowledgeAssessment","knowledgeChecks","knowledgeManifestHash"}) report[key]=assessment.at(key);
+  for(const auto* key:{"knowledgeAssessment","knowledgeChecks","knowledgeManifestHash","deferredTopics"}) report[key]=assessment.at(key);
   report["dimensionScores"]["knowledgeAccuracy"]=score;
+  // 信任度正向评价：只在此处结算，不影响 dimensionScores 与 totalScore。
+  report["trustSummary"]=summarizeTrustBuilding(assessment,patient_state);
   report["totalScore"]=nullptr; report["passed"]=nullptr;
   const auto& d=report.at("dimensionScores");
   for(const auto* key:{"medicalCompliance","empathy","needsDiscovery","serviceEtiquette"})

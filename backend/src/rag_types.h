@@ -58,6 +58,9 @@ enum class KnowledgeVerdict {
   EvidenceMissing,
   Conflicted,
   NotApplicable,
+  // 客服明确说明会核实后回复、不给具体数值：合规且应当被认可。
+  // 与 EvidenceMissing 分开——后者是「说不出来」，无法解释时患者会一直追问。
+  Deferred,
 };
 
 inline std::string_view toString(RetrievalPurpose value) {
@@ -111,6 +114,7 @@ inline std::string_view toString(KnowledgeVerdict value) {
     case KnowledgeVerdict::EvidenceMissing: return "evidence_missing";
     case KnowledgeVerdict::Conflicted: return "conflicted";
     case KnowledgeVerdict::NotApplicable: return "not_applicable";
+    case KnowledgeVerdict::Deferred: return "deferred";
   }
   return "not_applicable";
 }

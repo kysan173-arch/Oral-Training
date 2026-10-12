@@ -1395,6 +1395,11 @@ class ReliableDatabase {
         "SELECT patient_state FROM sessions WHERE id = $1", session_id);
     const auto patient_state = state_rows.empty()
         ? json::object() : json::parse(state_rows[0]["patient_state"].c_str());
+    // v2（grounded）会话的 patientState 由 evolvePatientState 累积维护，
+    // emotion / emotionLevel / trustLevel / patienceRounds 都是**真实存量**，
+    // 训练页的画像条与信任档位直接读它们。此前这里只下发 emotion、剥掉其余三个，
+    // 前端 trustBadge() 拿不到数字便恒定兜底 50 → 信任档位永远显示「中性」。
+    // 一旦情绪改成累积式演进，这里的字段缺失就等于把整个状态机对前端关掉。
     json patient_state_out = {
         {"emotion", jsonString(patient_state, "emotion", "平静")},
         {"emotionLevel", jsonInt(patient_state, "emotionLevel", 0)},
@@ -1402,7 +1407,7 @@ class ReliableDatabase {
         {"riskTriggered", patient_state.value("riskTriggered", false)},
     };
     if(session.value("contextVersion",1)>=2)
-      patient_state_out={{"emotion",jsonString(patient_state,"emotion","犹豫")}};
+      patient_state_out["patienceRounds"]=jsonInt(patient_state,"patienceRounds",0);
     return {{"session", session}, {"messages", messages}, {"pendingMessage", pending_message},
             {"patientState", patient_state_out},
             {"hints", hints}, {"hintLimit", hint_total_limit},
@@ -1928,7 +1933,8 @@ class ReliableDatabase {
     if ((session["context_version"].as<int>() >= 2) != v2 || std::string(session["status"].c_str()) != "completed")
       throw ApiError(409, "REPORT_CONTEXT_MISMATCH", "评分版本或会话状态不匹配");
     if (v2) {
-      const auto context = readPatientProfiles(tx, job.target_id).at("context");
+      const auto profiles = readPatientProfiles(tx, job.target_id);
+      const auto context = profiles.at("context");
       json history = json::array();
       for (const auto& row : tx.exec_params("SELECT role, content, round FROM messages WHERE session_id=$1 ORDER BY round, created_at", job.target_id))
         history.push_back({{"role", row["role"].c_str()}, {"content", row["content"].c_str()}, {"round", row["round"].as<int>()}});
@@ -1947,7 +1953,10 @@ class ReliableDatabase {
             trace["evidence"].dump(), model_version);
       }
       report.erase("_knowledgeAssessment");
-      report = oral_training::rag::prepareKnowledgeReport(report, assessment, context);
+      // 患者状态里的 triggeredObjections / riskTriggered 用来汇总「这场建立了多少
+      // 信任」—— 每轮只按违规扣分，结算期才给正向评价。不参与任何维度分与总分。
+      report = oral_training::rag::prepareKnowledgeReport(report, assessment, context,
+          profiles.value("state", json::object()));
     }
 
     tx.exec_params(R"(

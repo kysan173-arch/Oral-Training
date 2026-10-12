@@ -130,6 +130,18 @@ int main() {
       }
       ++fixed_passed;
     }
+    // 「会核实后回复」必须同时写入 deferredTopics：这是让患者侧停止重复追问同一
+    // 诉求的唯一依据。漏了它，verdict 判定对了但死循环照旧。
+    {
+      auto empty_evidence=bundle;
+      empty_evidence["facts"]=json::array(); empty_evidence["passages"]=json::array();
+      const auto deferred=evaluateKnowledge(context,json::array({
+          {{"role","user"},{"round",1},{"content","具体费用我核实后回复您。"}}}),
+          json::array({{{"originalQuote","具体费用我核实后回复您。"},{"field","price"},{"round",1}}}),
+          [&](const std::string&,const std::string&){return empty_evidence;});
+      check(deferred["deferredTopics"].is_array()&&deferred["deferredTopics"].size()==1,
+            "deferred price topic not recorded");
+    }
     auto replayable=bad; replayable["claimCandidates"]=json::array();
     const auto replay=replayKnowledgeAssessment(context,history,replayable);
     const auto prepared=prepareKnowledgeReport(report,replay,context);

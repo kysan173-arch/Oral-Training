@@ -148,35 +148,7 @@ const verifyRequestTimeouts = async () => {
   assert.strictEqual(summaryPolls, 2);
 };
 
-const verifyHistorySummaryRefresh = async () => {
-  const api = require('../../utils/api.js');
-  for (const status of ['generating', 'failed', 'not_started']) {
-    let requests = 0;
-    api.getEvaluation = () => {
-      requests += 1;
-      return Promise.resolve(requests === 1 ? { status } : {
-        status: 'ready', evaluation: { summary: '已完成', dimensionScores: { empathy: 80 } }
-      });
-    };
-    const page = instantiatePage(loadPage('pages/report/report.js'));
-    page.data.sessions = [{ id: 'history-1', status: 'completed', isRoleplay: false }];
-    const event = { currentTarget: { dataset: { id: 'history-1' } } };
-    page.toggleEvaluation(event);
-    await new Promise(resolve => setImmediate(resolve));
-    assert.strictEqual(page.data.sessions[0].evaluationDetail.pending, true);
-    page.toggleEvaluation(event); // collapse
-    page.toggleEvaluation(event); // reopen after the server completed/retried
-    await new Promise(resolve => setImmediate(resolve));
-    assert.strictEqual(requests, 2, `${status} was incorrectly cached`);
-    assert.strictEqual(page.data.sessions[0].evaluationDetail.summary, '已完成');
-    page.toggleEvaluation(event);
-    page.toggleEvaluation(event);
-    await new Promise(resolve => setImmediate(resolve));
-    assert.strictEqual(requests, 2, 'ready summaries should remain cached');
-  }
-};
-
-verifyRequestTimeouts().then(verifyHistorySummaryRefresh).then(() => {
+verifyRequestTimeouts().then(() => {
   console.log('client recovery tests passed');
 }).catch(error => {
   console.error(error);

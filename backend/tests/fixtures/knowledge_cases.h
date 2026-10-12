@@ -1,5 +1,8 @@
 #pragma once
 // Fixed rule-authored expectations, independent of model output. Human domain review pending.
+// The deferred cases below cover「合规地不报价」：承诺核实后回复或转为费用构成说明。
+// They must NOT be evidence_missing — otherwise "cannot give a price" and "cannot answer"
+// score the same, and the patient keeps re-asking the same topic forever.
 inline nlohmann::json fixedKnowledgeCases() {
   return nlohmann::json::parse(R"JSON([
 {"quote":"3980元起每颗，检查后确认。","expected":"supported"},
@@ -25,6 +28,12 @@ inline nlohmann::json fixedKnowledgeCases() {
 {"quote":"价格四千元。","expected":"evidence_missing"},
 {"quote":"价格3980美元。","expected":"evidence_missing"},
 {"quote":"价格0.398万元。","expected":"evidence_missing"},
+{"quote":"价格待确认。","expected":"evidence_missing"},
+{"quote":"具体费用我核实后回复您。","expected":"deferred"},
+{"quote":"价格我帮您确认后回复。","expected":"deferred"},
+{"quote":"费用我稍后回复您。","expected":"deferred"},
+{"quote":"费用包含哪些项目我回头说明。","expected":"deferred"},
+{"quote":"具体费用以面诊结果为准。","expected":"deferred"},
 {"quote":"价格待确认。","expected":"evidence_missing"},
 {"quote":"价格3980—5980元每颗。","expected":"contradicted"},
 {"quote":"价格3980至5980元每颗。","expected":"contradicted"},

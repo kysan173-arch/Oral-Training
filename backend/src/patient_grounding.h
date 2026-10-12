@@ -16,6 +16,86 @@ inline std::string patientChoice(const json& source, const char* key,
   return std::find(choices.begin(),choices.end(),selected) != choices.end() ? selected : fallback;
 }
 
+/* ── 情绪/信任状态转移 ──────────────────────────────────────────────────
+   设计口径：**存量 + 增量**，不是每轮重算快照。
+
+   历史故障：情绪原先是纯函数查表（promise||conflict?焦虑:money?犹豫:…），
+   输入只有当轮文本特征，于是无论学员答得好不好、对话走到第几轮，
+   患者情绪都不动——「情绪功能不生效」。现在改为在**上一轮的存量**上累加，
+   因此同样的答非所问会逐轮爬升，正常的共情也会把信任推上去。
+
+   三条硬约束（由 patient_grounding_test 锁定，改动前务必确认仍然成立）：
+   1. **中性轮次的增量必须为 0**。否定式承诺（"不能保证完全不疼"）、
+      普通澄清、纯告别都不得改变任何状态，否则会误伤存量。
+   2. **信任只由规则决定，模型不能写**。模型给的 trustLevel 一律忽略。
+   3. **绝不接受越界输入**。存量先夹取到合法域再做增量，防止脏数据把
+      状态推成常驻越界值后每轮继续放大（自锁）。
+
+   增量的取值刻意做得比v1 保守：累积演进需要"每轮都有效"，但一次训练
+   只有 6—10 轮，步长过大会让学员第一轮就见到剧烈跳变，失去参考意义。 */
+inline void evolvePatientState(json& state, bool promise, bool conflict, bool money,
+                               const std::string& intent, int round) {
+  auto readInt=[&](const char* key,int fallback){
+    return state.contains(key)&&state[key].is_number_integer()?state[key].get<int>():fallback;};
+  // 存量先夹取：宁可丢弃被污染的初值，也不能让它在增量下持续放大。
+  int trust=std::max(0,std::min(100,readInt("trustLevel",50)));
+  int level=std::max(-2,std::min(2,readInt("emotionLevel",0)));
+  const auto emotionOf=[](const std::string& value){
+    static const std::vector<std::string> allowed{"平静","犹豫","焦虑","缓和","不满","愤怒"};
+    return std::find(allowed.begin(),allowed.end(),value)!=allowed.end();};
+
+  /* 信任增量：只有"明确做错"才扣，"确实暖到患者"才加。
+     「没犯错」「答了流程」「报了价格」都**不算**加分——那些是客服的及格线，
+     不是患者的信任来源。只把带共情/共创意味的表达算作正向事件：
+       · pain    —— 回应了患者的真实顾虑
+       · time    —— 主动为患者安排方便（时间/流程/后续）
+       · followup —— 交代了后续照护
+     clarify（没听懂）、price（谈钱）、finish（告别）一律中性，增量 0。
+     这是约束 1 的直接体现，也是让 trustLevel 成为**累积存量**而非
+     数值漂移的关键——学员必须真的做出 empathetic 表达才拿得到信任。 */
+  int trust_delta=0;
+  if(promise) trust_delta-=10;          // 绝对化承诺：患者最反感的
+  else if(conflict) trust_delta-=5;      // 说法自相矛盾
+  else if(intent=="pain"||intent=="time"||intent=="followup") trust_delta+=5;
+
+  /* 情绪强度增量：负面事件把患者往外推，正面应答把患者往回拉。
+     强度本身是存量，累积后由 resolveEmotion 决定落在哪个情绪词上。 */
+  int level_delta=0;
+  if(promise||conflict) level_delta=-2;
+  else if(trust_delta>0) level_delta=1;
+
+  /* 情绪强度还受"耐心"调制：连续多轮正面应答会加速缓和（level 可到 +2），
+     连续违规则加速不满。这是让情绪跟着轮次真实演进的第二个维度。 */
+  const int patience=std::max(0,std::min(6,readInt("patienceRounds",0)));
+  if(trust_delta>0 && patience>=2) level_delta+=1;
+
+  trust=std::max(0,std::min(100,trust+trust_delta));
+  level=std::max(-2,std::min(2,level+level_delta));
+
+  /* 由「强度 + 存量情绪 + 轮次」解析出最终情绪词。
+     刻意保留 v1 的三项不变式：
+       - promise/conflict 必须立即可见（学员当场就该看见自己踩了线）
+       - 提到钱先显得犹豫（还没答上价格）
+       - 意图是澄清说明没听懂，犹豫而非平静
+     其余情况才允许由累积强度决定走向缓和或不满。 */
+  std::string emotion;
+  if(promise||conflict) emotion="焦虑";
+  else if(round<=2) emotion=money?"犹豫":(intent=="clarify"?"犹豫":"平静");
+  else if(level>=2) emotion="缓和";
+  else if(level<=-2) emotion="不满";
+  else if(money||intent=="clarify") emotion="犹豫";
+  else if(trust>=80) emotion="缓和";
+  else if(trust<25) emotion="不满";
+  else emotion="平静";
+
+  state["emotion"]=emotion;
+  state["emotionLevel"]=level;
+  state["trustLevel"]=trust;
+  // 耐心只记录"连续正面轮次"，违规即归零：让好表现真的能攒起来。
+  state["patienceRounds"]=trust_delta>0?patience+1:(trust_delta<0?0:patience);
+  state["riskTriggered"]=state.value("riskTriggered",false)||promise;
+}
+
 inline json initializeGroundedPatient(const json& source, const json& context, const json& evidence) {
   EvidenceValidator validator(context,evidence,"initialization");
   if (!source.is_object() || !validator.valid()) throw std::runtime_error("patient initialization evidence mismatch");
@@ -40,6 +120,7 @@ inline json initializeGroundedPatient(const json& source, const json& context, c
         {"revealPolicy",{{"budget","only_when_asked"},{"competitor","round_3_or_when_asked"}}}}},
       {"patientState",{{"emotion",emotion},{"emotionLevel",0},{"trustLevel",50},
         {"revealedInformation",json::array()},{"triggeredObjections",json::array()},
+        {"patienceRounds",0},
         {"riskTriggered",false},{"endingReason",nullptr}}},
       {"opening",openings.at(concern)}};
 }
@@ -58,7 +139,13 @@ inline json patientView(const json& profiles, const std::string& question, int r
   return {{"publicProfile",profiles.at("publicProfile")},
       {"concerns",private_profile.value("concerns",json::array())},
       {"allowedInformation",allowed},
-      {"state",{{"emotion",state.value("emotion","犹豫")},{"trustLevel",state.value("trustLevel",50)},
+      // 累积状态要**完整**透给模型：情绪词之外的强度与连续正面轮次，
+      // 是模型把语气拿捏成"缓和/不满"而不是一律平静的唯一依据。
+      // 漏字段不会报错，只会让语气回到千篇一律——这类静默降级最难查。
+      {"state",{{"emotion",state.value("emotion","犹豫")},
+        {"emotionLevel",state.value("emotionLevel",0)},
+        {"trustLevel",state.value("trustLevel",50)},
+        {"patienceRounds",state.value("patienceRounds",0)},
         {"revealedInformation",revealed},{"triggeredObjections",state.value("triggeredObjections",json::array())}}},
       {"round",round}};
 }
@@ -146,11 +233,7 @@ inline json groundedPatientReply(const json& source, const json& profiles, const
   const bool ending=intent=="finish" && round>=3 && !promise && !conflict;
   if(intent=="finish"&&!ending && reply.rfind(replies.at("finish"),0)==0)
     reply="好，我再了解一下。";
-  state["emotion"]=promise||conflict?"焦虑":money?"犹豫":intent=="clarify"?"犹豫":"平静";
-  state["emotionLevel"]=promise||conflict?-1:0;
-  int trust=state.contains("trustLevel")&&state["trustLevel"].is_number_integer()?state["trustLevel"].get<int>():50;
-  state["trustLevel"]=std::max(0,std::min(100,trust+(promise?-10:conflict?-5:0)));
-  state["riskTriggered"]=state.value("riskTriggered",false)||promise;
+  evolvePatientState(state,promise,conflict,money,intent,round);
   state["endingReason"]=ending?json("patient_requested"):json(nullptr);
   return {{"reply",reply},{"emotion",state["emotion"]},{"emotionLevel",state["emotionLevel"]},
       {"trustLevel",state["trustLevel"]},{"riskTriggered",state["riskTriggered"]},{"shouldEnd",ending},
