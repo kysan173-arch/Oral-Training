@@ -49,8 +49,8 @@
     "disableSWC": true
   },
   "compileType": "miniprogram",
-  "libVersion": "3.16.1",
-  "appid": "wx24c394515a3eba39",
+  "libVersion": "3.16.0",
+  "appid": "touristappid",
   "projectname": "ai-dental-customer-service",
   "condition": {},
   "editorSetting": {

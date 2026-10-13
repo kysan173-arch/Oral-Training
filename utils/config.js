@@ -1,5 +1,7 @@
 const API_BASE_URLS = {
-  develop: 'http://127.0.0.1:8080/api',
+  // 第四环境（基线 merge-20260929）的后端端口是 8082；
+  // 主环境仍是 8080、RAG 环境是 8081，三套互不影响。
+  develop: 'http://127.0.0.1:8082/api',
   trial: '',
   release: ''
 };

@@ -58,6 +58,7 @@
 #include "evidence_validator.h"
 #include "patient_grounding.h"
 #include "patient_positive_floor.h"
+#include "answer_comparison.h"
 #include "knowledge_evaluator.h"
 #include "knowledge_report.h"
 
@@ -197,13 +198,27 @@ struct Config {
   bool rag_patient_enabled = true;
   bool rag_evaluation_v2_enabled = true;
   int model_call_limit = 0; // Optional per-process HTTP-attempt cap, including retries.
-
+  // 参考答案对比评分（对练舱）：默认关闭，验证后再开。它会为每场评分额外增加
+  // N+1 次模型调用，且结论需要先与既有分数对齐验证过才值得开启。
+  bool answer_comparison_enabled = false;
+  // 标准答案由哪个槽位生成：tuned（微调实例，默认，贴合「微调模型示范答复」的初衷）
+  // 或 base（基座）。做成配置而非硬编码，便于上下文不足时免重编译回退，
+  // 也便于把「标准答案由哪个模型生成」当作结题报告里的对照实验变量。
+  std::string answer_comparison_reference_slot = "tuned";
 
   static Config fromEnvironment() {
     Config config;
     config.database_url = getEnv(
         "DATABASE_URL", "postgresql://oral_training_app@127.0.0.1:5432/oral_training");
     config.model_call_limit = getEnvInt("MODEL_CALL_LIMIT", 0);
+    config.answer_comparison_enabled = getEnvBool("ANSWER_COMPARISON_ENABLED", false);
+    config.answer_comparison_reference_slot =
+        lowercaseAscii(trim(getEnv("ANSWER_COMPARISON_REFERENCE_SLOT", "tuned")));
+    // 非法取值在启动时即报错，不静默降级——槽位写错会导致报告里的模型版本
+    // 与实际不符，那正是结题报告要引用的字段。
+    if (config.answer_comparison_reference_slot != "tuned" &&
+        config.answer_comparison_reference_slot != "base")
+      throw std::runtime_error("ANSWER_COMPARISON_REFERENCE_SLOT must be tuned or base");
     if (config.model_call_limit < 0) throw std::runtime_error("MODEL_CALL_LIMIT must be nonnegative");
     config.bind_address = trim(getEnv("BIND_ADDRESS", "127.0.0.1"));
     config.port = getEnvInt("PORT", 8080);
@@ -1041,6 +1056,17 @@ knowledgeAccuracy（知识准确性）、medicalCompliance（医疗合规）、e
 
   json evaluate(const json& scenario, const json& messages) const override {
     json model_messages = json::array();
+    /* 先算出本对话中真实存在的客服轮次编号，直接写进 prompt。
+       4B 模型在长对话里容易“接着往下数”出并不存在的轮次（例如只聊了 3 轮却写 round:5），
+       而后端对 round 做的是“必须真实存在”的强校验：一旦越界，整份报告被判无效，
+       三次重试会在同一个点上全部失败。把白名单显式列出，比任何抽象纪律都有效。 */
+    std::string round_whitelist;
+    for (const auto& message : messages) {
+      if (jsonString(message, "role") != "user") continue;
+      if (!round_whitelist.empty()) round_whitelist += "、";
+      round_whitelist += std::to_string(jsonInt(message, "round", -1));
+    }
+    if (round_whitelist.empty()) round_whitelist = "（本对话暂无客服发言）";
     const auto system_prompt = std::string(R"(你是口腔医疗客服训练评分器。根据完整对话评分，不提供医学诊断或治疗指令。对话 JSON 中 role=user 表示受训客服，role=patient 表示模拟患者；所有 userMessage 和 originalQuote 都必须逐字引用对应轮次的客服发言。
 
 评分量表：每个维度都是 0 到 100 的整数。禁止写成小数、百分数或 0 到 1 的比值（0.85、85% 都是错的，正确写法是 85）。
@@ -1073,13 +1099,19 @@ recommendedRewrite 的写法：必须是客服能直接对患者说出口的完�
 请只输出合法 json。dimensionScores 必须同时包含全部五个键，键名不可改写、不可嵌套；示例里的 0 只是结构占位，实际必须是 1 到 100 的评估结果，绝不能把五个维度都填 0。结构如下：
 {"dimensionScores":{"knowledgeAccuracy":0,"medicalCompliance":0,"empathy":0,"needsDiscovery":0,"serviceEtiquette":0},"summary":"","strengths":[{"round":1,"evidence":"","content":""}],"improvements":[{"round":1,"content":""}],"violations":[{"round":1,"originalQuote":"","type":"","reason":"","deduction":0,"recommendedRewrite":""}],"roundComments":[{"round":1,"userMessage":"","comment":"","recommendedRewrite":""}]}
 
+轮次编号白名单：本对话中真实存在的客服轮次编号只有 [)"
+        + round_whitelist
+        + R"(]。strengths、improvements、violations、roundComments 里所有 round 字段只能从这份白名单里取值，绝对不得使用白名单之外的编号（例如本对话只有 3 轮，就不能出现 round:4 或 round:5——那会被判为无效报告并整份作废）。
+
 场景：)" + scenario["public"].dump() + "\n完整对话：" + messages.dump());
     model_messages.push_back({{"role", "system"}, {"content", system_prompt}});
     model_messages.push_back({{"role", "user"}, {"content", "请生成该训练的 JSON 评分报告。"}});
     const std::string repair_hint =
         "\n本次是评分报告：dimensionScores 必须同时包含 knowledgeAccuracy、medicalCompliance、empathy、"
         "needsDiscovery、serviceEtiquette 五个键，每个键的取值都是 0 到 100 的整数（不要写成小数、百分数"
-        "或 0 到 1 的比值），并且不能把五个维度都填 0。";
+        "或 0 到 1 的比值），并且不能把五个维度都填 0。另外务必注意：本对话真实存在的客服轮次编号只有 ["
+        + round_whitelist + "]，strengths、improvements、violations、roundComments 里所有 round 字段"
+        "只能用这些编号，出现白名单之外的编号会导致整份报告被判无效。";
     // 7 轮对话的完整评分报告实测约 2800 输出 tokens；1800 会在第 4 轮左右被截断，
     // 导致整份 JSON 不完整、评估任务反复失败。4096 留出约一倍余量。
     return structuredCompletion(model_messages, 4096, 0.2, false, repair_hint,"score-prompt-v3");
@@ -1105,13 +1137,155 @@ reply 像微信里的专业客服：首句直接回答本轮问题，通常 1—
       messages.push_back({{"role", message["role"] == "standard_customer" ? "assistant" : "user"},
                           {"content", message["content"]}});
     }
-    return structuredCompletion(messages, 1000, 0.2, true,"","service-reply-v3");
+    return structuredCompletion(messages, 1000, 0.2, true, "", "service-reply-v3",
+                                /*use_tuned=*/true);
+  }
+
+  /* 逐轮生成「理想客服答复」，作为参考答案对比的基准。
+   *
+   * 刻意逐轮调用而不是一次生成全部轮次：每一轮的输入都以「该轮之前的真实对话」
+   * 为界，逐轮调用让这条约束结构性成立。一次性生成会让模型在写第 1 轮时就
+   * 看到第 3 轮的患者发言，等于利用了后来才出现的信息。
+   *
+   * 输入里的学员答复是上下文自洽所必需的——患者下一轮问什么，正是在回应学员
+   * 上一轮答了什么；若把学员答复换成生成的标准答案，上下文就会自相矛盾，
+   * 模型会去纠正一个并不存在的误会，生成出不再回答本轮问题的内容。
+   * 因此提示词必须同时要求「不要因为上文实际客服答得不好而降低标准」。
+   */
+  json idealServiceReplies(const json& scenario, const json& history) const override {
+    using oral_training::compare::jsonInt;
+    using oral_training::compare::jsonText;
+    json rounds = json::array();
+    if (!history.is_array() || history.empty()) return {{"rounds", rounds}};
+    const auto scenario_text = scenario.is_object()
+        ? "\n场景公开信息：" + (scenario.contains("public") ? scenario["public"].dump() : std::string("{}")) +
+              (scenario.contains("roleplay") ? "\n服务重点：" + scenario["roleplay"].dump() : std::string())
+        : std::string();
+    const auto system_prompt = std::string(R"(你是口腔客服新人训练中的「标准客服」，不是医生。学员正在扮演患者并向你提问；请针对患者本轮提问，示范理想客服在这一轮应当怎么回答。
+
+硬约束：
+1. 只能依据上文已发生的对话作答，不得引用尚未出现的信息。
+2. 上文中 role=assistant 的是学员的实际答复，可能答得不好。请给出理想客服应当说的话——不要因为上文实际客服答得不好就降低标准，也不要通篇只做道歉；该给的正确信息仍要完整、清楚地给出。
+3. 不得诊断、制定治疗方案、开药、承诺疗效/疼痛/安全性，也不得编造价格、疗程、优惠或机构政策。涉及是否适合治疗、症状原因或紧急程度时，必须说明需医生结合检查评估。
+4. 资料未给出的数字与安排不能编造，直接说明需确认的那一项。
+
+只输出一个合法 JSON 对象，不要 Markdown、代码块、思考过程或额外说明：
+{"referenceAnswer":"理想客服本轮应当说的话","serviceActions":[{"criterionId":"量表编号","referenceQuote":"标准答案中体现该行为的原文"}]}
+referenceAnswer 通常 30—120 个中文字符，复杂问题最多 180 字。serviceActions 只列本轮真正体现的服务动作，criterionId 必须来自下方量表，不得自造。
+
+量表编号（只能使用这些）：
+)" + oral_training::compare::rubricPromptHint() + scenario_text);
+    for (std::size_t index = 0; index < history.size(); ++index) {
+      const auto& message = history[index];
+      if (!message.is_object() || jsonText(message, "role") != "patient") continue;
+      json messages = json::array();
+      messages.push_back({{"role", "system"}, {"content", system_prompt}});
+      // 只喂到本轮为止：patient → user（提问方），学员 → assistant（实际客服）。
+      for (std::size_t j = 0; j <= index; ++j) {
+        const auto& item = history[j];
+        if (!item.is_object()) continue;
+        const auto role = jsonText(item, "role");
+        if (role != "patient" && role != "user") continue;
+        messages.push_back({{"role", role == "patient" ? "user" : "assistant"},
+                            {"content", jsonText(item, "content")}});
+      }
+      messages.push_back({{"role", "user"}, {"content", "请给出理想客服在本轮的答复。"}});
+      const auto result = structuredCompletion(
+          messages, 900, 0.2, true, "", "reference-answer-v1",
+          /*use_tuned=*/config_.answer_comparison_reference_slot == "tuned");
+      rounds.push_back({{"round", jsonInt(message, "round", 0)},
+                        {"referenceAnswer", jsonText(result, "referenceAnswer")},
+                        {"referenceActions", result.is_object() && result.contains("serviceActions") &&
+                                                     result["serviceActions"].is_array()
+                                                 ? result["serviceActions"] : json::array()}});
+    }
+    return {{"rounds", rounds}};
+  }
+
+  /* 对比定位：把学员答复与标准答案逐条比对，按量表给出等级与差异类型。
+   *
+   * 只返回定位结果，不返回任何分数：分值与聚合由 answer_comparison.h 按公式算出。
+   * 全部轮次一次调用——输入在调用前已全部固定（标准答案生成完毕），
+   * 不存在「看到后面」的泄漏问题。
+   */
+  json compareAnswersAgainstReference(const json& scenario, const json& history,
+                                      const json& references) const override {
+    (void)scenario;
+    using oral_training::compare::jsonInt;
+    using oral_training::compare::jsonText;
+    std::map<int, json> rounds;
+    if (history.is_array()) {
+      for (const auto& message : history) {
+        if (!message.is_object()) continue;
+        const auto role = jsonText(message, "role");
+        if (role != "patient" && role != "user") continue;
+        const int round = jsonInt(message, "round", 0);
+        auto& bucket = rounds[round];
+        if (!bucket.is_object()) bucket = json::object();
+        const std::string key = role == "patient" ? "patient" : "learner";
+        const auto content = jsonText(message, "content");
+        const auto prior = bucket.value(key, std::string());
+        bucket[key] = prior.empty() ? content : prior + "\n" + content;
+      }
+    }
+    if (references.is_array()) {
+      for (const auto& reference : references) {
+        if (!reference.is_object()) continue;
+        const int round = jsonInt(reference, "round", 0);
+        auto& bucket = rounds[round];
+        if (!bucket.is_object()) bucket = json::object();
+        bucket["reference"] = jsonText(reference, "referenceAnswer");
+      }
+    }
+    json payload = json::array();
+    for (const auto& [round, bucket] : rounds) {
+      if (!bucket.is_object()) continue;
+      const auto reference_text = jsonText(bucket, "reference");
+      if (reference_text.empty()) continue;  // 该轮没有标准答案就不比
+      payload.push_back({{"round", round},
+                         {"patientQuestion", jsonText(bucket, "patient")},
+                         {"learnerAnswer", jsonText(bucket, "learner")},
+                         {"referenceAnswer", reference_text}});
+    }
+    if (payload.empty()) return {{"checks", json::array()}};
+    const auto system_prompt = std::string(R"(你是口腔客服应答的对比评估器。请把「学员答复」与「标准客服答复」逐条比对，按量表判定学员在每个评分项上的水平。
+
+硬约束：
+1. 只判定、不给分：不得输出任何数值分数、总分或百分制换算；分值与聚合由服务器计算。
+2. criterionId 必须来自下方量表，不得自造，也不得提出量表之外的新要求。
+3. 引用必须逐字：userQuote 只能摘自学员答复，referenceQuote 只能摘自标准答案。抄不准就留空。
+4. 等效表达不扣分：措辞不同但完成了同一目标，判为 equivalent。
+5. 学员说得比标准答案更清楚、更贴切时判 learner_better；标准答案本身有缺陷（例如说出场景资料里没有的优惠）时判 reference_defect。
+6. 判 applicable=false 时，必须在 notApplicableReason 中用「」引述患者本轮的原文作为依据；给不出依据就必须判为 applicable=true。不得因为学员没做到某项就判它不适用。
+7. round 必须是被比对内容里真实存在的轮次；整场项填 0。输入里的每一轮都要判到，不要只判第一轮就结束。
+
+只输出一个合法 JSON 对象，不要 Markdown、代码块、思考过程或额外说明：
+{"checks":[{"criterionId":"量表编号","round":轮次,"applicable":true,"notApplicableReason":"","level":0到4的整数,"userQuote":"学员答复中的原文","referenceQuote":"标准答案中的原文","differenceType":"equivalent|substantive_omission|factual_or_boundary_error|learner_better|reference_defect","reason":"简短说明差异"}]}
+每个评分项每轮最多一条；没有可判内容就不输出该条。level 含义：0 明显错误或相反行为，1 有关键缺陷，2 部分完成有实质遗漏，3 完成主要目标，4 准确完整适度。
+
+输入里每一条记录的字段含义（引用时不要张冠李戴）：
+- patientQuestion 是患者的提问，**不是**学员说的话；
+- learnerAnswer 是学员本轮的答复，userQuote 只能出自这里；
+- referenceAnswer 是标准客服答复，referenceQuote 只能出自这里。
+抄不准就把该字段留空——留空只是无法核验，把话抄错则整条判定作废。
+
+量表编号（只能使用这些）：
+)" + oral_training::compare::rubricPromptHint());
+    json messages = json::array();
+    messages.push_back({{"role", "system"}, {"content", system_prompt}});
+    messages.push_back({{"role", "user"}, {"content", payload.dump()}});
+    return structuredCompletion(messages, 4000, 0.0, true, "", "answer-comparison-v1");
   }
 
   json groundedServiceReply(const json& scenario, const json& history,
                             const json& evidence) const override {
     const auto messages = oral_training::models::serviceReplyMessages(scenario, history, evidence);
-    return structuredCompletion(messages, 900, 0.15, true,"",std::string(oral_training::rag::prompt_version::kServiceReply));
+    /* 实测：RAG 接地答复的 prompt（场景 + 多段证据正文 + 历史）会突破 sft-v4 的 4096 上下文，
+       llama-server 直接返回 400，整轮答复失败。因此本条固定走主槽（基座 8192 上下文）。
+       纯话术类（标准客服，prompt 短）仍走微调槽——按上下文容量与能力特点分工，
+       而不是「微调就一律走微调」。 */
+    return structuredCompletion(messages, 900, 0.15, true, "", std::string(oral_training::rag::prompt_version::kServiceReply),
+                                /*use_tuned=*/false);
   }
 
   json roleplaySummary(const json& scenario, const json& history) const override {
@@ -1238,23 +1412,31 @@ hint 只给一句学员下一步可以直接说出口的话，通常10—50字�
   }
 
  private:
+  /* use_tuned=true 表示本次调用希望走「微调槽位」（见迁移 037）。
+     槽位未配置时静默回退主槽——这样单实例部署下所有调用点无需区分，零行为变化。 */
   json structuredCompletion(const json& messages, int max_tokens, double temperature,
                             bool allow_plain_patient_reply = false,
-                            const std::string& repair_hint = "", const std::string& prompt_version = "legacy-v1") const {
+                            const std::string& repair_hint = "", const std::string& prompt_version = "legacy-v1",
+                            bool use_tuned = false) const {
     const auto logical_id = makeId("model-call");
     const auto settings = settings_.load(user_id_);
     if (!settings.configured())
       throw ApiError(503, "MODEL_NOT_CONFIGURED", "请在“我的 → LiteLLM 模型配置”中保存个人配置");
-    const auto endpoint = gatewayEndpoint(settings.base_url);
-    const auto key = unprotectGatewayKey(settings.encrypted_key);
-    last_model_version_ = "litellm:" + settings.model + "@" + std::to_string(settings.revision);
+    const bool on_tuned = use_tuned && settings.tuned_configured();
+    const auto& active_url = on_tuned ? settings.tuned_base_url : settings.base_url;
+    const auto& active_model = on_tuned ? settings.tuned_model : settings.model;
+    const auto& active_key = on_tuned ? settings.tuned_encrypted_key : settings.encrypted_key;
+    const auto endpoint = gatewayEndpoint(active_url);
+    const auto key = unprotectGatewayKey(active_key);
+    last_model_version_ = std::string("litellm:") + active_model + (on_tuned ? " (tuned)" : "") +
+                          "@" + std::to_string(settings.revision);
     ApiError last_error(503, "MODEL_INVALID_RESPONSE", "模型未返回可解析 JSON");
     // Give truncated replies room for both reasoning and the final JSON on the existing single retry.
     int effective_max_tokens = oral_training::models::initialCompletionBudget(settings.model, max_tokens);
     for (int attempt = 0; attempt < 2; ++attempt) {
       ModelCallAudit audit;
       audit.fields = {{"event", "model_call"}, {"logicalCallId", logical_id}, {"attempt", attempt + 1},
-          {"requestedModel", settings.model}, {"configRevision", settings.revision},
+          {"requestedModel", active_model}, {"configRevision", settings.revision},
           {"provider", "litellm"}, {"configUserId", user_id_}, {"actualModel", nullptr}, {"usage", nullptr},
           {"promptVersion", prompt_version}, {"maxOutputTokens", effective_max_tokens},
           {"retry", attempt > 0}, {"errorType", "MODEL_INVALID_RESPONSE"}};
@@ -1267,7 +1449,7 @@ hint 只给一句学员下一步可以直接说出口的话，通常10—50字�
         }
         const bool json_output = attempt == 0;
         const auto request = buildCompletionRequest(
-            settings.model, attempt_messages,
+            active_model, attempt_messages,
             effective_max_tokens,
             attempt == 0 ? temperature : 0.0, json_output);
         audit.fields["callNumber"] = reserveModelCall(*model_calls_, config_.model_call_limit);
@@ -1980,7 +2162,8 @@ class Service {
         roleplay_database_(database_pool_, config.rag_roleplay_enabled), rag_retriever_(database_pool_, std::move(embeddings)),
         model_(std::move(model)), queue_(database_pool_),
         knowledge_queue_(database_pool_), worker_concurrency_(config.worker_concurrency),
-        knowledge_worker_concurrency_(config.knowledge_worker_concurrency) {
+        knowledge_worker_concurrency_(config.knowledge_worker_concurrency),
+        answer_comparison_enabled_(config.answer_comparison_enabled) {
     if (!model_) throw std::invalid_argument("model gateway is required");
     /* 场景骨架的落库实现注入给知识队列：队列负责排队/租约/任务状态，
        「候选内容如何进 scenarios 表」属于 store 层（校验规则只有那一份是权威的）。
@@ -2056,7 +2239,61 @@ class Service {
     } else {
       report = normalizeReport(model->evaluate(scenario, history), history);
     }
-    database_.saveEvaluation(job, report, model->modelVersion());
+    // 评分用的模型版本必须在对比环节之前捕获：modelVersion() 返回的是
+    // 「最后一次模型调用」的版本，而对比环节还会继续调用模型，会把它覆盖掉。
+    const auto evaluation_model_version = model->modelVersion();
+    // 参考答案对比评分：写在 normalizeReport 之后（该函数按白名单重建对象，
+    // 会丢弃未知字段），且必须在 saveEvaluation 之前（之后即已落库）。
+    if (answer_comparison_enabled_) {
+      report[std::string(oral_training::compare::kAnswerComparisonBlockKey)] =
+          buildAnswerComparison(*model, scenario, history, report);
+    }
+    database_.saveEvaluation(job, report, evaluation_model_version);
+  }
+
+  /* 参考答案对比评分：逐轮生成理想答复 → 对比定位 → 服务器确定性结算。
+   *
+   * 整条链路只产出一个独立区块（report.answerComparison）：不写 dimensionScores、
+   * 不改 totalScore，既有五维评分的语义保持不变。新旧口径的差值另行记录在区块的
+   * delta 里，供结题报告做相关性分析。
+   *
+   * 任何一步失败都降级为 status=failed 并返回，绝不向上抛——新增环节的故障
+   * 不应该连带毁掉本来可以正常发布的评分报告。
+   */
+  json buildAnswerComparison(oral_training::IModelGateway& model, const json& scenario,
+                             const json& history, const json& report) const {
+    json meta = {{"referencePromptVersion", "reference-answer-v1"},
+                 {"comparisonPromptVersion", "answer-comparison-v1"},
+                 {"referenceModelVersion", ""},
+                 {"comparisonModelVersion", ""}};
+    const auto failure = [&](const std::string& reason) {
+      auto block = meta;
+      block["status"] = "failed";
+      block["reason"] = reason;
+      block["rubricVersion"] = std::string(oral_training::compare::kAnswerRubricVersion);
+      return block;
+    };
+    try {
+      const auto references = model.idealServiceReplies(scenario, history);
+      const auto rounds = references.is_object() && references.contains("rounds") &&
+                                  references["rounds"].is_array()
+                              ? references["rounds"] : json::array();
+      if (rounds.empty()) return failure("no_reference_answer");
+      meta["referenceModelVersion"] = model.modelVersion();
+      const auto comparison = model.compareAnswersAgainstReference(scenario, history, rounds);
+      meta["comparisonModelVersion"] = model.modelVersion();
+      const auto candidates = comparison.is_object() && comparison.contains("checks") &&
+                                      comparison["checks"].is_array()
+                                  ? comparison["checks"] : json::array();
+      const auto normalized =
+          oral_training::compare::normalizeComparisonChecks(candidates, history, rounds);
+      const auto existing = report.is_object() && report.contains("dimensionScores") &&
+                                    report["dimensionScores"].is_object()
+                                ? report["dimensionScores"] : json::object();
+      return oral_training::compare::applyAnswerComparison(normalized, history, rounds, existing, meta);
+    } catch (const std::exception& error) {
+      return failure(error.what());
+    }
   }
 
   ReliableDatabase& database() { return database_; }
@@ -2714,6 +2951,8 @@ class Service {
   oral_training::knowledge::KnowledgeAdminQueue knowledge_queue_;
   int worker_concurrency_;
   int knowledge_worker_concurrency_;
+  // 参考答案对比评分开关（取值自 Config::answer_comparison_enabled）。
+  bool answer_comparison_enabled_;
   std::atomic<bool> stopping_{false};
   std::atomic<int> running_workers_{0};
   std::atomic<int> workers_in_database_backoff_{0};
