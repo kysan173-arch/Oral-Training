@@ -268,7 +268,7 @@ Windows 对应使用 `python`；先确保 PostgreSQL 的 bin 目录在 PATH 中�
 | 样本 | 内容 |
 |---|---|
 | 账号 | 1 名测试主管、3 名有历史学员、1 名空历史学员；原演示账号获得测试历史，原角色和模型配置保留 |
-| 服务 | 6 个：4 个可用已发布服务、1 个草稿、1 个下架样本；现有 19 个场景有服务映射 |
+| 服务 | 6 个：4 个可用已发布服务、1 个草稿、1 个下架样本；基础种子含模板映射；完整手测扩展会修正为实际可用场景 |
 | 知识 | 20 篇已发布合成知识、1 篇草稿、32 个正文分块，并预热实际向量缓存 |
 | 两种训练 | 新增 40 段客服训练、16 段患者模拟；进行中、完成、放弃、失败重试、证据不足等状态 |
 | 报告与引用 | 32 份评分状态记录、8 份复盘状态记录；服务版本、锁定资料、可查看的引用 |
@@ -279,6 +279,17 @@ Windows 对应使用 `python`；先确保 PostgreSQL 的 bin 目录在 PATH 中�
 输出保存在 `backend/build/local-test-seed-result.json`。查看 `existingDataPreserved`、`apiChecks`、`embeddings` 和计数；在没有其他用户同时发起生成请求时，`modelCallsBefore` 与 `modelCallsAfter` 应一致。脚本只撤销自己生成的临时登录令牌。中途失败时先解决日志中的原因再重跑，无需清理整库。
 
 所有价格、患者对话和报告均为合成测试资料，报告标记为 `synthetic-local-fixture-v1`，不能当作真实模型质量评估或真实诊所资料。
+
+### 完整手动测试的知识补充
+
+基础样本之外，投诉退费、候诊改约、正畸方案对比、洁牙边界和发布时效测试可继续运行：
+
+```bash
+python3 -B backend/prepare_manual_knowledge.py --database oral_training
+python3 -B backend/prepare_manual_knowledge.py --database oral_training --apply
+```
+
+该扩展修正服务映射，覆盖10个实际启用的非模板场景，并提供独立的知识冲突和时效样本。问题、预期结果与账号选择见 [完整手动测试知识库清单](../validation/manual-knowledge-checklist.md)。旧会话仍使用原快照，新增资料请用新会话测试。
 
 ## 8. 小程序和个人生成模型
 

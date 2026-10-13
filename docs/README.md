@@ -49,6 +49,7 @@
 
 ## 验证与修复记录
 
+- [完整手动测试知识库清单](validation/manual-knowledge-checklist.md)
 - [DeepSeek 双角色 RAG 验证](validation/deepseek-dual-role-validation.md)
 - [EmbeddingGemma / MiniMax RAG 验证（2026-10-08）](validation/embeddinggemma-minimax-validation.md)
 - [项目审核问题修复记录 · 2026-09-29](validation/project-audit-fixes-2026-09-29.md)
@@ -72,5 +73,6 @@
 ## RAG 演示数据
 
 - [患者模拟 RAG 测试知识库（具体参数版）](rag-data/患者模拟_RAG测试知识库_具体参数版.json)
+- [完整手测补充知识与提问](rag-data/manual-test-knowledge.json)
 
 演示知识中的价格、时长与机构参数为合成数据。

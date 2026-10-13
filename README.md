@@ -10,6 +10,7 @@
 |---|---|
 | [完整本地配置教程](docs/setup/RAG本地配置与数据初始化教程.md) | Windows/Linux、备份与迁移、个人模型配置、完整测试数据、两种训练验收 |
 | [EmbeddingGemma 2 配置教程](docs/setup/embeddinggemma-setup.md) | 已有服务检查、新机器安装、文本 API、向量验证、缓存版本及跨机连接 |
+| [完整手动测试知识库清单](docs/validation/manual-knowledge-checklist.md) | 服务与场景、逐项提问和预期、发布时效、资料冲突、版本快照 |
 | [后端开发说明](backend/README.md) | 构建、集成测试、可靠 Worker、个人密钥存储和部署 |
 | [API 文档](docs/architecture/api.md) | 请求、响应、鉴权和错误码 |
 | [文档导航](docs/README.md) | 产品规划、配置教程、技术设计、训练规范、验证记录与成果汇报 |
@@ -42,6 +43,8 @@ python3 -B backend/seed_local_test_data.py --database oral_training --apply
 脚本只接受回环数据库、精确匹配的数据库名和非生产 demo 后端，不清库，可重复执行。它提供测试主管/学员、已发布及草稿服务、知识、两种训练历史、报告状态、引用、计划和学习记录。会调用本地 Embedding，不调用生成模型。Windows 使用 `python`，环境要求见完整教程。
 
 导入后从「我的 → 切换演示账号」选择测试账号；新账号实时训练前需配置自己的生成模型。所有价格、知识、对话和报告均为虚构测试资料。
+
+完整手测还需运行知识扩展：先执行 `python3 -B backend/prepare_manual_knowledge.py --database oral_training` 预检，再加 `--apply` 发布补充知识。详细问题与预期见上方手测清单；新增知识从新会话生效。
 
 ## 开发验证
 
