@@ -1395,11 +1395,6 @@ class ReliableDatabase {
         "SELECT patient_state FROM sessions WHERE id = $1", session_id);
     const auto patient_state = state_rows.empty()
         ? json::object() : json::parse(state_rows[0]["patient_state"].c_str());
-    // v2（grounded）会话的 patientState 由 evolvePatientState 累积维护，
-    // emotion / emotionLevel / trustLevel / patienceRounds 都是**真实存量**，
-    // 训练页的画像条与信任档位直接读它们。此前这里只下发 emotion、剥掉其余三个，
-    // 前端 trustBadge() 拿不到数字便恒定兜底 50 → 信任档位永远显示「中性」。
-    // 一旦情绪改成累积式演进，这里的字段缺失就等于把整个状态机对前端关掉。
     json patient_state_out = {
         {"emotion", jsonString(patient_state, "emotion", "平静")},
         {"emotionLevel", jsonInt(patient_state, "emotionLevel", 0)},
@@ -1407,7 +1402,7 @@ class ReliableDatabase {
         {"riskTriggered", patient_state.value("riskTriggered", false)},
     };
     if(session.value("contextVersion",1)>=2)
-      patient_state_out["patienceRounds"]=jsonInt(patient_state,"patienceRounds",0);
+      patient_state_out={{"emotion",jsonString(patient_state,"emotion","犹豫")}};
     return {{"session", session}, {"messages", messages}, {"pendingMessage", pending_message},
             {"patientState", patient_state_out},
             {"hints", hints}, {"hintLimit", hint_total_limit},
@@ -1953,8 +1948,7 @@ class ReliableDatabase {
             trace["evidence"].dump(), model_version);
       }
       report.erase("_knowledgeAssessment");
-      // 患者状态里的 triggeredObjections / riskTriggered 用来汇总「这场建立了多少
-      // 信任」—— 每轮只按违规扣分，结算期才给正向评价。不参与任何维度分与总分。
+      // Trust feedback is separate from the five assessment dimensions and total score.
       report = oral_training::rag::prepareKnowledgeReport(report, assessment, context,
           profiles.value("state", json::object()));
     }

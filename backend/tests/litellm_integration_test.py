@@ -141,8 +141,10 @@ def api(method, path, data=None, token='', expected=200):
         response = http.open(request, timeout=75 if args.live_pass_entry else 10)
     except urllib.error.HTTPError as error:
         response = error
-    assert response.status == expected, (path, response.status, expected)
     result = json.load(response)
+    if response.status != expected:
+        print('Unexpected API response:', path, response.status, result.get('code'), result.get('message'), flush=True)
+    assert response.status == expected, (path, response.status, expected)
     assert not any(key in json.dumps(result) for key in ['sk-offline-key', 'sk-peer-key']), 'API leaked key'
     return result.get('data') if expected < 300 or path == '/health' else result
 
@@ -202,6 +204,8 @@ try:
     learner = api('POST', '/auth/wechat', {'code': 'offline-model-config'})['accessToken']
     run([args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
          "INSERT INTO users(id,display_name,role,status) VALUES('litellm-test-admin','Model test admin','admin','active')"])
+    assert run([args.pg_bin / executable('psql'), database_url, '-X', '-Atc',
+                "SELECT count(*) FROM users WHERE id='litellm-test-admin' AND status='active'"]) == '1'
     admin = api('POST', '/auth/switch-learner', {'userId': 'litellm-test-admin'}, learner)['accessToken']
     assert api('GET', '/config/litellm', token=learner)['canEdit']
     assert not api('GET', '/config/litellm', token=learner)['configured'], 'Old environment key must be ignored'
@@ -350,6 +354,13 @@ try:
           'no env fallback, concurrent user gateway routing, JSON repair, isolated clearing, '
           'smoke/state-machine/concurrency. Artifacts: ' + str(work))
 finally:
+    if sys.exc_info()[0] is not None:
+        # Only offline fixture runs print diagnostics; never print live-provider logs.
+        print('Integration artifacts: ' + str(work), flush=True)
+        if not args.live_pass_entry:
+            for log in logs:
+                log.flush()
+                print(Path(log.name).read_text(encoding='utf-8', errors='replace')[-6000:], flush=True)
     stop_backend()
     for log in logs:
         log.close()

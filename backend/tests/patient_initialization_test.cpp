@@ -216,9 +216,15 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       requireInit(store.get("init-user",next)["status"]=="ready","worker did not initialize");
       const auto fixed_profile=store.profiles(next)["privateProfile"];
-      const auto first=service.sendMessage("init-user",next,"n03-round1","介绍一下服务流程");
+      const auto first=service.sendMessage("init-user",next,"n03-round1","具体费用我核实后回复您。");
       requireInit(first["patientMessage"]["content"].get<std::string>().find("5000")==std::string::npos,
                   "first turn disclosed private budget");
+      requireInit(store.profiles(next)["state"]["deferredTopics"]==json::array({"price"}),
+                  "winning turn did not persist deferred topics");
+      const auto first_replay=service.sendMessage("init-user",next,"n03-round1","具体费用我核实后回复您。");
+      requireInit(first_replay["patientMessage"]["id"]==first["patientMessage"]["id"] &&
+          store.profiles(next)["state"]["deferredTopics"]==json::array({"price"}),
+          "idempotent reply lost or duplicated deferral state");
       const auto first_hint=service.requestTrainingHint("init-user",next);
       requireInit(first_hint["hint"]["content"]=="您最担心的是哪一点？" && hintCalls==1,"v2 hint did not call model");
       expectInitError([&]{service.requestTrainingHint("init-user",next);},"HINT_ROUND_LIMIT_REACHED");

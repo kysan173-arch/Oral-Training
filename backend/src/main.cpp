@@ -822,7 +822,7 @@ inline json applyPositiveFloor(const json& reply, const json& patient_state,
       jsonString(reply, "emotion", state_emotion),
       jsonInt(patient_state, "emotionLevel", 0),
       jsonInt(patient_state, "trustLevel", 50),
-      state_emotion, learner_text);
+      state_emotion, learner_text, reply.value("riskTriggered", false));
   auto out = reply;
   if (decision.applied) {
     out["trustLevel"] = decision.trustLevel;
@@ -2206,7 +2206,7 @@ class Service {
          所以仍然出现在这里，说明兜底也没能推动（客服本轮确实没答好，或措辞
          不含信号词）——这类需要人看。历史故障：v1 情绪与信任被原样抄回，
          全链路无报错无告警，只能靠翻数据库发现。 */
-      if (jsonString(model_reply,"trustLevel") == jsonString(state,"trustLevel") &&
+      if (jsonInt(model_reply,"trustLevel",50) == jsonInt(state,"trustLevel",50) &&
           jsonString(model_reply,"emotion") == jsonString(state,"emotion")) {
         std::cerr << json({{"event","patient_state_unchanged"},
                           {"sessionId", session_id},

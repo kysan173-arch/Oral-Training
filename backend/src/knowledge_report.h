@@ -14,7 +14,7 @@ inline json replayKnowledgeAssessment(const json& context, const json& history, 
   if (index != traces.size()) throw std::runtime_error("extra report evidence");
   // deferredTopics 必须一起比对：它与 knowledgeChecks 同源，重放漏掉会导致
   // 「核验通过但发布失败」或反之。
-  for (const auto* key : {"knowledgeChecks", "knowledgeAssessment", "knowledgeManifestHash", "deferredTopics"})
+  for (const auto* key : {"knowledgeChecks", "knowledgeAssessment", "knowledgeManifestHash", "deferredTopics", "doctorDeferredTopics"})
     if (replay.at(key) != assessment.at(key)) throw std::runtime_error("report assessment mismatch");
   return replay;
 }
