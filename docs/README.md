@@ -20,7 +20,6 @@
 - [口腔医疗客服智能陪练系统 · 技术说明文档（前端聚焦版）](product/prd.md)
 - [口腔医疗客服智能陪练系统](product/口腔医疗客服智能陪练系统_产品设计文档.md)
 - [模块 3 培训运营 + 模块 4 数据报表 实现计划](product/主管端培训运营与数据报表方案.md)
-- [患者模拟复盘页设计审查与修改意见](product/患者模拟复盘页设计审查.md)
 - [项目计划书（Word）](product/项目计划书.docx)
 
 ## 部署与配置
@@ -64,7 +63,6 @@
 - [N06 验收记录](validation/rag-validation-report.md)
 - [N07 分段开关、受控联调与发布记录](validation/rag-n07-validation.md)
 - [标准客服自然表达实测（2026-09-29）](validation/service-reply-evaluation-2026-09-29.md)
-- [验收清单：训练模块改进（P0 → P2）](validation/验收清单.md)
 
 ## 成果汇报
 
