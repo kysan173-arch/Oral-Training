@@ -1,9 +1,6 @@
 .phrases-page { padding: 28rpx 24rpx 48rpx; }
 .page-header { padding: 4rpx 4rpx 22rpx; }
-.eyebrow, .page-title, .page-intro { display: block; }
-.eyebrow { color: var(--color-primary); font-size: 22rpx; letter-spacing: 2rpx; font-weight: 600; }
-.page-title { margin-top: 12rpx; color: var(--text-strong); font-size: 40rpx; font-weight: 600; }
-.page-intro { margin-top: 12rpx; color: var(--text-secondary); font-size: 24rpx; line-height: 1.65; }
+.page-title { display: block; margin-top: 12rpx; color: var(--text-strong); font-size: 40rpx; font-weight: 600; }
 .phrase-view-switch { display: flex; padding: 6rpx; margin: -4rpx 0 20rpx; border-radius: 18rpx; background: var(--color-primary-light); }
 .phrase-view { flex: 1; padding: 13rpx 10rpx; border-radius: 14rpx; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
 .phrase-view.selected { color: #fff; background: var(--color-primary); font-weight: 600; }

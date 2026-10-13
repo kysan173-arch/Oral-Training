@@ -25,7 +25,7 @@ Page({
       const user = api.getCurrentUser();
       if (!user || user.role !== 'admin') {
         this.setData({ loading: false });
-        wx.showToast({ title: '仅管理员可访问', icon: 'none' });
+        wx.showToast({ title: '仅管理员可用', icon: 'none' });
         return;
       }
       this.loadAll();
@@ -79,7 +79,7 @@ Page({
   },
   retryJob(event) {
     api.retryKnowledgeGenerationJob(event.currentTarget.dataset.id).then(() => {
-      wx.showToast({ title: '已重新排队', icon: 'success' });
+      wx.showToast({ title: '已排队', icon: 'success' });
       this.loadAll();
     }).catch(error => wx.showToast({ title: error.message || '重试失败', icon: 'none' }));
   }

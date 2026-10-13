@@ -58,6 +58,23 @@ int main() {
     auto other=evidence;other["manifestHash"]="wrong";
     bool rejected=false;try{groundedPatientReply(json::object(),p,other,"t9","hello",1);}catch(...){rejected=true;}
     check(rejected,"cross-context evidence accepted");
+    auto waiting=groundedPatientReply({{"intent","price"},{"reply","还有其他费用吗？"}},p,absent,
+        "defer","具体费用我核实后回复您。",1);
+    check(waiting["patientState"]["deferredTopics"]==json::array({"price"}),"live deferral not saved");
+    check(waiting["reply"].get<std::string>().find("？")==std::string::npos,"deferred price immediately repeated");
+    auto resumed=p;resumed["state"]=waiting["patientState"];
+    check(patientView(resumed,"介绍流程",2)["state"]["deferredTopics"]==json::array({"price"}),
+          "deferral lost on resume");
+    auto repeated_price=groundedPatientReply({{"intent","price"}},resumed,absent,"defer-next","先了解流程。",2);
+    check(repeated_price["reply"]==waiting["reply"],"pending deferral repeatedly questioned");
+    auto answered_price=groundedPatientReply({{"intent","price"}},resumed,evidence,"defer-answer",
+        "3980元起每颗，检查后确认。",3);
+    check(answered_price["patientState"]["deferredTopics"].empty(),"verified answer did not resolve deferral");
+    for(const char* unsafe:{"价格5000元每颗，以实际为准。","价格四千元，稍后回复。",
+        "保证费用不变，稍后回复您。","价格我不会回复您。"}) {
+      auto unchanged=groundedPatientReply({{"intent","price"}},p,evidence,"not-deferred",unsafe,2);
+      check(unchanged["patientState"]["deferredTopics"].empty(),"a numeric claim or promise became a deferral");
+    }
     auto finish=groundedPatientReply({{"intent","finish"},{"evidenceIds",{"E2"}}},p,evidence,"t10","请考虑",3);
     check(finish["shouldEnd"]==true && finish["patientState"]["endingReason"]=="patient_requested","end state missing");
     auto corrected=groundedPatientReply({{"intent","process"},{"reply","没关系，那我先去检查。"}},p,evidence,"t11",

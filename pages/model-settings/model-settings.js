@@ -62,7 +62,7 @@ Page({
     return api.saveModelSettings(payload).then(settings => {
       this.applySettings(settings);
       this.setData({ notice: '个人配置已保存，你后续的训练将使用此配置。保存不会发起模型调用。' });
-      wx.showToast({ title: '配置已保存', icon: 'success' });
+      wx.showToast({ title: '已保存', icon: 'success' });
     }).catch(error => {
       this.setData({ error: error.message || '保存失败，请重试' });
       if (error.code === 'MODEL_CONFIG_CONFLICT') this.setData({ canEdit: false });

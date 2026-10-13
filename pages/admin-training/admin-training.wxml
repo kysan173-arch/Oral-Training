@@ -5,14 +5,12 @@
     <!-- 头部 Banner：与数据页保持同一套克制白底样式 -->
     <view class="data-hero">
       <view class="hero-content">
-        <text class="hero-eyebrow">主管培训运营</text>
         <text class="hero-title">培训计划管理</text>
       </view>
     </view>
 
     <view class="section-title-row">
       <text class="section-title">培训计划</text>
-      <text class="section-caption">进度按截止时间实时统计</text>
     </view>
 
     <view class="plan-toolbar">

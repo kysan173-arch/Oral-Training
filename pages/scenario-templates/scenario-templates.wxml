@@ -1,7 +1,6 @@
 <view class="page-shell tpl-page">
   <view class="tpl-hero card">
     <text class="tpl-hero-title">按骨架模板新建</text>
-    <text class="tpl-hero-desc">模板只含教学结构：训练重点、隐藏顾虑的形状、患者剧本骨架、维度侧重。能不能承诺、转交由谁、多久答复这类机构红线必须你自己填——模板猜不出你们的真实流程。</text>
   </view>
 
   <view class="loading-card card" wx:if="{{loading}}"><text>正在加载模板…</text></view>
@@ -18,7 +17,6 @@
         <text class="tpl-group-name">{{item.name}}</text>
         <text class="tpl-group-count">{{item.items.length}} 个骨架</text>
       </view>
-      <text class="tpl-group-desc">{{item.description}}</text>
 
       <view
         class="tpl-card card"
@@ -48,7 +46,5 @@
       actionText="返回场景管理"
       bind:action="goBack"
     ></empty-state>
-
-    <text class="tpl-foot">选定后会在「训练场景管理」里打开一张预填好的表单，你在上面改，不用从空白开始。机构红线那一半仍然是空的，等你填。</text>
   </block>
 </view>

@@ -1928,7 +1928,8 @@ class ReliableDatabase {
     if ((session["context_version"].as<int>() >= 2) != v2 || std::string(session["status"].c_str()) != "completed")
       throw ApiError(409, "REPORT_CONTEXT_MISMATCH", "评分版本或会话状态不匹配");
     if (v2) {
-      const auto context = readPatientProfiles(tx, job.target_id).at("context");
+      const auto profiles = readPatientProfiles(tx, job.target_id);
+      const auto context = profiles.at("context");
       json history = json::array();
       for (const auto& row : tx.exec_params("SELECT role, content, round FROM messages WHERE session_id=$1 ORDER BY round, created_at", job.target_id))
         history.push_back({{"role", row["role"].c_str()}, {"content", row["content"].c_str()}, {"round", row["round"].as<int>()}});
@@ -1947,7 +1948,9 @@ class ReliableDatabase {
             trace["evidence"].dump(), model_version);
       }
       report.erase("_knowledgeAssessment");
-      report = oral_training::rag::prepareKnowledgeReport(report, assessment, context);
+      // Trust feedback is separate from the five assessment dimensions and total score.
+      report = oral_training::rag::prepareKnowledgeReport(report, assessment, context,
+          profiles.value("state", json::object()));
     }
 
     tx.exec_params(R"(

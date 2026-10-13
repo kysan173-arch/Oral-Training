@@ -10,11 +10,7 @@
 .status-filter { flex: 1; padding: 12rpx 4rpx; border-radius: 12rpx; color: var(--text-secondary); border: 1rpx solid transparent; font-size: 24rpx; text-align: center; transition: background .2s, color .2s; }
 .status-filter.selected { color: var(--color-primary); background: var(--color-primary-light); font-weight: 500; }
 
-.eyebrow { display: block; color: var(--text-secondary); font-size: 22rpx; letter-spacing: 2rpx; }
 .page-title { display: block; margin-top: 14rpx; font-size: 40rpx; font-weight: 600; color: var(--text-strong); }
-.page-intro { display: block; margin-top: 14rpx; color: var(--text-secondary); font-size: 24rpx; }
-.history-tip { padding: 18rpx 22rpx; margin-bottom: 22rpx; border-radius: 16rpx; color: var(--text-body); background: #fff; font-size: 24rpx; line-height: 1.55; border: 1rpx solid var(--color-border); }
-.history-tip text:first-child { color: var(--color-primary); font-weight: 600; }
 
 /* 历史卡（单行摘要，整卡可点击进详情） */
 .history-card { padding: 26rpx; margin-bottom: 18rpx; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); transition: transform .12s; }
@@ -56,7 +52,6 @@
 .history-actions { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 22rpx; }
 .history-links { display: flex; flex-direction: column; gap: 10rpx; min-width: 0; }
 .conversation-link { color: var(--color-primary); font-size: 24rpx; font-weight: 500; }
-.evaluation-link { color: var(--text-secondary); font-size: 24rpx; }
 /* 主操作按钮：此前 .history-button 未定义，落到 app.wxss 的 button{margin:0;padding:0} 兜底，
    于是沿用原生 18px 字号 —— 比卡片标题还大还粗，是「字号乱」的最大来源。 */
 .history-button { flex-shrink: 0; display: flex; align-items: center; justify-content: center; min-width: 180rpx; height: 64rpx; padding: 0 30rpx; border-radius: 999rpx; font-size: 26rpx; font-weight: 500; line-height: 1.2; text-align: center; transition: opacity .15s; }
@@ -65,14 +60,16 @@
 .history-button.completed { color: var(--color-primary); background: var(--color-primary-light); }
 .history-button.abandoned { color: var(--text-secondary); background: var(--color-bg); }
 .conversation { padding: 18rpx 0 2rpx; margin-top: 20rpx; border-top: 1rpx solid #f0f0f3; }
-.conversation-role { color: var(--text-muted); font-size: 22rpx; }
-.conversation-text { max-width: 88%; padding: 14rpx 18rpx; margin-top: 6rpx; border-radius: 12rpx; color: var(--text-body); background: #f6f6f8; font-size: 26rpx; line-height: 1.55; }
+/* 对话气泡：说话人分边 + 圆角朝向区分。role 标签进气泡内，省一层高度。
+   .mine 此前从未定义，客服侧与患者侧同色同边，静默退化成段落列表 —— 补上。 */
+.conversation-row { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 16rpx; }
+.conversation-row:last-child { margin-bottom: 0; }
+.conversation-row.mine { align-items: flex-end; }
+.bubble-wrap { display: flex; flex-direction: column; max-width: 88%; }
+.conversation-row.mine .bubble-wrap { align-items: flex-end; }
+.conversation-role { margin-bottom: 4rpx; color: var(--text-muted); font-size: 20rpx; }
+.conversation-text { padding: 14rpx 18rpx; border-radius: 8rpx 20rpx 20rpx 20rpx; color: var(--text-body); background: #f6f6f8; font-size: 26rpx; line-height: 1.55; }
+.conversation-row.mine .conversation-text { border-radius: 20rpx 8rpx 20rpx 20rpx; color: #fff; background: var(--color-primary); }
 .history-learning { max-width: 88%; padding: 12rpx 16rpx; margin-top: 8rpx; border-radius: 10rpx; color: #55716e; background: #eff9f7; font-size: 22rpx; line-height: 1.5; }
+.conversation-row.mine .history-learning { align-self: flex-end; }
 .history-boundary { padding-top: 7rpx; margin-top: 7rpx; border-top: 1rpx solid #d7ebe7; color: #896c47; }
-.inline-evaluation { padding: 18rpx 0 2rpx; margin-top: 18rpx; border-top: 1rpx solid #eceef5; }
-.inline-loading { display: block; padding: 14rpx 0; color: #9298ad; font-size: 22rpx; text-align: center; }
-.inline-summary { display: block; padding: 0 10rpx; color: #556078; font-size: 26rpx; line-height: 1.6; }
-.inline-feedback { display: flex; gap: 14rpx; margin-top: 16rpx; }
-.inline-feedback view { flex: 1; padding: 14rpx; border-radius: 12rpx; background: #f8f9fd; }
-.inline-feedback text { display: block; margin-top: 6rpx; color: #778098; font-size: 22rpx; line-height: 1.5; }
-.inline-feedback .inline-label { margin-top: 0; font-size: 22rpx; font-weight: 600; }

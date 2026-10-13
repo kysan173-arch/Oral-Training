@@ -136,7 +136,7 @@ Page({
         draftId: result.draftId,
         draftVersion: result.draftVersion
       });
-      if (!silent) wx.showToast({ title: '知识草稿已保存', icon: 'success' });
+      if (!silent) wx.showToast({ title: '已保存', icon: 'success' });
       return result;
     }).catch(error => {
       this.setData({ saving: false });
@@ -184,10 +184,7 @@ Page({
       this.setData({ job, generating: !['succeeded', 'dead'].includes(job.status) });
       if (job.status === 'succeeded') {
         if (job.resultApplied) this.loadDraft();
-        wx.showToast({
-          title: job.resultApplied ? '候选已写入草稿' : '新编辑已保留，候选未覆盖',
-          icon: 'none'
-        });
+        api.showCenterNotice({ title: job.resultApplied ? '候选已写入草稿' : '新编辑已保留，候选未覆盖' });
         return;
       }
       if (job.status === 'dead') return;
@@ -213,7 +210,7 @@ Page({
         this.saveDraft(true).then(result => api.publishAdminKnowledge(
           this.data.entryId, result.draftVersion, requestKey('knowledge-publish')
         )).then(() => {
-          wx.showToast({ title: '已发布新版本', icon: 'success' });
+          wx.showToast({ title: '已发布', icon: 'success' });
           this.loadDraft();
         }).catch(() => {});
       }
@@ -243,7 +240,7 @@ Page({
         if (!modal.confirm) return;
         api.archiveAdminKnowledge(this.data.entryId).then(() => {
           this.setData({ status: 'archived' });
-          wx.showToast({ title: '知识已归档', icon: 'success' });
+          wx.showToast({ title: '已归档', icon: 'success' });
         }).catch(error => wx.showToast({ title: error.message || '归档失败', icon: 'none' }));
       }
     });

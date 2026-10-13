@@ -44,6 +44,11 @@ query
 # Local scratch scripts & build leftovers (never part of the repo)
 backend/_*
 *.exe.old
+# 本机 Linux 构建辅助脚本（本项目构建链是 MSVC + .ps1，勿入库）
+backend/tests/build_backend.sh
+backend/tests/build_pgt.sh
+# 汇报稿类文档：仅供本地/对外汇报，不进仓库（docs/ 只放工程文档）
+docs/*汇报版*.md
 
 # IDE / tooling
 .workbuddy/

@@ -322,6 +322,8 @@ Content-Type: application/json
 
 `recommendedPhrases` 从逐轮点评和违规项的已验证改写派生；`learningMistakes` 从违规项和未被违规项覆盖的改进项派生。它们不接受客户端写入，也不触发额外模型调用。已有历史报告在读取时兼容地从原有点评/违规字段提取可用项。
 
+`recommendedPhrases[].reason` 必须**脱离学员原话也能读懂**：它描述 `csReply` 这句推荐表达本身的沟通策略或规避的合规风险，不复述或批评学员当时说了什么。话术锦囊只展示「患者关切 / 推荐表达 / reason」三段，不呈现被点评的学员原话；若 `reason` 写成「回复无意义数字，未进行任何有效沟通」这类针对原话的点评，读者无从得知被点评的是哪句话，会显得割裂。评分提示词对此有显式约束。历史报告中的既有 `reason` 不受影响，新生成的报告才遵循。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/learning/phrases` | 本人话术锦囊；支持 `search`、`scenarioId`、`favoritesOnly`、`limit`（1—50） |
@@ -378,6 +380,8 @@ Content-Type: application/json
 ```
 
 `recommendedPhrases` 从逐轮点评和违规项的已验证改写派生；`learningMistakes` 从违规项和未被违规项覆盖的改进项派生。它们不接受客户端写入，也不触发额外模型调用。已有历史报告在读取时兼容地从原有点评/违规字段提取可用项。
+
+`recommendedPhrases[].reason` 必须**脱离学员原话也能读懂**：它描述 `csReply` 这句推荐表达本身的沟通策略或规避的合规风险，不复述或批评学员当时说了什么。话术锦囊只展示「患者关切 / 推荐表达 / reason」三段，不呈现被点评的学员原话；若 `reason` 写成「回复无意义数字，未进行任何有效沟通」这类针对原话的点评，读者无从得知被点评的是哪句话，会显得割裂。评分提示词对此有显式约束。历史报告中的既有 `reason` 不受影响，新生成的报告才遵循。
 
 分类筛选（`sceneCategory`）在 SQL 里、在 `limit` 截断之前生效。若改成前端按每条话术的 `category` 字段筛，会退化为「先截断再筛选」：训练量大的学员，50 条上限被单一分类占满后，其他分类会显示出少于实际的结果。
 
@@ -742,7 +746,7 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
 
 N03 替代上述 N02 阶段限制：个人模型网关支持患者初始化和逐轮回复；缺少 API key 时明确失败为 `MODEL_NOT_CONFIGURED`。初始化仍只选择画像枚举；逐轮模型输出回应意图、简短患者口语和证据 ID。后端验证锁定快照和引用，保留检索审计，但不再将资料原文拼进患者消息。患者口语最多 80 字，拒绝数字报价、越权披露和部分明显角色越界输出；不合格口语使用简短意图兜底。个人预算按提问由固定画像生成。该校验不是对任意自由文本医疗事实的完备验证，患者应提问而非替诊所给出结论。告别不要求附带医学证据，已披露的比较信息不再由后端逐轮重复添加。
 
-私有画像固定存储；每轮模型只接收公开画像、关注点和已达到披露条件的信息。预算在明确询问后披露，比较其他诊所的信息在明确询问或第三轮起披露；个人预算不作为诊所报价。v2 会话的公开 `patientState` 仅含 `emotion`，不暴露信任度、隐藏信息及触发规则。训练提示使用不包含私有画像的固定指导文本。
+私有画像固定存储；每轮模型只接收公开画像、关注点和已达到披露条件的信息。预算在明确询问后披露，比较其他诊所的信息在明确询问或第三轮起披露；个人预算不作为诊所报价。v2 会话的公开 `patientState` 仅含 `emotion`，不暴露信任度、隐藏信息及触发规则。训练提示依据公开画像与对话动态生成，不传未披露私有画像。患者信任与情绪强度在服务端累积：违规承诺扣 10、证据冲突扣 5；明确共情且给出帮助动作的客服表达加 5。患者选择疼痛、时间或复诊话题本身不加分，中性回复不改变信任或情绪。
 
 每轮患者消息、情绪/信任度/披露状态/异议及结束原因、私有检索轨迹在获胜回复事务内保存。过期 lease 和重放不能覆盖状态。round 0 开场不消耗学员轮数；达到轮数上限或有效结束意图时与评分任务原子提交，手动结束与放弃同样记录原因。评分仍走现有流程，知识核验评分留待 N05/N06；小程序 v2 入口留待 N04。
 
@@ -757,7 +761,13 @@ N03 替代上述 N02 阶段限制：个人模型网关支持患者初始化和�
 
 `GET /api/sessions/:id/evaluation` 对 `contextVersion=2` 的会话返回 `schemaVersion=2` 报告。知识核验固定使用会话 manifest，沟通四维单独评价；总分固定权重为知识 25%、合规 25%、共情 20%、需求 20%、礼仪 10%。知识无法核验时 `knowledgeAccuracy/totalScore/passed` 为 `null`，不重分配权重；`knowledgeAssessment.nullReason` 解释原因。
 
-新增报告字段：`serviceRevisionId`、`knowledgeManifestHash`、`knowledgeAssessment`（status、knowledgeAccuracy、assessableCount、unassessableCount、coverage、rubricVersion、nullReason）、`knowledgeChecks`。每条核验包含原始轮次和原句、verdict、reason、evidenceRefs、evidenceTexts、recommendedRewrite、scoringUnit、correctedInLaterRound。未回答项单独保留患者问题，不伪造客服原句。`learningMistakes` 只包含有引用、仍计分且未被后续纠正的 contradicted 项。
+新增报告字段：`serviceRevisionId`、`knowledgeManifestHash`、`knowledgeAssessment`（status、knowledgeAccuracy、assessableCount、unassessableCount、coverage、rubricVersion、nullReason）、`knowledgeChecks`、`deferredTopics`。每条核验包含原始轮次和原句、verdict、reason、evidenceRefs、evidenceTexts、recommendedRewrite、scoringUnit、correctedInLaterRound。未回答项单独保留患者问题，不伪造客服原句。`learningMistakes` 只包含有引用、仍计分且未被后续纠正的 contradicted 项。
+
+`verdict` 取值：`supported` / `contradicted` / `incomplete` / `evidence_missing` / `conflicted` / `not_applicable` / `deferred`。`deferred` 表示客服明确说明核实后回复或面诊后确认费用，且没有夹带数值报价、绝对化承诺或推诿。锁定资料可核验该话题时给 0.5 credit；没有可用依据时不纳入分母，知识分与总分继续为 `null`。后续完整、正确的答复替换此前的待回复计分项，不要求使用“更正”等措辞。
+
+每轮患者回复会在私有状态中原子保存 `deferredTopics`，恢复会话后继续使用；费用话题待核实时不再重复追问，后续有依据的报价会解除对应待回复状态。违规承诺及证据冲突优先于该收敛规则。报告保留识别到的待回复话题记录；发布前重放核验结果及内部医生转交记录。
+
+报告另含 `trustSummary`（band、net、accurateStatements、selfCorrections、properDeferrals、triggeredObjections、penalty、gain、rubricVersion），只作为反馈，不参与五维分与总分。准确陈述、纠错按知识单位去重；合规转交医生单独记录。价格核验是正常询问，不扣信任；绝对化承诺不因同时存在风险标记和异议记录而重复扣分。
 
 `GET /api/sessions/:id/evidence/:traceId` 需要会话所有者身份，且会话已完成、报告 ready。仅返回当前报告实际引用的公开 claim_verification trace，响应为 `{traceId, manifestHash, citations:[{text,citation}]}`。不存在、其他用户、其他会话、初始化/患者回复私有 trace、未被当前报告引用的 trace 均返回 `404 EVIDENCE_NOT_FOUND`。
 

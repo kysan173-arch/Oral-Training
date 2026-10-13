@@ -319,7 +319,7 @@ Page({
       const target = session.status === 'completed' ? (page === 'roleplay' ? 'roleplay-result' : 'result') : page;
       if (session.status === 'abandoned') {
         sessionStart.clear(saved.key);
-        wx.showToast({ title: '上次会话已结束，请再次点击开始', icon: 'none' });
+        api.showCenterNotice({ title: '上次会话已结束，请再次点击开始' });
         this.loadScenarios();
         return;
       }

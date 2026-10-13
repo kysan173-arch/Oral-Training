@@ -15,12 +15,8 @@
 .level-badge.excellent, .level-badge.good { color: var(--color-success); background: var(--color-success-light); }
 .level-badge.qualified { color: var(--color-warning); background: var(--color-warning-light); }
 .level-badge.practice { color: var(--color-danger); background: var(--color-danger-light); }
-.result-summary { position: relative; display: block; max-width: 560rpx; margin: 12rpx auto 0; color: var(--text-body); font-size: 26rpx; line-height: 1.55; }
 .result-time { position: relative; display: block; margin-top: 12rpx; color: var(--text-muted); font-size: 22rpx; }
 
-/* 免责提示条（中性弱化，不占用警示语义） */
-.notice-box { display: flex; align-items: flex-start; margin: 22rpx 24rpx 30rpx; padding: 20rpx; border-radius: 16rpx; color: var(--text-secondary); background: var(--color-primary-pale); font-size: 22rpx; line-height: 1.55; }
-.notice-icon { width: 30rpx; height: 30rpx; line-height: 30rpx; flex-shrink: 0; margin-right: 12rpx; border-radius: 50%; text-align: center; color: var(--color-primary); background: var(--color-primary-light); font-size: 22rpx; font-weight: 600; }
 /* 同 roleplay-result：28rpx 会与 app.wxss 同名类的 padding: 0 4rpx 叠加成 32rpx，
    与卡片 24rpx 对不齐。两个报告页必须一起改，否则刚统一的规范又分叉。 */
 .section-title-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 24rpx 14rpx; padding: 0; }
@@ -102,13 +98,6 @@
 .phrase-patient { color: var(--text-secondary); font-size: 22rpx; line-height: 1.5; }
 .phrase-copy { margin-top: 10rpx; color: var(--color-primary); font-size: 26rpx; line-height: 1.6; font-weight: 400; }
 .phrase-reason { margin-top: 10rpx; color: var(--text-secondary); font-size: 22rpx; line-height: 1.55; }
-.result-actions { padding: 0 24rpx; }
-.result-actions button { width: 100%; height: 76rpx; line-height: 76rpx; margin-bottom: 16rpx; padding: 0; }
-.result-btn-main { height: 84rpx !important; line-height: 84rpx !important; font-size: 26rpx !important; font-weight: 600; box-shadow: 0 6rpx 18rpx rgba(22, 35, 59, 0.1); }
-.result-btn-sub { height: 84rpx !important; line-height: 84rpx !important; font-size: 26rpx !important; font-weight: 600; background: #fff !important; border: 2rpx solid var(--color-border) !important; color: var(--color-primary) !important; }
-.result-link-row { display: flex; align-items: center; justify-content: center; padding: 16rpx 0 24rpx; }
-.text-button { color: var(--text-secondary); background: transparent; font-size: 26rpx; padding: 12rpx; }
-.disclaimer { display: block; color: var(--text-secondary); font-size: 22rpx; text-align: center; }
 /* 同 roleplay-result：width:100% 的卡片在没有左右 padding 的容器里会贴屏幕边。
    两者必须一起改，否则两个报告页的加载态又分叉。 */
 .loading-result { display: flex; min-height: 70vh; align-items: center; justify-content: center; padding: 0 24rpx 40rpx; background: var(--bg-grad, var(--color-bg)); }
@@ -116,5 +105,5 @@
 .loading-title { color: var(--text-strong); font-size: 32rpx; font-weight: 600; }
 .loading-text { display: block; margin-top: 16rpx; color: var(--text-secondary); font-size: 26rpx; line-height: 1.6; }
 .retry-button { width: 100%; margin-top: 30rpx; }
-/* 从 master 并入：结果页五维雷达图外框（仅展示本次报告中具备评分的维度） */
-.radar-card { padding: 18rpx 20rpx 22rpx; margin: 0 24rpx 28rpx; color: #9aa1b4; font-size: 20rpx; text-align: center; }
+/* 从 master 并入：结果页五维雷达图外框 */
+.radar-card { padding: 18rpx 20rpx 22rpx; margin: 0 24rpx 28rpx; }

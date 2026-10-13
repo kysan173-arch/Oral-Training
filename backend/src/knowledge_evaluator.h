@@ -1,5 +1,6 @@
 #pragma once
 #include "evidence_validator.h"
+#include "patient_response_signals.h"
 #include <cmath>
 #include <functional>
 #include <regex>
@@ -172,6 +173,10 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
   std::map<std::string,int> asked;
   std::map<std::string,std::string> asked_quotes;
   std::set<std::string> deferred_to_doctor;
+  // 已被「会核实后回复」这类合规应答处理过的价格类字段。
+  // 与 deferred_to_doctor 分开：那个是医疗判断的转交，这个是「价格问过了、
+  // 对方已承诺回复」，用于让患者侧停止重复追问同一诉求。
+  std::set<std::string> deferred_price_topics;
   int last_user_round=0;
   std::vector<json> ordered(history.begin(),history.end());
   std::stable_sort(ordered.begin(),ordered.end(),[](const json& a,const json& b){return a.value("round",0)<b.value("round",0);});
@@ -243,7 +248,17 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
         if(verdict=="incomplete") reason="陈述遗漏范围、单位或适用条件";
         if(verdict=="not_applicable") reason="疑问、假设、否定或转述，不作为本诊所事实承诺计分";
         if(verdict=="conflicted") reason="证据存在冲突，暂不计分";
-        if(verdict=="not_applicable" && claimHas(span.text,{"需要医生","医生检查","医生评估","检查后评估"}))
+        const auto deferred_fields=patientDeferredPriceTopics(span.text);
+        if((verdict=="evidence_missing" || verdict=="incomplete") &&
+            std::find(deferred_fields.begin(),deferred_fields.end(),field)!=deferred_fields.end()) {
+          verdict="deferred";
+          reason=refs.empty()?"已说明核实后回复；现有资料不足，不计入知识分":
+              "已说明核实后回复，尚未给出可核验的完整答复，按部分完成计分";
+          deferred_price_topics.insert(field);
+        }
+        if(verdict=="not_applicable" &&
+            (field=="treatmentDuration" || field=="visitDuration" || field=="followupInterval") &&
+            claimHas(span.text,{"需要医生","医生检查","医生评估","检查后评估"}))
           deferred_to_doctor.insert(field);
         json check={{"checkId","kc-"+std::to_string(checks.size()+1)},{"round",round},{"originalQuote",span.text},
           {"sourceOffsetBytes",span.offset},{"topic",field},{"verdict",verdict},{"reason",reason},
@@ -255,7 +270,9 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
         if(applicable) {
           auto previous=units.find(unit_key);
           if(previous==units.end()) { units[unit_key]=checks.size(); check["scoringUnit"]=true; }
-          else if((correction && (verdict=="supported" || verdict=="incomplete")) || verdict=="contradicted") {
+          else if((correction && (verdict=="supported" || verdict=="incomplete")) || verdict=="contradicted" ||
+              (verdict=="supported" && (checks[previous->second]["verdict"]=="deferred" ||
+                checks[previous->second]["verdict"]=="evidence_missing"))) {
             checks[previous->second]["scoringUnit"]=false;
             if(correction && verdict=="supported") for(auto& earlier:checks)
               if(evidenceString(earlier,"unitKey")==unit_key) earlier["correctedInLaterRound"]=true;
@@ -289,28 +306,73 @@ inline json evaluateKnowledge(const json& context,const json& history,const json
   int assessable=0,unassessable=0; double earned=0,weight_sum=0;
   for(const auto& [field,index]:units) {
     auto& check=checks[index]; const auto verdict=evidenceString(check,"verdict");
-    if(verdict=="evidence_missing" || verdict=="conflicted") { ++unassessable; continue; }
+    if(verdict=="evidence_missing" || verdict=="conflicted" ||
+        (verdict=="deferred" && check["evidenceRefs"].empty())) { ++unassessable; continue; }
     const bool clinical_risk=field.rfind("professional:",0)==0 &&
         check["expectedFact"].is_string() && claimHas(check["expectedFact"].get<std::string>(),{"风险","禁忌","急诊"});
     const double weight=field=="price"||field=="includedItems"||clinical_risk?2:1;
-    const double credit=verdict=="supported"?1:verdict=="incomplete"&&!check.value("unanswered",false)?0.5:0;
+    // Deferrals earn partial credit only when locked evidence makes the topic assessable.
+    const double credit=verdict=="supported"?1:
+        (verdict=="incomplete"&&!check.value("unanswered",false))||verdict=="deferred"?0.5:0;
     ++assessable; weight_sum+=weight; earned+=weight*credit;
     check["unitWeight"]=weight; check["unitCredit"]=credit;
   }
   for(auto& check:checks) if(check.contains("unitWeight"))
     check["scoreImpact"]=-100.0*check["unitWeight"].get<double>()*(1-check["unitCredit"].get<double>())/weight_sum;
   const json score=assessable?json(static_cast<int>(std::lround(100*earned/weight_sum))):json(nullptr);
+  json deferred_topics=json::array();
+  for(const auto& field:deferred_price_topics) deferred_topics.push_back(field);
   return {{"knowledgeChecks",checks},{"knowledgeTraces",traces},{"knowledgeManifestHash",context.at("manifestHash")},
+      // Report audit of recognized deferrals; live turns persist their own private state.
+      {"deferredTopics",deferred_topics},{"doctorDeferredTopics",deferred_to_doctor},
       {"knowledgeAssessment",{{"status",assessable?"partial":"insufficient_evidence"},{"knowledgeAccuracy",score},
         {"assessableCount",assessable},{"unassessableCount",unassessable},
         {"coverage",units.empty()?json(nullptr):json(static_cast<double>(assessable)/units.size())},
         {"rubricVersion","knowledge-rubric-v1"}}}};
 }
-inline json applyKnowledgeScores(json report,const json& assessment,int pass_score=60) {
+// Report feedback is separate from the live trust state and grading dimensions.
+inline json summarizeTrustBuilding(const json& assessment,const json& patient_state) {
+  std::set<std::string> accurate, corrected, deferred;
+  for (const auto& check : assessment.value("knowledgeChecks", json::array())) {
+    if (!check.is_object()) continue;
+    const auto topic=evidenceString(check,"topic");
+    const auto unit=check.value("unitKey",topic);
+    const auto verdict=evidenceString(check,"verdict");
+    if(check.value("scoringUnit",false) && verdict=="supported") accurate.insert(unit);
+    if(check.value("correctedInLaterRound",false) && verdict=="contradicted") corrected.insert(unit);
+    if(verdict=="not_applicable" &&
+        (topic=="treatmentDuration" || topic=="visitDuration" || topic=="followupInterval") &&
+        claimHas(evidenceString(check,"originalQuote"),{"需要医生","医生检查","医生评估","检查后评估"}))
+      deferred.insert(topic);
+  }
+  // Includes contextual doctor referrals with no explicit duration field in the reply.
+  for(const auto& topic:assessment.value("doctorDeferredTopics",json::array()))
+    if(topic.is_string()) deferred.insert(topic.get<std::string>());
+  bool promise=patient_state.value("riskTriggered",false), conflict=false;
+  for(const auto& objection:patient_state.value("triggeredObjections",json::array())) {
+    if(objection=="absolute_promise") promise=true;
+    if(objection=="evidence_conflict") conflict=true;
+  }
+  // price_verification is a normal question, not a trust-damaging event.
+  const int penalty=(promise?10:0)+(conflict?5:0);
+  const int gain=static_cast<int>(accurate.size())*2+static_cast<int>(corrected.size())*3+
+      static_cast<int>(deferred.size())*2;
+  const int net=gain-penalty;
+  const char* band=net>=12?"strong":net>=5?"fair":net>=0?"neutral":"damaged";
+  return {{"band",band},{"net",net},{"accurateStatements",accurate.size()},
+      {"selfCorrections",corrected.size()},{"properDeferrals",deferred.size()},
+      {"triggeredObjections",static_cast<int>(promise)+static_cast<int>(conflict)},
+      {"penalty",penalty},{"gain",gain},{"rubricVersion","trust-building-v1"}};
+}
+
+inline json applyKnowledgeScores(json report,const json& assessment,int pass_score=60,
+                                 const json& patient_state=json::object()) {
   const auto score=assessment.at("knowledgeAssessment").at("knowledgeAccuracy");
   report["schemaVersion"]=2;
-  for(const auto* key:{"knowledgeAssessment","knowledgeChecks","knowledgeManifestHash"}) report[key]=assessment.at(key);
+  for(const auto* key:{"knowledgeAssessment","knowledgeChecks","knowledgeManifestHash","deferredTopics"}) report[key]=assessment.at(key);
   report["dimensionScores"]["knowledgeAccuracy"]=score;
+  // 信任度正向评价：只在此处结算，不影响 dimensionScores 与 totalScore。
+  report["trustSummary"]=summarizeTrustBuilding(assessment,patient_state);
   report["totalScore"]=nullptr; report["passed"]=nullptr;
   const auto& d=report.at("dimensionScores");
   for(const auto* key:{"medicalCompliance","empathy","needsDiscovery","serviceEtiquette"})

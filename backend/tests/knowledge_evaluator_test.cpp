@@ -130,6 +130,38 @@ int main() {
       }
       ++fixed_passed;
     }
+    // Deferral feedback cannot turn absent evidence into a numerical grade.
+    {
+      auto empty_evidence=bundle;
+      empty_evidence["facts"]=json::array(); empty_evidence["passages"]=json::array();
+      const auto deferred=evaluateKnowledge(context,json::array({
+          {{"role","user"},{"round",1},{"content","具体费用我核实后回复您。"}}}),
+          json::array({{{"originalQuote","具体费用我核实后回复您。"},{"field","price"},{"round",1}}}),
+          [&](const std::string&,const std::string&){return empty_evidence;});
+      check(deferred["deferredTopics"].is_array()&&deferred["deferredTopics"].size()==1,
+            "deferred price topic not recorded");
+      check(deferred["knowledgeAssessment"]["knowledgeAccuracy"].is_null(),"empty evidence deferral scored");
+      check(deferred["knowledgeAssessment"]["assessableCount"]==0,"empty deferral in denominator");
+      const auto ungraded=prepareKnowledgeReport(report,deferred,context);
+      check(ungraded["totalScore"].is_null() && ungraded["passed"].is_null(),"empty deferral produced total score");
+      const auto supported_defer=run("具体费用我核实后回复您。");
+      check(supported_defer["knowledgeAssessment"]["knowledgeAccuracy"]==50,"known topic deferral lost partial credit");
+      check(verdict("价格四千元，稍后回复。")=="evidence_missing","Chinese numeric claim laundered as deferral");
+      check(verdict("5000元每颗，以实际为准。")=="contradicted","contradiction laundered as deferral");
+      json followup=json::array({{{"role","user"},{"round",1},{"content","费用我核实后回复您。"}},
+          {{"role","user"},{"round",2},{"content","3980元起每颗，检查后确认。"}}});
+      check(evaluateKnowledge(context,followup,json::array(),provider)["knowledgeAssessment"]["knowledgeAccuracy"]==100,
+            "fulfilled deferral still capped at partial credit");
+      const auto accurate=run("3980元起每颗，检查后确认。");
+      const auto trust=summarizeTrustBuilding(accurate,{{"triggeredObjections",{"price_verification"}}});
+      check(trust["penalty"]==0 && trust["net"]==2 && trust["band"]=="neutral","normal price question penalized trust");
+      const auto unsafe_trust=summarizeTrustBuilding(accurate,
+          {{"riskTriggered",true},{"triggeredObjections",{"absolute_promise","price_verification"}}});
+      check(unsafe_trust["penalty"]==10,"absolute promise counted twice");
+      check(summarizeTrustBuilding(corrected,json::object())["selfCorrections"]==1,"duplicate mistakes inflated corrections");
+      const auto doctor=run("疗程需要医生评估。");
+      check(summarizeTrustBuilding(doctor,json::object())["properDeferrals"]==1,"valid doctor referral omitted");
+    }
     auto replayable=bad; replayable["claimCandidates"]=json::array();
     const auto replay=replayKnowledgeAssessment(context,history,replayable);
     const auto prepared=prepareKnowledgeReport(report,replay,context);

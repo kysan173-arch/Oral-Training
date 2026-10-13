@@ -12,13 +12,16 @@ inline json replayKnowledgeAssessment(const json& context, const json& history, 
         return traces.at(index++).at("evidence");
       });
   if (index != traces.size()) throw std::runtime_error("extra report evidence");
-  for (const auto* key : {"knowledgeChecks", "knowledgeAssessment", "knowledgeManifestHash"})
+  // deferredTopics 必须一起比对：它与 knowledgeChecks 同源，重放漏掉会导致
+  // 「核验通过但发布失败」或反之。
+  for (const auto* key : {"knowledgeChecks", "knowledgeAssessment", "knowledgeManifestHash", "deferredTopics", "doctorDeferredTopics"})
     if (replay.at(key) != assessment.at(key)) throw std::runtime_error("report assessment mismatch");
   return replay;
 }
 
-inline json prepareKnowledgeReport(json report, const json& assessment, const json& context) {
-  report = applyKnowledgeScores(report, assessment);
+inline json prepareKnowledgeReport(json report, const json& assessment, const json& context,
+                                   const json& patient_state = json::object()) {
+  report = applyKnowledgeScores(report, assessment, 60, patient_state);
   report["serviceRevisionId"] = context.at("serviceRevisionId");
   report["knowledgeAssessment"]["nullReason"] = report["totalScore"].is_null()
       ? "没有可核验的知识计分项；未知或冲突不按错误扣分，也不重分配权重。" : "";

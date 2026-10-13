@@ -189,7 +189,10 @@ const run = async () => {
           empathy: 80, knowledgeAccuracy: 85, needsDiscovery: 75,
           serviceEtiquette: 90, medicalCompliance: 88
         },
-        strengths: [], improvements: [], recommendedPhrases: [],
+        strengths: [], improvements: [], recommendedPhrases: [
+          { phraseKey: 'p1', csReply: 'first', reason: 'r1' },
+          { phraseKey: 'p2', csReply: 'second', reason: 'r2' }
+        ],
         violations: [
           { id: 'v1', type: 'a', deduction: 5, originalQuote: 'q1', reason: 'r1', recommendedRewrite: 'w1' },
           { id: 'v2', type: 'b', deduction: 5, originalQuote: 'q2', reason: 'r2', recommendedRewrite: 'w2' },
@@ -212,16 +215,23 @@ const run = async () => {
     page.loadInitialData();
     await tick();
     expect('result/range text', page.data.session && page.data.session.rangeText, '09-12 21:28 — 21:40');
-    /* 折叠派生：默认最多显示三条（上游新版布局）。WXML 不支持函数调用，可见列表必须在 JS 预算；
+    /* 折叠派生：默认显示一条，展开后可见全部。WXML 不支持函数调用，可见列表必须在 JS 预算；
        若退回 {{list.slice(0,1)}} 这类写法，以下断言会红。 */
-    expect('result/violations folded', page.data.visibleViolations.length, 3);
-    expect('result/roundComments folded', page.data.visibleRoundComments.length, 2);
+    expect('result/violations folded', page.data.visibleViolations.length, 1);
+    expect('result/roundComments folded', page.data.visibleRoundComments.length, 1);
+    expect('result/phrases folded', page.data.visiblePhrases.length, 1);
     page.toggleViolations();
     page.toggleRoundComments();
+    page.togglePhrases();
     expect('result/violations expanded', page.data.visibleViolations.length, 3);
     expect('result/roundComments expanded', page.data.visibleRoundComments.length, 2);
     page.toggleViolations();
-    expect('result/violations re-folded', page.data.visibleViolations.length, 3);
+    expect('result/violations re-folded', page.data.visibleViolations.length, 1);
+    expect('result/phrases expanded', page.data.visiblePhrases.length, 2);
+    page.toggleRoundComments();
+    page.togglePhrases();
+    expect('result/roundComments re-folded', page.data.visibleRoundComments.length, 1);
+    expect('result/phrases re-folded', page.data.visiblePhrases.length, 1);
   }
 
   /* ---------- 4b. 训练页：场景加载失败必须留痕（不能空成「没有场景可练」） ---------- */

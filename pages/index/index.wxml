@@ -25,11 +25,8 @@
     <view class="mode-option {{trainingMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchMode" data-mode="patient_simulation">患者模拟</view>
   </view>
 
-  <view class="boundary-tip"><text class="boundary-icon">i</text><text>{{trainingMode === 'patient_simulation' ? '标准客服会展示答复思路与合规边界；不提供诊断、治疗承诺或未经确认的价格信息。' : '患者隐藏信息不会直接展示，训练中请通过提问逐步了解。'}}</text></view>
-
-  <view class="service-picker card">
-    <text class="service-picker-label">{{legacyMode ? '通用训练（不绑定诊所服务）' : '按诊所服务训练'}}</text>
-    <button size="mini" bindtap="toggleLegacy" disabled="{{starting}}">{{legacyMode ? '切换到服务训练' : '进入旧版通用训练'}}</button>
+  <view class="service-picker service-picker-narrow card">
+    <button class="quiet-button {{starting ? 'is-disabled' : ''}}" bindtap="toggleLegacy" disabled="{{starting}}">{{legacyMode ? '切换到服务训练' : '进入旧版通用训练'}}</button>
   </view>
   <block wx:if="{{!legacyMode && services.length && !scenariosFailed}}">
     <view class="service-picker card">
@@ -44,7 +41,7 @@
   <view class="role-blocked-card" wx:if="{{!legacyMode && !catalogLoading && !scenariosFailed && !services.length}}">
     <text class="blocked-title">暂无已发布服务</text>
     <text class="blocked-desc">请联系管理员发布服务，或进入旧版通用训练；已有会话可从历史记录继续。</text>
-    <button bindtap="retryScenarios">刷新目录</button>
+    <button class="quiet-button" bindtap="retryScenarios">刷新目录</button>
   </view>
   <view class="category-empty" wx:if="{{!legacyMode && selectedServiceId && !catalogLoading && !scenariosFailed && !scenarios.length}}">该服务暂无兼容场景，请切换服务或联系管理员。</view>
   <!-- 培训计划提醒：最紧急的待办计划摘要（标题 / 剩余时间 / 达标差额 / 进度），

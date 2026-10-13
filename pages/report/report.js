@@ -2,22 +2,11 @@ const api = require('../../utils/api.js');
 const datetime = require('../../utils/datetime.js');
 const { CATEGORY_CONFIG } = require('../../utils/scenario.js');
 
-// 雷达图维度取数（配色按我方墨蓝体系，淘汰 master 的 #667eea 紫粉）
-const dimensionsFrom = score => [
-  { key: 'empathy', name: '同理心', value: score.empathy, color: '#1F3864' },
-  { key: 'knowledgeAccuracy', name: '知识准确性', value: score.knowledgeAccuracy, color: '#2E6CA4' },
-  { key: 'needsDiscovery', name: '需求挖掘', value: score.needsDiscovery, color: '#3E8E9E' },
-  { key: 'serviceEtiquette', name: '服务礼仪', value: score.serviceEtiquette, color: '#52a67a' },
-  { key: 'medicalCompliance', name: '医疗合规', value: score.medicalCompliance, color: '#C9A227' }
-].filter(item => item.value !== null && item.value !== undefined && Number.isFinite(Number(item.value)))
-  .map(item => Object.assign({}, item, { score: Number(item.value) }));
-
 Page({
   data: {
     sessions: [],
     loading: true,
     expandedId: '',
-    expandedEvaluationId: '',
     historyMode: 'customer_service',
     statusFilters: [
       { id: 'all', name: '全部' }, { id: 'completed', name: '已完成' },
@@ -82,11 +71,9 @@ Page({
         updatedAtText: datetime.formatDateTime(item.updatedAt),
         evaluation: !isRoleplay && item.totalScore !== null ? { totalScore: item.totalScore } : null,
         isRoleplay,
-        messages: [],
-        evaluationDetail: null,
-        evaluationLoading: false
+        messages: []
       }));
-      this.setData({ sessions, loading: false, expandedId: '', expandedEvaluationId: '' });
+      this.setData({ sessions, loading: false, expandedId: '' });
     }).catch(error => {
       if (requestVersion !== this.historyRequestVersion || requestedMode !== this.data.historyMode) return;
       this.setData({ loading: false });
@@ -100,7 +87,7 @@ Page({
     /* 分类筛选只属于客服训练（患者模拟不按场景分类），所以切模式时必须清空它：
        否则「在客服训练选了某大类 -> 切到患者模拟」会带着 category 继续请求，
        筛选在生效、UI 上却已经看不见那个 chip，记录变少了也找不到原因。 */
-    this.setData({ historyMode: mode, selectedCategory: '', sessions: [], expandedId: '', expandedEvaluationId: '' }, () => this.loadSessions());
+    this.setData({ historyMode: mode, selectedCategory: '', sessions: [], expandedId: '' }, () => this.loadSessions());
   },
 
   selectStatus(e) {
@@ -165,38 +152,4 @@ Page({
       api.showCenterNotice({ title: error.message });
     });
   },
-
-  toggleEvaluation(e) {
-    const id = e.currentTarget.dataset.id;
-    const session = this.data.sessions.find(item => item.id === id);
-    if (!session || session.isRoleplay || session.status !== 'completed') return;
-    if (this.data.expandedEvaluationId === id) {
-      this.setData({ expandedEvaluationId: '' });
-      return;
-    }
-    if (session.evaluationDetail && !session.evaluationDetail.pending) {
-      this.setData({ expandedEvaluationId: id });
-      return;
-    }
-    this.evaluationRequestVersion = (this.evaluationRequestVersion || 0) + 1;
-    const requestVersion = this.evaluationRequestVersion;
-    const sessions = this.data.sessions.map(item => item.id === id
-      ? Object.assign({}, item, { evaluationLoading: true }) : item);
-    this.setData({ sessions, expandedEvaluationId: id });
-    api.getEvaluation(id).then(data => {
-      if (requestVersion !== this.evaluationRequestVersion || this.data.historyMode !== 'customer_service') return;
-      const detail = data.status === 'ready' && data.evaluation ? Object.assign({}, data.evaluation, {
-        dimensions: dimensionsFrom(data.evaluation.dimensionScores || {})
-      }) : { status: data.status, pending: true };
-      const nextSessions = this.data.sessions.map(item => item.id === id
-        ? Object.assign({}, item, { evaluationDetail: detail, evaluationLoading: false }) : item);
-      this.setData({ sessions: nextSessions });
-    }).catch(error => {
-      if (requestVersion !== this.evaluationRequestVersion) return;
-      const nextSessions = this.data.sessions.map(item => item.id === id
-        ? Object.assign({}, item, { evaluationLoading: false }) : item);
-      this.setData({ sessions: nextSessions, expandedEvaluationId: '' });
-      api.showCenterNotice({ title: error.message || '报告加载失败' });
-    });
-  }
 });

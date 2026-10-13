@@ -35,13 +35,14 @@ const totalScoreFrom = (evaluation, sessionTotalScore) => {
     + scoreFrom(score.serviceEtiquette) * 0.10);
 };
 
-/* 总分环档位色（与全局语义色 token 一致）；score 为 null 时走 unscored 档 */
+/* 总分环档位色（与全局语义色 token 一致）；score 为 null 时走 unscored 档。
+   不再输出 note：档位名（表现出色 / 表现良好 / …）已说明水平，副标题一律是复述。 */
 const levelFrom = score => {
-  if (score === null) return { key: 'unscored', name: '暂不形成综合分', note: '知识依据不足，可继续查看其余维度点评', scoreColor: '#1F3864' };
-  if (score >= 90) return { key: 'excellent', name: '表现出色', note: '沟通与合规边界掌握较好', scoreColor: '#2E8B6C' };
-  if (score >= 80) return { key: 'good', name: '表现良好', note: '继续用具体场景巩固表达', scoreColor: '#2E8B6C' };
-  if (score >= 60) return { key: 'qualified', name: '达到练习目标', note: '可优先复练薄弱维度', scoreColor: '#B97A1E' };
-  return { key: 'practice', name: '继续复练', note: '建议先查看错题与推荐表达', scoreColor: '#C2554A' };
+  if (score === null) return { key: 'unscored', name: '暂不形成综合分', scoreColor: '#1F3864' };
+  if (score >= 90) return { key: 'excellent', name: '表现出色', scoreColor: '#2E8B6C' };
+  if (score >= 80) return { key: 'good', name: '表现良好', scoreColor: '#2E8B6C' };
+  if (score >= 60) return { key: 'qualified', name: '达到练习目标', scoreColor: '#B97A1E' };
+  return { key: 'practice', name: '继续复练', scoreColor: '#C2554A' };
 };
 
 const normalizeEvaluation = (evaluation, sessionTotalScore) => {
@@ -78,9 +79,10 @@ const normalizeEvaluation = (evaluation, sessionTotalScore) => {
 
 /* WXML 不能对数据路径调用函数（依赖追踪失效且不报错），
    折叠时要显示的条目在 JS 里预算成字段。
-   折叠态默认展示 3 条而不是 1 条：只给第 1 条会让学员以为「本次只有一条点评」，
-   而多轮训练的价值恰恰在后面几轮——「看不见」和「没有」在体验上是一样的。 */
-const COLLAPSED_PREVIEW = 3;
+   折叠态只展示第1 条：本次优秀话术与回合点评都是「精选」性质，学员要的是
+   先看最值得抄的那一条，而不是一份缩水的完整列表。折叠按钮上会写明还剩几条，
+   「看不见」和「没有」的区别由那行提示承担。 */
+const COLLAPSED_PREVIEW = 1;
 const foldList = (list, expanded) => (expanded ? (list || []) : (list || []).slice(0, COLLAPSED_PREVIEW));
 
 Page({
@@ -90,7 +92,6 @@ Page({
     evaluation: null,
     dimensions: [],
     level: null,
-    nextScenario: null,
     scorePercent: 0,
     scoreText: '—',
     loading: true,
@@ -99,8 +100,10 @@ Page({
     timedOut: false,
     violationsExpanded: false,
     roundCommentsExpanded: false,
+    phrasesExpanded: false,
     visibleViolations: [],
-    visibleRoundComments: []
+    visibleRoundComments: [],
+    visiblePhrases: []
   },
 
   sessionId: '',
@@ -128,13 +131,11 @@ Page({
       const scenarios = scenarioData.items || [];
       const scenarioIndex = scenarios.findIndex(item => item.id === detail.session.scenarioId);
       const scenario = scenarioIndex >= 0 ? scenarios[scenarioIndex] : { name: detail.session.scenarioName };
-      const nextScenario = scenarioIndex >= 0 && scenarios.length > 1
-        ? scenarios[(scenarioIndex + 1) % scenarios.length] : null;
       /* 起止时间在 JS 预算成展示文本，WXML 里不调用函数 */
       const sessionView = Object.assign({}, detail.session, {
         rangeText: datetime.formatRange(detail.session.startedAt, detail.session.finishedAt)
       });
-      this.setData({ session: sessionView, scenario, nextScenario });
+      this.setData({ session: sessionView, scenario });
       this.networkRetryIndex = 0;
       this.pollReport();
     }).catch(error => this.handleNetworkError(error, () => this.loadInitialData()));
@@ -160,7 +161,8 @@ Page({
           scorePercent,
           scoreText,
           visibleViolations: foldList(evaluation.violations, this.data.violationsExpanded),
-          visibleRoundComments: foldList(evaluation.roundComments, this.data.roundCommentsExpanded)
+          visibleRoundComments: foldList(evaluation.roundComments, this.data.roundCommentsExpanded),
+          visiblePhrases: foldList(evaluation.recommendedPhrases, this.data.phrasesExpanded)
         });
         return;
       }
@@ -288,12 +290,7 @@ Page({
     }).catch(error => api.showCenterNotice({ title: error.message }));
   },
 
-  restartTraining() { wx.switchTab({ url: '/pages/index/index' }); },
-  viewScenes() { wx.switchTab({ url: '/pages/index/index' }); },
   viewHistory() { wx.navigateTo({ url: '/pages/report/report' }); },
-  viewMistakes() { wx.navigateTo({ url: '/pages/mistakes/mistakes' }); },
-  viewPhrases() { wx.navigateTo({ url: '/pages/phrases/phrases' }); },
-  viewProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
 
   toggleViolations() {
     const violationsExpanded = !this.data.violationsExpanded;
@@ -313,15 +310,12 @@ Page({
     });
   },
 
-  startNextScenario() {
-    const scenario = this.data.nextScenario;
-    if (!scenario) return this.viewScenes();
-    if (scenario.activeSession) {
-      wx.redirectTo({ url: `/pages/training/training?sessionId=${scenario.activeSession.id}` });
-      return;
-    }
-    api.createSession(scenario.id).then(data => {
-      wx.redirectTo({ url: `/pages/training/training?sessionId=${data.session.id}` });
-    }).catch(error => api.showCenterNotice({ title: error.message || '创建下一场训练失败' }));
+  togglePhrases() {
+    const phrasesExpanded = !this.data.phrasesExpanded;
+    const evaluation = this.data.evaluation;
+    this.setData({
+      phrasesExpanded,
+      visiblePhrases: foldList(evaluation && evaluation.recommendedPhrases, phrasesExpanded)
+    });
   }
 });

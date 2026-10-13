@@ -126,20 +126,28 @@
 /* 板块软分割 */
 .section-spacer { height: 12rpx; margin: 30rpx 4rpx 6rpx; border-radius: 6rpx; background: var(--color-border); }
 
-/* ── 工具卡（浅色图标 + 中文双行） ── */
-.tool-card { display: flex; align-items: center; padding: 24rpx 22rpx 24rpx 22rpx; margin-bottom: 16rpx; border-radius: 22rpx; background: #fff; border: 1rpx solid var(--color-border); position: relative; overflow: hidden; }
-.tool-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5rpx; background: var(--color-primary); }
-.tool-icon-wrap { display: flex; align-items: center; justify-content: center; width: 76rpx; height: 76rpx; flex-shrink: 0; border-radius: 20rpx; background: var(--color-primary-light); }
-.tool-icon-img { width: 44rpx; height: 44rpx; }
+/* ── 工具卡（单行标题 + 细线分隔，与签到区 checkin-list 同一套语言） ── */
+.tool-list { display: flex; flex-direction: column; padding: 0 24rpx; margin-bottom: 20rpx; }
+.tool-card { display: flex; align-items: center; padding: 18rpx 0; border-bottom: 1rpx solid var(--color-border); }
+.tool-card:last-child { border-bottom: none; }
+.tool-icon-wrap { display: flex; align-items: center; justify-content: center; width: 56rpx; height: 56rpx; flex-shrink: 0; border-radius: 16rpx; background: var(--color-primary-light); }
+.tool-icon-img { width: 34rpx; height: 34rpx; }
+/* 「我的团队」图标补偿：sessions.png 的 64×64 画布里内容只占 41×35（高度仅 55%），
+   mode="aspectFit" 会把这圈透明留白一起缩进来 → 34rpx 的框里实际只有 ~18.6rpx 的
+   可见图形（占容器 33%），细笔画糊成一团。
+
+   取42rpx：实测可见图形 26.9×23.0rpx，占容器 48%×41%。
+   （曾试过 50rpx → 占 57%×49%，实测偏重、细笔画撑满浅蓝底，与旁边的标题字打架，
+     已回调。目标区间是可见图形占容器 40%~45%，此素材 42rpx 落在 41%。）
+
+   只挂这一张卡，其余 tool-icon-wrap（tools/ 那批图）保持原样。 */
+.tool-icon-wrap-team .tool-icon-img { width: 42rpx; height: 42rpx; }
 .tool-body { flex: 1; margin-left: 16rpx; min-width: 0; display: flex; flex-direction: column; }
 .tool-title { color: var(--text-strong); font-size: 26rpx; font-weight: 600; line-height: 1.3; }
 .tool-sub { margin-top: 6rpx; color: var(--text-muted); font-size: 22rpx; font-weight: 400; letter-spacing: .5rpx; }
 .tool-arrow { color: var(--text-muted); font-size: 32rpx; margin-left: 8rpx; flex-shrink: 0; }
 .model-settings-entry { margin-top: 20rpx; }
 .model-entry-icon { color: var(--color-primary); font-size: 30rpx; font-weight: 600; }
-
-/* 个人成长 略微突出 */
-.tool-prominent { padding-top: 26rpx; padding-bottom: 26rpx; box-shadow: 0 0 0 2rpx rgba(31, 56, 100, .12), 0 4rpx 16rpx rgba(0, 0, 0, .06); }
 
 /* ── 切换演示账号入口 ── */
 .demo-switch-entry { display: flex; align-items: center; gap: 8rpx; margin-top: 16rpx; padding: 12rpx 18rpx; border-radius: 16rpx; background: var(--color-primary-light); }
