@@ -668,21 +668,28 @@ HttpResult postLiteLlm(const GatewayEndpoint& endpoint, const std::string& api_k
 
   DWORD status = 0;
   DWORD status_size = sizeof(status);
-  WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                      WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size, WINHTTP_NO_HEADER_INDEX);
+  if (!WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                          WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size, WINHTTP_NO_HEADER_INDEX))
+    throw ApiError(503, "MODEL_TIMEOUT", "无法读取模型响应状态");
+
+  DWORD content_length = 0;
+  DWORD length_size = sizeof(content_length);
+  const bool has_content_length = WinHttpQueryHeaders(request.get(),
+      WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+      &content_length, &length_size, WINHTTP_NO_HEADER_INDEX) != FALSE;
 
   std::string response_body;
   while (true) {
-    DWORD available = 0;
-    if (!WinHttpQueryDataAvailable(request.get(), &available))
-      throw ApiError(503, "MODEL_TIMEOUT", "读取模型响应超时或连接中断");
-    if (available == 0) break;
-    std::string chunk(static_cast<size_t>(available), '\0');
+    char chunk[8192];
     DWORD received = 0;
-    if (!WinHttpReadData(request.get(), chunk.data(), available, &received))
+    if (!WinHttpReadData(request.get(), chunk, sizeof(chunk), &received))
       throw ApiError(503, "MODEL_TIMEOUT", "读取模型响应超时或连接中断");
-    response_body.append(chunk.data(), received);
+    if (received == 0) break;
+    response_body.append(chunk, received);
   }
+  // A clean socket EOF can still truncate the advertised HTTP body on Windows.
+  if (has_content_length && response_body.size() != content_length)
+    throw ApiError(503, "MODEL_TIMEOUT", "模型响应不完整，连接已中断");
   return {static_cast<int>(status), response_body};
 #else
   const auto origin = std::string(endpoint.secure ? "https://" : "http://") +

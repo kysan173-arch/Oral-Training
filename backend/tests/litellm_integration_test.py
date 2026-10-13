@@ -51,7 +51,8 @@ def run(command, **kwargs):
         output.seek(0)
         text = output.read().decode('utf-8', errors='replace')
     if result.returncode:
-        raise RuntimeError(f'{command[0]} failed: {text[-4000:]}')
+        raise RuntimeError(f'{command[0]} exited {result.returncode} '
+                           f'(0x{result.returncode & 0xffffffff:08x}): {text[-4000:]}')
     return text.strip()
 
 
@@ -157,7 +158,8 @@ def start_backend():
                                creationflags=flags, stdout=log, stderr=log)
     for _ in range(80):
         if process.poll() is not None:
-            raise RuntimeError('Backend failed to start: ' + str(work))
+            raise RuntimeError(f'Backend exited {process.returncode} '
+                               f'(0x{process.returncode & 0xffffffff:08x}) during startup: {work}')
         try:
             http.open(base + '/health', timeout=1)
             return
