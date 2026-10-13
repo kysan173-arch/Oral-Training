@@ -190,8 +190,9 @@ try:
                 '--psql', args.pg_bin / executable('psql')])
     run(migrate)
     run(migrate)  # Ordered runner is repeatable.
+    # Use an explicit --dbname: Windows psql stops parsing flags at a positional URI.
     # Direct rerun of the new additive migration is also safe with existing history.
-    run([args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
+    run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
          ROOT / 'backend/migrations/034_litellm_settings.sql'])
     env.update(DATABASE_URL=database_url, PRODUCTION='false', AUTH_MODE='demo', REQUIRE_HTTPS='false',
                BIND_ADDRESS='127.0.0.1', PORT=str(api_port), ALLOWED_ORIGIN='*', AI_WORKER_CONCURRENCY='1',
@@ -202,10 +203,11 @@ try:
     assert api('GET', '/health')['modelConfigurationScope'] == 'personal'
     api('GET', '/config/litellm', expected=401)
     learner = api('POST', '/auth/wechat', {'code': 'offline-model-config'})['accessToken']
-    run([args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
+    run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
          "INSERT INTO users(id,display_name,role,status) VALUES('litellm-test-admin','Model test admin','admin','active')"])
-    assert run([args.pg_bin / executable('psql'), database_url, '-X', '-Atc',
-                "SELECT count(*) FROM users WHERE id='litellm-test-admin' AND status='active'"]) == '1'
+    admin_count = run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-Atc',
+                       "SELECT count(*) FROM users WHERE id='litellm-test-admin' AND status='active'"])
+    assert admin_count == '1', f'Admin fixture was not inserted: {admin_count!r}'
     admin = api('POST', '/auth/switch-learner', {'userId': 'litellm-test-admin'}, learner)['accessToken']
     assert api('GET', '/config/litellm', token=learner)['canEdit']
     assert not api('GET', '/config/litellm', token=learner)['configured'], 'Old environment key must be ignored'
@@ -222,7 +224,7 @@ try:
     peer = api('PUT', '/config/litellm', {**config, 'model': 'peer-model', 'apiKey': 'sk-peer-key-12345'}, admin)
     assert peer['revision'] == 1 and api('GET', '/config/litellm', token=learner)['model'] == 'ds-primary'
     assert len(calls) == 0, 'Saving must not invoke a model'
-    run([args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
+    run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
          ROOT / 'backend/migrations/035_personal_litellm_settings.sql'])
     assert api('GET', '/config/litellm', token=learner)['revision'] == 1
     stop_backend()
@@ -272,7 +274,7 @@ try:
     assert evaluation['status'] == 'failed' and summary['status'] == 'failed'
     # Upstream's plan-generation route must select the requesting supervisor's
     # personal gateway, even though its input profile belongs to a learner.
-    run([args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
+    run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
          "INSERT INTO supervisor_team_members(learner_id,supervisor_id) VALUES('demo-user-001','litellm-test-admin') "
          "ON CONFLICT(learner_id) DO UPDATE SET supervisor_id=EXCLUDED.supervisor_id"])
     plan_call_start = len(calls)
@@ -281,7 +283,7 @@ try:
     saved = api('GET', '/config/litellm', token=learner)
     api('PUT', '/config/litellm', {**config, 'revision': saved['revision'], 'apiKey': '',
                                  'baseUrl': 'https://other.example/v1'}, learner, 400)
-    raw = run([args.pg_bin / executable('psql'), database_url, '-X', '-Atc', 'SELECT api_key_encrypted FROM user_model_gateway_settings'])
+    raw = run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-Atc', 'SELECT api_key_encrypted FROM user_model_gateway_settings'])
     assert raw and 'sk-offline' not in raw
     cleared = api('DELETE', '/config/litellm', {'revision': saved['revision'], 'userId': 'litellm-test-admin'}, learner)
     assert not cleared['configured'] and api('GET', '/health')['ready']
@@ -292,14 +294,14 @@ try:
     assert api('GET', '/config/litellm', token=admin)['configured']
     # Migration from a populated 022 config assigns only its author and retains
     # source rows. Reapply must not resurrect a cleared personal credential.
-    run([args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
+    run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c',
          "INSERT INTO users(id,role) VALUES('litellm-migration-owner','learner'); "
          "UPDATE model_gateway_settings SET updated_by='litellm-migration-owner',base_url='https://old.example/v1', "
          "model='legacy',api_key_encrypted='ciphertext-preserved',revision=9"])
-    migration23 = [args.pg_bin / executable('psql'), database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
+    migration23 = [args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
                    ROOT / 'backend/migrations/035_personal_litellm_settings.sql']
     run(migration23)
-    check = run([args.pg_bin / executable('psql'), database_url, '-X', '-Atc',
+    check = run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-Atc',
                  "SELECT count(*) FROM user_model_gateway_settings WHERE user_id='litellm-migration-owner' AND revision=9"])
     assert check == '1'
     migrated_user = api('POST', '/auth/switch-learner', {'userId': 'litellm-migration-owner'}, learner)['accessToken']

@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def check_databases(run, env, pg_bin, bin_dir, db):
-    psql = [pg_bin / 'psql', db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
+    psql = [pg_bin / 'psql', '--dbname', db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
     assert run(psql + ['-c', 'SELECT current_database()']) == 'litellm_config_test'
     check_history(run, env, pg_bin, db)
     migrations = sorted((ROOT / 'backend/migrations').glob('[0-9][0-9][0-9]_*.sql'))
@@ -23,7 +23,7 @@ def check_databases(run, env, pg_bin, bin_dir, db):
             run(psql + ['-c', 'CREATE DATABASE portable_feature_test'])
             target_db = db.rsplit('/', 1)[0] + '/portable_feature_test'
             schema = 'public'
-        psql = [pg_bin / 'psql', target_db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
+        psql = [pg_bin / 'psql', '--dbname', target_db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
         if schema != 'public':
             run(psql + ['-c', f'CREATE SCHEMA {schema}'])
         env['PGOPTIONS'] = f'-c search_path={schema}'
@@ -59,13 +59,13 @@ VALUES ('init-migration-job','evaluation','init-migration-done','evaluation:init
         assert before == run(psql + ['-c', digest]), 'Migration rerun rewrote sessions'
         env.pop('PGOPTIONS')
         env.pop('ORAL_TRAINING_TEST_DATABASE_URL')
-        psql = [pg_bin / 'psql', db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
+        psql = [pg_bin / 'psql', '--dbname', db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
     env.pop('ORAL_EMBEDDING_TEST_ISOLATED')
 
 
 def check_history(run, env, pg_bin, db):
     schema = 'migration_history_test'
-    psql = [pg_bin / 'psql', db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
+    psql = [pg_bin / 'psql', '--dbname', db, '-X', '-At', '-v', 'ON_ERROR_STOP=1']
     run(psql + ['-c', f'CREATE SCHEMA {schema}'])
     env['PGOPTIONS'] = f'-c search_path={schema}'
     for name in ['001_initial.sql', '002_roleplay.sql']:
