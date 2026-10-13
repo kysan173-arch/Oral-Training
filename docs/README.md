@@ -20,7 +20,6 @@
 - [口腔医疗客服智能陪练系统 · 技术说明文档（前端聚焦版）](product/prd.md)
 - [口腔医疗客服智能陪练系统](product/口腔医疗客服智能陪练系统_产品设计文档.md)
 - [模块 3 培训运营 + 模块 4 数据报表 实现计划](product/主管端培训运营与数据报表方案.md)
-- [患者模拟复盘页设计审查与修改意见](product/患者模拟复盘页设计审查.md)
 - [项目计划书（Word）](product/项目计划书.docx)
 
 ## 部署与配置
@@ -49,6 +48,7 @@
 
 ## 验证与修复记录
 
+- [完整手动测试知识库清单](validation/manual-knowledge-checklist.md)
 - [DeepSeek 双角色 RAG 验证](validation/deepseek-dual-role-validation.md)
 - [EmbeddingGemma / MiniMax RAG 验证（2026-10-08）](validation/embeddinggemma-minimax-validation.md)
 - [项目审核问题修复记录 · 2026-09-29](validation/project-audit-fixes-2026-09-29.md)
@@ -63,7 +63,6 @@
 - [N06 验收记录](validation/rag-validation-report.md)
 - [N07 分段开关、受控联调与发布记录](validation/rag-n07-validation.md)
 - [标准客服自然表达实测（2026-09-29）](validation/service-reply-evaluation-2026-09-29.md)
-- [验收清单：训练模块改进（P0 → P2）](validation/验收清单.md)
 
 ## 成果汇报
 
@@ -72,5 +71,6 @@
 ## RAG 演示数据
 
 - [患者模拟 RAG 测试知识库（具体参数版）](rag-data/患者模拟_RAG测试知识库_具体参数版.json)
+- [完整手测补充知识与提问](rag-data/manual-test-knowledge.json)
 
 演示知识中的价格、时长与机构参数为合成数据。

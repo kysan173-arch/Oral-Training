@@ -70,8 +70,8 @@ $bin = 'C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\Common
 & powershell -NoProfile -ExecutionPolicy Bypass -File backend\tests\static_checks.ps1
 ```
 
-预期：CTest **18/18 通过**，其中 4 个专用数据库测试
-（`database_feature`、`patient_initialization`、`audit_regression`、`scenario_draft`）
+预期：CTest 中所有已执行用例通过（数量以当前 CMake 配置为准）；专用数据库测试
+（`embedding_rag`、`database_feature`、`patient_initialization`、`audit_regression`、`scenario_draft`）
 在普通运行中 `Skipped`，需独立临时 PostgreSQL 才跑，属正常。
 
 ## 写构建脚本的坑

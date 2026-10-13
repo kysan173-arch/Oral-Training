@@ -3,11 +3,12 @@
 #include "../src/main.cpp"
 #include <future>
 
-void checkSetting(bool condition) {
-  if (!condition) throw std::runtime_error("LiteLLM settings assertion failed");
+void checkSettingAt(int line, bool condition, const char* message = "LiteLLM settings assertion failed") {
+  if (!condition) throw std::runtime_error(std::string(message) + " at line " + std::to_string(line));
 }
+#define checkSetting(...) checkSettingAt(__LINE__, __VA_ARGS__)
 
-int main() {
+int main() try {
 #ifndef _WIN32
   std::unique_ptr<TestKeyFile> test_key;
   if (!std::getenv("MODEL_KEY_FILE")) test_key = std::make_unique<TestKeyFile>();
@@ -42,11 +43,11 @@ int main() {
   if (const char* base = std::getenv("LITELLM_TEST_TRANSPORT_URL")) {
     auto endpoint = gatewayEndpoint(base);
     auto redirect = postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-redirect"})");
-    checkSetting(redirect.status == 307);
+    checkSetting(redirect.status == 307, "HTTP redirect was not preserved");
     bool failed = false;
     try { postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-truncated"})"); }
     catch (const ApiError& error) { failed = error.code == "MODEL_TIMEOUT"; }
-    checkSetting(failed);
+    checkSetting(failed, "Truncated HTTP body was not rejected as MODEL_TIMEOUT");
   }
 #ifndef _WIN32
   if (const char* base = std::getenv("LITELLM_TEST_UNTRUSTED_TLS_URL")) {
@@ -97,4 +98,8 @@ int main() {
     } catch (const ApiError& error) { checkSetting(error.code == "MODEL_NOT_CONFIGURED"); }
   }
   std::cout << "LiteLLM configuration tests passed\n";
+  return 0;
+} catch (const std::exception& error) {
+  std::cerr << "LiteLLM configuration test failed: " << error.what() << std::endl;
+  return 1;
 }

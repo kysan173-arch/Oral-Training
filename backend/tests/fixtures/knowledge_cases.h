@@ -1,8 +1,8 @@
 #pragma once
 // Fixed rule-authored expectations, independent of model output. Human domain review pending.
 // The deferred cases below cover「合规地不报价」：承诺核实后回复或转为费用构成说明。
-// They must NOT be evidence_missing — otherwise "cannot give a price" and "cannot answer"
-// score the same, and the patient keeps re-asking the same topic forever.
+// The known-evidence fixtures classify these as deferred; empty evidence must
+// remain unassessable. Live patient turns use the same recognition independently.
 inline nlohmann::json fixedKnowledgeCases() {
   return nlohmann::json::parse(R"JSON([
 {"quote":"3980元起每颗，检查后确认。","expected":"supported"},

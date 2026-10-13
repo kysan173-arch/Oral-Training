@@ -40,8 +40,9 @@ int main() {
   };
   try {
     std::cout<<"=== A. 连续共情应答（应累积上涨并转缓和）===\n";
-    json s;json first_state;
-    for(int r=3;r<=7;++r) {s=run(s,"pain","我有点担心治疗的时候疼",r); if(r==3) first_state=s;}
+    const std::string supportive="我理解您的担心，可以帮您联系医生进一步沟通。";
+    json s;
+    for(int r=3;r<=7;++r) {s=run(s,"process",supportive,r);}
     check(s["trustLevel"].get<int>()==75,"empathic run did not accumulate trust to 75");
     check(s["emotion"]=="缓和","empathic run never reached缓和");
     check(s["patienceRounds"].get<int>()==5,"patience did not accumulate");
@@ -54,34 +55,43 @@ int main() {
 
     std::cout<<"\n=== C. 中性应答夹杂其中（不应产生任何漂移）===\n";
     json s3;
-    s3=run(s3,"pain","有点怕疼",3);
+    s3=run(s3,"process",supportive,3);
     const auto trust_before=s3["trustLevel"];
-    const auto patience_before=s3["patienceRounds"];
+    const auto emotion_before=s3["emotion"];
     for(int r=4;r<=6;++r) s3=run(s3,"clarify","我没听懂",r);
     check(s3["trustLevel"]==trust_before,"neutral rounds drifted trust");
-    check(s3["patienceRounds"]==patience_before,"neutral rounds inflated patience");
+    check(s3["patienceRounds"]==0 && s3["emotion"]==emotion_before,"neutral response changed emotion or retained a positive streak");
 
     std::cout<<"\n=== D. 从违规恢复到共情（惩罚应可逆）===\n";
     json s4;
     s4=run(s4,"process","保证100%有效",3);
     const auto low=s4["trustLevel"].get<int>();
-    s4=run(s4,"pain","您能说说疼的话怎么办吗",4);
-    s4=run(s4,"pain","那麻药是怎么用的呢",5);
-    s4=run(s4,"pain","恢复大概要多久",6);
+    for(int r=4;r<=9;++r) s4=run(s4,"process",supportive,r);
     check(s4["trustLevel"].get<int>()>low,"recovery could not climb back");
     check(s4["emotion"]=="缓和","recovery never returned to缓和");
+
+    // The patient can keep asking about pain/time/follow-up after a poor answer.
+    for(const char* intent:{"pain","time","followup"}) {
+      json unchanged;
+      for(int r=1;r<=4;++r) unchanged=run(unchanged,intent,"自己看吧",r);
+      check(unchanged["trustLevel"]==50 && unchanged["emotionLevel"]==0,
+            "patient question rewarded the learner");
+    }
+    auto refused=run(nullptr,"pain","我理解您的担心，但自己看吧，需要预约。",1);
+    check(refused["trustLevel"]==50,"deflection hidden by empathy earned trust");
 
     std::cout<<"\n=== E. 脏存量不得自锁（越界初值应被夹回并可恢复）===\n";
     json dirty={{"emotion","平静"},{"emotionLevel",9},{"trustLevel",999},
         {"patienceRounds",-5},{"revealedInformation",json::array()},
         {"triggeredObjections",json::array()},{"riskTriggered",false}};
     auto p=profiles(dirty);
-    auto r=groundedPatientReply({{"intent","pain"}},p,evidence,"t","我担心疼",3);
+    auto r=groundedPatientReply({{"intent","pain"}},p,evidence,"t",supportive,3);
     std::cout<<"  level="<<r["emotionLevel"]<<" trust="<<r["trustLevel"]
              <<" patience="<<r["patientState"]["patienceRounds"]<<"\n";
     check(r["emotionLevel"].get<int>()<=2,"out-of-range emotionLevel accepted");
     check(r["trustLevel"].get<int>()<=100,"out-of-range trustLevel accepted");
     check(r["patientState"]["patienceRounds"].get<int>()>=0,"negative patience accepted");
+    check(s4["patienceRounds"].get<int>()<=6,"positive streak exceeded its bound");
 
     std::cout<<"\npatient evolution checks passed: "<<checks<<" checks\n";
     return 0;

@@ -7,7 +7,7 @@ def check_api(api, run, psql, database_url, learner, peer, stop_backend, start_b
     assert api('GET', '/health')['ready']
     api('GET', '/sessions', expected=401)
     def sql(query):
-        return run([psql, database_url, '-X', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query])
+        return run([psql, '--dbname', database_url, '-X', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query])
     assert sql('SELECT current_database()') == 'litellm_config_test'
     sql("INSERT INTO users(id,role,status) VALUES('portable-peer','learner','active')")
     peer_learner = api('POST', '/auth/switch-learner', {'userId': 'portable-peer'}, learner)['accessToken']

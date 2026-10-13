@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include "patient_response_signals.h"
 
 namespace oral_training {
 
@@ -42,8 +43,7 @@ inline bool containsAny(const std::string& text, std::initializer_list<const cha
 /* 客服话里出现这些词，说明它把话题推回给患者、或明确表示没在听——不算实质应答。
    注意「您先说」这类：字面像是礼貌用语，实际是敷衍。 */
 inline bool soundsDeflecting(const std::string& text) {
-  return containsAny(text, {"不知道","您先说","您问","您请说","麻烦您说",
-                            "这个我","我不太懂","您继续","您说说"});
+  return rag::patientDeflectingResponse(text);
 }
 
 /* 客服话里出现这些词，说明确实在正面回答（时间/费用/流程/安排/下一步…）。 */
@@ -75,7 +75,8 @@ inline PositiveFloorDecision decidePositiveFloor(int modelEmotionLevel, int mode
                                                 const std::string& modelEmotion,
                                                 int stateEmotionLevel, int stateTrustLevel,
                                                 const std::string& stateEmotion,
-                                                const std::string& learnerText) {
+                                                const std::string& learnerText,
+                                                bool modelRiskTriggered = false) {
   PositiveFloorDecision d;
   d.emotionLevel = modelEmotionLevel;
   d.trustLevel = modelTrustLevel;
@@ -87,12 +88,16 @@ inline PositiveFloorDecision decidePositiveFloor(int modelEmotionLevel, int mode
     d.reason = "model_moved_state";
     return d;
   }
+  if (modelRiskTriggered || rag::patientAbsolutePromise(learnerText)) {
+    d.reason = "unsafe_response";
+    return d;
+  }
   // 条件 2a：这句话本身太短，不构成应答。
   if (utf8CharCount(learnerText) < 8) { d.reason = "reply_too_short"; return d; }
   // 条件 2b：敷衍特征。
   if (soundsDeflecting(learnerText)) { d.reason = "deflecting"; return d; }
   // 条件 2c：没有明确答复信号。
-  if (!containsAnswer(learnerText)) { d.reason = "no_answer_signal"; return d; }
+  if (!containsAnswer(learnerText) || containsAny(learnerText, {"？", "?"})) { d.reason = "no_answer_signal"; return d; }
 
   // 条件 3：保守增量。存量先夹取，防止脏数据被持续放大。
   d.applied = true;

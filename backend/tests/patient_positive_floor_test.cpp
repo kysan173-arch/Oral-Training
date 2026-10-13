@@ -80,6 +80,22 @@ int main() {
       check(std::string(d.reason) == "no_answer_signal", "wrong reason for no signal");
     }
 
+    for(const char* unsafe:{"这个方案保证百分之百成功，绝对无风险。",
+        "不能保证时间，但我们保证成功，费用稍后确认。",
+        "并非不能保证百分之百成功，可以安排。"}) {
+      const auto d=decidePositiveFloor(0,50,"平静",0,50,"平静",unsafe);
+      check(!d.applied && d.trustLevel==50,"unsafe promise earned trust");
+    }
+    check(!decidePositiveFloor(0,50,"平静",0,50,"平静",kGoodAnswer,true).applied,
+          "model risk signal ignored by floor");
+    check(!decidePositiveFloor(0,50,"平静",0,50,"平静","具体时间费用自己看吧，需要什么自己查。").applied,
+          "deflection with answer keywords earned trust");
+    check(!decidePositiveFloor(0,50,"平静",0,50,"平静","您需要什么治疗方案？").applied,
+          "a question was treated as an answer");
+    check(decidePositiveFloor(0,50,"平静",0,50,"平静",
+          "不能保证完全无痛，建议您先由医生检查评估。").applied,
+          "a safe denial was treated as a fresh promise");
+
     /* ── 情绪词升级的门槛：强度到顶 + 信任良好 ─────────────────── */
     {
       // 强度 1→2，但信任 60→65 未到门槛：情绪不该提前变。
