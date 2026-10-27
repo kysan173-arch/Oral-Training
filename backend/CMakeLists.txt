@@ -299,3 +299,20 @@ if(MSVC)
   target_compile_definitions(knowledge_store_database_test PRIVATE _WIN32_WINNT=0x0A00)
   target_compile_definitions(scenario_draft_test PRIVATE _WIN32_WINNT=0x0A00)
 endif()
+
+# Explicit opt-in component replay; CTest only exercises the offline path.
+add_executable(scoring_replay_probe tests/scoring_replay_probe.cpp
+  src/knowledge_store.cpp src/knowledge_admin_queue.cpp src/rag_retriever.cpp)
+target_link_libraries(scoring_replay_probe PRIVATE ${ORAL_TRAINING_LIBRARIES})
+target_compile_definitions(scoring_replay_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+if(MSVC)
+  target_compile_options(scoring_replay_probe PRIVATE /utf-8 /bigobj)
+  target_compile_definitions(scoring_replay_probe PRIVATE _WIN32_WINNT=0x0A00)
+endif()
+add_test(NAME scoring_replay_offline COMMAND scoring_replay_probe --offline
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/scoring_acceptance.json)
+
+if(Python3_Interpreter_FOUND)
+  add_test(NAME scoring_acceptance_evaluator
+    COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/scoring_acceptance_evaluator_test.py)
+endif()

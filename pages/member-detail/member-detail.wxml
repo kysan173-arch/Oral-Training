@@ -11,7 +11,7 @@
     </view>
 
     <!-- 2.2 五维雷达图，叠加团队均线 -->
-    <view class="section-heading"><text>五维能力</text><text>虚线为团队均值</text></view>
+    <view class="section-heading"><text>五维能力</text><text>{{teamComparisonText}}</text></view>
     <view class="dimensions-card card">
       <radar-chart
         dimensions="{{dimensions}}"
@@ -31,8 +31,11 @@
     <view class="filter-chip-row card-filter">
       <text class="filter-chip {{item.selected ? 'selected' : ''}}" wx:for="{{dimensionChips}}" wx:key="key" bindtap="toggleDimension" data-key="{{item.key}}">{{item.name}}</text>
     </view>
-    <view class="chart-card card">
-      <trend-chart wx:if="{{growthLabels.length > 1}}" labels="{{growthLabels}}" series="{{growthSeries}}" height="{{200}}"></trend-chart>
+    <view id="growth-chart-slot" class="chart-card card">
+      <block wx:if="{{growthLabels.length > 1}}">
+        <trend-chart wx:if="{{growthChartReady}}" labels="{{growthLabels}}" series="{{growthSeries}}" height="{{200}}"></trend-chart>
+        <view wx:else class="trend-placeholder chart-placeholder">正在准备成长曲线…</view>
+      </block>
       <empty-state wx:else title="暂未形成成长曲线" text="{{growthEmptyText || '该成员至少完成 2 次训练后，会在这里看到五维得分随时间的变化。'}}"></empty-state>
     </view>
 

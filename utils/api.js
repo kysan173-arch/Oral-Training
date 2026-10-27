@@ -145,6 +145,27 @@ const persistIdentity = data => {
   return data;
 };
 
+// 微信 action sheet 最多六项：五个账号加翻页入口。
+const chooseDemoAccount = (users, offset = 0) => new Promise((resolve, reject) => {
+  const page = users.slice(offset, offset + 5);
+  const paged = users.length > 5;
+  wx.showActionSheet({
+    itemList: page.map(user => user.displayName || user.id).concat(paged ? ['下一页'] : []),
+    success: result => {
+      if (result.tapIndex < page.length) resolve(page[result.tapIndex].id);
+      else chooseDemoAccount(users, offset + 5 < users.length ? offset + 5 : 0).then(resolve, reject);
+    },
+    fail: () => reject(Object.assign(new Error('已取消切换'), { cancelled: true }))
+  });
+});
+
+const switchRole = role => request('/demo/learners').then(async data => {
+  const users = (data.items || []).filter(user => user.role === role);
+  if (!users.length) throw new Error(`暂无可切换的${role === 'admin' ? '主管' : '学员'}账号`);
+  const userId = users.length === 1 ? users[0].id : await chooseDemoAccount(users);
+  return request('/auth/switch-role', { method: 'POST', data: { role, userId } });
+});
+
 module.exports = {
   formatScore,
   showCenterNotice,
@@ -354,7 +375,7 @@ module.exports = {
   // ── 演示账号切换 ──
   // 注意：调用方（index/mine）在拿到 data 后自行落盘 accessToken 与 user，
   // switchRole 刻意不做副作用，避免与页面重复写入。
-  switchRole: role => request('/auth/switch-role', { method: 'POST', data: { role } }),
+  switchRole,
   getDemoLearners: () => request('/demo/learners'),
   switchLearner: userId => request('/auth/switch-learner', { method: 'POST', data: { userId } })
     .then(persistIdentity)

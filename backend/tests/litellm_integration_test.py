@@ -229,6 +229,21 @@ try:
                        "SELECT count(*) FROM users WHERE id='litellm-test-admin' AND status='active'"])
     assert admin_count == '1', f'Admin fixture was not inserted: {admin_count!r}'
     admin = api('POST', '/auth/switch-learner', {'userId': 'litellm-test-admin'}, learner)['accessToken']
+    # Role switching must use real active accounts, not fixed seed IDs.
+    assert api('POST', '/auth/switch-role', {'role': 'learner'}, admin)['user']['id'] == 'demo-user-001'
+    assert api('POST', '/auth/switch-role', {'role': 'admin'}, learner)['user']['id'] == 'litellm-test-admin'
+    api('POST', '/auth/switch-role', {'role': 'learner', 'userId': 'missing-account'}, admin, 404)
+    api('POST', '/auth/switch-role', {'role': 'learner', 'userId': 'litellm-test-admin'}, admin, 409)
+    def switch_fixture(sql):
+        return run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-c', sql])
+    switch_fixture("INSERT INTO users(id,display_name,role,status) VALUES('switch-peer','Peer','learner','active')")
+    api('POST', '/auth/switch-role', {'role': 'learner'}, admin, 409)
+    assert api('POST', '/auth/switch-role', {'role': 'learner', 'userId': 'switch-peer'}, admin)['user']['id'] == 'switch-peer'
+    switch_fixture("UPDATE users SET status='disabled' WHERE role='learner'")
+    api('POST', '/auth/switch-role', {'role': 'learner'}, admin, 404)
+    api('POST', '/auth/switch-role', {'role': 'learner', 'userId': 'switch-peer'}, admin, 404)
+    switch_fixture("UPDATE users SET status='active' WHERE id='demo-user-001'")
+    print('Role switching: both directions, selection, missing/disabled accounts and role validation passed', flush=True)
     assert api('GET', '/config/litellm', token=learner)['canEdit']
     assert not api('GET', '/config/litellm', token=learner)['configured'], 'Old environment key must be ignored'
     api('PUT', '/config/litellm', {}, learner, 400)

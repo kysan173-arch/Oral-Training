@@ -1,158 +1,49 @@
-const scored = value => value != null && value !== '' && Number.isFinite(Number(value));
+const { radarImage, scored } = require('../../utils/radar-image.js');
 
 Component({
   properties: {
-    dimensions: {
-      type: Array,
-      value: [],
-      observer() { this.scheduleDraw(); }
-    },
-    /* 团队均线对比：长度需与 dimensions 一致；为空时保持原样，session-detail 不受影响 */
-    compare: {
-      type: Array,
-      value: [],
-      observer() {
-        this.computeLegend();
-        this.scheduleDraw();
-      }
-    },
+    dimensions: { type: Array, value: [] },
+    compare: { type: Array, value: [] },
     primaryLabel: { type: String, value: '本人' },
     compareLabel: { type: String, value: '团队平均' },
     canvasWidth: { type: Number, value: 300 },
     canvasHeight: { type: Number, value: 260 }
   },
 
-  data: { legend: [] },
+  data: { legend: [], chartImage: '', chartError: false },
+
+  observers: {
+    'dimensions, compare, primaryLabel, compareLabel, canvasWidth, canvasHeight'() {
+      if (this._attached) this.updateImage();
+    }
+  },
 
   lifetimes: {
-    ready() { this.scheduleDraw(); }
+    attached() {
+      this._attached = true;
+      this.updateImage();
+    },
+    detached() { this._attached = false; }
   },
 
   methods: {
-    computeLegend() {
-      const compareList = (this.properties.compare || []).filter(scored);
-      if (!compareList.length) {
-        this.setData({ legend: [] });
-        return;
-      }
-      this.setData({
-        legend: [
-          { key: 'primary', text: this.properties.primaryLabel, color: '#1F3864' },
-          { key: 'compare', text: this.properties.compareLabel, color: '#6B7A93', dashed: true }
-        ]
-      });
+    updateImage() {
+      const props = this.properties;
+      const chartImage = radarImage(props.dimensions, props.compare, props.canvasWidth, props.canvasHeight);
+      const legend = (props.compare || []).some(scored) ? [
+        { key: 'primary', text: props.primaryLabel, color: '#1F3864' },
+        { key: 'compare', text: props.compareLabel, color: '#6B7A93', dashed: true }
+      ] : [];
+      const patch = {};
+      if (chartImage !== this.data.chartImage) Object.assign(patch, { chartImage, chartError: false });
+      if (JSON.stringify(legend) !== JSON.stringify(this.data.legend)) patch.legend = legend;
+      if (Object.keys(patch).length) this.setData(patch);
     },
 
-    scheduleDraw() {
-      if (this.drawTimer) clearTimeout(this.drawTimer);
-      this.drawTimer = setTimeout(() => this.draw(), 20);
+    onImageError() {
+      this.setData({ chartImage: '', chartError: true });
     },
 
-    draw() {
-      const dimensions = (this.properties.dimensions || []).filter(item => item && item.name);
-      if (dimensions.length < 3) return;
-      const query = this.createSelectorQuery();
-      query.select('.radar-canvas').fields({ node: true, size: true }).exec(result => {
-        if (!result || !result[0] || !result[0].node) return;
-        const canvas = result[0].node;
-        const ctx = canvas.getContext('2d');
-        const width = this.properties.canvasWidth;
-        const height = this.properties.canvasHeight;
-        const dpr = (typeof wx.getWindowInfo === 'function' ? wx.getWindowInfo().pixelRatio : 0)
-          || wx.getSystemInfoSync().pixelRatio || 1;
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        ctx.scale(dpr, dpr);
-        this.render(ctx, width, height, dimensions);
-      });
-    },
-
-    render(ctx, width, height, dimensions) {
-      const count = dimensions.length;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const radius = Math.max(42, Math.min(width, height) / 2 - 42);
-      const angle = index => -Math.PI / 2 + Math.PI * 2 * index / count;
-      const point = (index, ratio) => ({
-        x: centerX + Math.cos(angle(index)) * radius * ratio,
-        y: centerY + Math.sin(angle(index)) * radius * ratio
-      });
-      ctx.clearRect(0, 0, width, height);
-      for (let level = 1; level <= 4; level += 1) {
-        ctx.beginPath();
-        for (let index = 0; index < count; index += 1) {
-          const value = point(index, level / 4);
-          if (index === 0) ctx.moveTo(value.x, value.y);
-          else ctx.lineTo(value.x, value.y);
-        }
-        ctx.closePath();
-        ctx.strokeStyle = level === 4 ? '#dfe4ef' : '#edf0f6';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-      for (let index = 0; index < count; index += 1) {
-        const value = point(index, 1);
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(value.x, value.y);
-        ctx.strokeStyle = '#edf0f6';
-        ctx.stroke();
-      }
-
-      const drawSeries = (values, stroke, fill, dashed) => {
-        const complete = values.length === count && values.every(scored);
-        let connected = false;
-        ctx.beginPath();
-        values.forEach((value, index) => {
-          if (!scored(value)) { connected = false; return; }
-          const target = point(index, Math.max(0, Math.min(100, Number(value))) / 100);
-          if (!connected) ctx.moveTo(target.x, target.y);
-          else ctx.lineTo(target.x, target.y);
-          connected = true;
-        });
-        if (complete) {
-          ctx.closePath();
-          ctx.fillStyle = fill;
-          ctx.fill();
-        }
-        ctx.setLineDash(dashed ? [4, 3] : []);
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = dashed ? 1.5 : 2;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
-      const compare = this.properties.compare || [];
-      if (compare.length === count) drawSeries(compare, '#6B7A93', 'rgba(107, 122, 147, 0.10)', true);
-      drawSeries(dimensions.map(item => item.score), '#1F3864', 'rgba(31, 56, 100, 0.15)', false);
-
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      dimensions.forEach((item, index) => {
-        if (!scored(item.score)) {
-          const label = point(index, 1.23);
-          const missingLabel = point(index, 0.82);
-          ctx.fillStyle = '#54627a';
-          ctx.fillText(item.name, label.x, label.y);
-          ctx.fillText('未评估', missingLabel.x, missingLabel.y);
-          return;
-        }
-        const score = Math.max(0, Math.min(100, Number(item.score)));
-        const dot = point(index, score / 100);
-        ctx.beginPath();
-        ctx.arc(dot.x, dot.y, 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#1F3864';
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        const label = point(index, 1.23);
-        ctx.fillStyle = '#54627a';
-        ctx.fillText(item.name, label.x, label.y);
-        const scoreLabel = point(index, Math.min(1.08, score / 100 + 0.12));
-        ctx.fillStyle = '#1F3864';
-        ctx.fillText(String(Math.round(score)), scoreLabel.x, scoreLabel.y);
-      });
-    }
+    retryDraw() { this.updateImage(); }
   }
 });

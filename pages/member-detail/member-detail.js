@@ -30,6 +30,8 @@ const fmt1 = value => {
 Page({
   data: {
     loading: true,
+    growthChartReady: false,
+    teamComparisonText: '团队均值加载中',
     detail: null,
     dimensions: [],
     teamAverages: [],
@@ -63,36 +65,77 @@ Page({
   allTrend: [],
 
   onLoad(options) {
+    this._disposed = false;
+    this._pageReady = false;
+    this._contentReady = false;
     this.memberId = options.id || '';
     this.loadDetail();
   },
 
-  loadDetail() {
-    if (!this.memberId) {
-      wx.showToast({ title: '成员标识无效', icon: 'none' });
+  onReady() {
+    this._pageReady = true;
+    this.observeGrowthChart();
+  },
+
+  onUnload() {
+    this._disposed = true;
+    if (this._growthObserver) this._growthObserver.disconnect();
+  },
+
+  observeGrowthChart() {
+    if (this._disposed || !this._pageReady || !this._contentReady || this.data.loading || !this.data.detail) return;
+    if (this._growthObserver || this.data.growthChartReady) return;
+    if (typeof this.createIntersectionObserver !== 'function') {
+      this.setData({ growthChartReady: true });
       return;
     }
-    this.setData({ loading: true });
-    /* 团队均值作为雷达图对比线：后端没有按需接口，统一拉一次全量 dashboard 即可 */
-    Promise.all([
-      api.getSupervisorMember(this.memberId),
-      api.getSupervisorDashboard({ range: 'all' })
-    ]).then(([member, dashboard]) => {
-      this.applyMember(member, dashboard);
-    }).catch(error => {
-      this.setData({ loading: false });
-      api.showCenterNotice({ title: error.message || '成员详情加载失败' });
+    // 首屏的雷达图已是普通图片；屏幕下方的 Canvas 接近可视区域时才初始化。
+    this._growthObserver = this.createIntersectionObserver();
+    this._growthObserver.relativeToViewport({ bottom: 120 }).observe('#growth-chart-slot', result => {
+      if (this._disposed || result.intersectionRatio <= 0) return;
+      this._growthObserver.disconnect();
+      this.setData({ growthChartReady: true });
     });
   },
 
-  applyMember(data, dashboard) {
+  loadDetail() {
+    if (!this.memberId) {
+      this.setData({ loading: false });
+      wx.showToast({ title: '成员标识无效', icon: 'none' });
+      return;
+    }
+    this._contentReady = false;
+    if (this._growthObserver) this._growthObserver.disconnect();
+    this._growthObserver = null;
+    this.setData({ loading: true, growthChartReady: false });
+    // 团队对比是辅助数据，慢请求或失败不应阻塞成员详情。
+    api.getSupervisorMember(this.memberId).then(member => {
+      if (!this._disposed) this.applyMember(member);
+    }).catch(error => {
+      if (this._disposed) return;
+      this.setData({ loading: false });
+      api.showCenterNotice({ title: error.message || '成员详情加载失败' });
+    });
+    api.getSupervisorDashboard({ range: 'all' }).then(dashboard => {
+      if (this._disposed) return;
+      const teamAverages = DIMENSIONS.map(item => (dashboard.dimensionAverages || {})[item.key] == null
+        ? null : Number(dashboard.dimensionAverages[item.key]));
+      this.setData({
+        teamAverages,
+        teamComparisonText: teamAverages.some(value => value !== null)
+          ? '虚线为团队均值' : '暂无团队均值'
+      });
+    }).catch(() => {
+      if (!this._disposed) this.setData({ teamComparisonText: '团队均值暂不可用' });
+    });
+  },
+
+  applyMember(data) {
     const dimensions = DIMENSIONS.map(item => {
       const raw = (data.dimensionAverages || {})[item.key];
       const score = raw == null ? null : Number(raw);
       return Object.assign({}, item, { score, scoreText: fmt1(score), tier: scoreTier(score) });
     });
-    const teamAverages = DIMENSIONS.map(item => (dashboard.dimensionAverages || {})[item.key] == null
-      ? null : Number(dashboard.dimensionAverages[item.key]));
 
     const trend = (data.trend || []).map(item => Object.assign({}, item, {
       scoreText: `${fmt1(item.totalScore)} 分`
@@ -146,16 +189,18 @@ Page({
     });
 
     this.setData({
+      loading: false,
       detail,
       dimensions,
-      teamAverages,
       growthLabels: growth.labels,
       growthSeries: growth.series,
+      growthEmptyText: growth.emptyText,
       scenarioFilters,
       selectedScenarioId: 'all',
       filteredTrend: growth.timeline
     }, () => {
-      this.setData({ loading: false });
+      this._contentReady = true;
+      this.observeGrowthChart();
     });
   },
 

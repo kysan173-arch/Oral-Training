@@ -715,7 +715,7 @@ Page({
             wx.switchTab({ url: targetRole === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
           }, 1200);
         }).catch(error => {
-          api.showCenterNotice({ title: error.message || '切换失败' });
+          if (!error.cancelled) api.showCenterNotice({ title: error.message || '切换失败' });
         });
       }
     });

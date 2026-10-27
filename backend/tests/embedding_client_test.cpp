@@ -55,10 +55,10 @@ int main() {
       check(rejected, "unsafe endpoint accepted");
     }
     using namespace oral_training::models;
-    check(initialCompletionBudget("MiniMax-M2.7",900) == 4096, "MiniMax reasoning budget missing");
+    check(initialCompletionBudget("MiniMax-M3.1-Flash",900) == 4096, "MiniMax reasoning budget missing");
     check(initialCompletionBudget("deepseek",900) == 1000, "existing model budget changed");
     const json messages = {{{"role","user"},{"content","hello"}}};
-    const auto minimax = buildCompletionRequest("MiniMax-M2.7",messages,4096,0.15,true);
+    const auto minimax = buildCompletionRequest("MiniMax-M3.1-Flash",messages,4096,0.15,true);
     check(minimax["reasoning_split"] == true && minimax["messages"].size() == 2 &&
           minimax["messages"].back()["role"] == "system", "MiniMax JSON contract not reinforced");
     const auto existing = buildCompletionRequest("deepseek",messages,1000,0.15,true);

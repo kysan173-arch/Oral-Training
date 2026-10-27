@@ -124,6 +124,7 @@ Page({
         if (typeof this.getTabBar === 'function' && this.getTabBar()) {
           this.getTabBar().applyRoleList();
         }
+        if (role === 'learner') this.onShow();
         wx.switchTab({ url: role === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
       }, 1200);
     }).catch(error => {
@@ -226,11 +227,12 @@ Page({
             if (typeof this.getTabBar === 'function' && this.getTabBar()) {
               this.getTabBar().applyRoleList();
             }
+            if (targetRole === 'learner') this.onShow();
             wx.switchTab({ url: targetRole === 'admin' ? '/pages/admin/admin' : '/pages/mine/mine' });
           }, 1200);
         }).catch(error => {
           this.setData({ switchingRole: false });
-          api.showCenterNotice({ title: error.message || '切换失败' });
+          if (!error.cancelled) api.showCenterNotice({ title: error.message || '切换失败' });
         });
       }
     });

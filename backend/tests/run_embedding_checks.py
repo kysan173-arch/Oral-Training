@@ -28,7 +28,7 @@ def main():
     if args.conversations and not args.live:
         parser.error('--conversations requires --live')
     pass_entry = args.pass_entry or ('api/deepseek' if args.provider == 'deepseek' else 'api/minimax')
-    model_name = args.model or ('deepseek-flash' if args.provider == 'deepseek' else 'MiniMax-M2.7')
+    model_name = args.model or ('deepseek-flash' if args.provider == 'deepseek' else 'MiniMax-M3.1-Flash')
     base_url = 'https://api.deepseek.com' if args.provider == 'deepseek' else 'https://api.minimax.cn/v1'
     if args.provider == 'deepseek' and args.live and not args.conversations:
         parser.error('DeepSeek live verification requires --conversations')

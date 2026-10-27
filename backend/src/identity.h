@@ -134,7 +134,7 @@ class IdentityService {
     return createSession(user_id);
   }
 
-  json switchRole(const crow::request& request, const std::string& target_role) {
+  json switchRole(const crow::request& request, const std::string& target_role, const std::string& target_id = "") {
     if (config_.production) {
       throw ApiError(403, "FORBIDDEN", "生产环境不支持角色切换");
     }
@@ -144,19 +144,22 @@ class IdentityService {
     if (target_role != "learner" && target_role != "admin") {
       throw ApiError(400, "INVALID_ARGUMENT", "角色必须为 learner 或 admin");
     }
-    // Demo 模式：角色切换不篡改任何用户的 role，而是切换到真实的演示账号，
-    // 避免把某个学员账号改成 admin（或把主管号改成 learner）。
     const auto user = authorize(request);
-    // 主管演示号（与 login 默认号一致，见 main.cpp kDemoUserId）。
-    const std::string kDemoAdminId = "demo-user-001";
-    std::string target_user_id;
-    if (target_role == "admin") {
-      target_user_id = kDemoAdminId;
-    } else {
-      // 切回学员视角：若当前已是 admin，则落到第一个演示学员；否则保持当前学员。
-      target_user_id = (user.role == "admin") ? "learner-test-001" : user.id;
+    std::string target_user_id = target_id;
+    if (target_user_id.empty()) {
+      if (user.role == target_role) {
+        target_user_id = user.id;
+      } else {
+        auto connection = database_pool_->acquire();
+        pqxx::read_transaction tx(connection.get());
+        const auto rows = tx.exec_params(
+            "SELECT id FROM users WHERE role = $1 AND status = 'active' ORDER BY id LIMIT 2", target_role);
+        if (rows.empty()) throw ApiError(404, "NO_DEMO_ACCOUNT", "暂无可切换的目标角色账号");
+        if (rows.size() > 1) throw ApiError(409, "ACCOUNT_SELECTION_REQUIRED", "请选择要切换的演示账号");
+        target_user_id = rows[0]["id"].c_str();
+      }
     }
-    return createSession(target_user_id);
+    return createSession(target_user_id, target_role);
   }
 
   // Demo 模式：列出所有可用演示账号（学员 + 主管），供前端切换
@@ -282,18 +285,20 @@ class IdentityService {
     return resolved_id;
   }
 
-  json createSession(const std::string& user_id) const {
+  json createSession(const std::string& user_id, const std::string& expected_role = "") const {
     const auto token = randomToken();
     auto connection = database_pool_->acquire();
     pqxx::work tx(connection.get());
+    const auto users = tx.exec_params(
+        "SELECT id, role, display_name FROM users WHERE id = $1 AND status = 'active' FOR SHARE", user_id);
+    if (users.empty()) throw ApiError(404, "USER_NOT_FOUND", "账号不存在或已停用，请重新选择");
+    if (!expected_role.empty() && users[0]["role"].as<std::string>() != expected_role)
+      throw ApiError(409, "ROLE_MISMATCH", "账号角色已变化，请重新选择");
     tx.exec("DELETE FROM auth_sessions WHERE expires_at <= NOW()");
     tx.exec_params(R"(
       INSERT INTO auth_sessions(token_hash, user_id, expires_at)
       VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 second'))
     )", sha256Hex(token), user_id, config_.auth_token_ttl_seconds);
-    const auto users = tx.exec_params(
-        "SELECT id, role, display_name FROM users WHERE id = $1 AND status = 'active'", user_id);
-    if (users.empty()) throw ApiError(403, "USER_DISABLED", "用户不可用");
     const json user = {{"id", users[0]["id"].c_str()}, {"role", users[0]["role"].c_str()},
                        {"displayName", users[0]["display_name"].c_str()}};
     tx.commit();

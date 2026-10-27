@@ -1,5 +1,9 @@
 <view class="radar-chart">
-  <canvas type="2d" class="radar-canvas" style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;"></canvas>
+  <view class="radar-image-wrap" style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;">
+    <image wx:if="{{chartImage}}" class="radar-image" src="{{chartImage}}" mode="scaleToFill" binderror="onImageError"></image>
+    <view wx:elif="{{chartError}}" class="radar-placeholder" bindtap="retryDraw">图表加载失败，点此重试</view>
+    <view wx:else class="radar-placeholder">正在准备能力图…</view>
+  </view>
   <view class="radar-legend" wx:if="{{legend.length}}">
     <view class="radar-legend-item" wx:for="{{legend}}" wx:key="key">
       <view wx:if="{{item.dashed}}" class="radar-legend-mark radar-legend-mark-dashed" style="border-top-color: {{item.color}};"></view>

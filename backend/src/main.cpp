@@ -3620,7 +3620,7 @@ int main() {
   CROW_ROUTE(app, "/api/auth/switch-role").methods(crow::HTTPMethod::POST)([&](const crow::request& request) {
     return handle(request, [&] {
       const auto body = parseRequest(request);
-      return ok(identity.switchRole(request, jsonString(body, "role")), "role switched");
+      return ok(identity.switchRole(request, jsonString(body, "role"), jsonString(body, "userId")), "role switched");
     });
   });
 

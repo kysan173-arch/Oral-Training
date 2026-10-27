@@ -21,6 +21,10 @@ foreach ($file in $jsonFiles) {
   }
 }
 
+& $node.Source (Join-Path $PSScriptRoot 'radar_image_test.js')
+if ($LASTEXITCODE -ne 0) { throw 'Radar image tests failed' }
+& $node.Source (Join-Path $PSScriptRoot 'member_detail_loading_test.js')
+if ($LASTEXITCODE -ne 0) { throw 'Member detail loading tests failed' }
 & $node.Source (Join-Path $PSScriptRoot 'client_recovery_test.js')
 if ($LASTEXITCODE -ne 0) { throw 'Client recovery tests failed.' }
 
