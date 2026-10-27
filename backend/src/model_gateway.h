@@ -43,6 +43,15 @@ class IModelGateway {
     return standardServiceReply(scenario, history);
   }
   virtual json roleplaySummary(const json& scenario, const json& history) const = 0;
+  // v2：带公开证据的复盘；默认回退到无证据版本，测试网关无需改动。
+  virtual json groundedRoleplaySummary(const json& scenario, const json& history,
+                                       const json& evidence) const {
+    return roleplaySummary(scenario, history);
+  }
+  // 参考答案对比完成后，按轮生成“本轮点评”；默认空，测试网关无需实现。
+  virtual json roundReviews(const json& comparison, const json& round_comments) const {
+    return json::array();
+  }
   virtual json generateKnowledgeDraft(const std::string& kind,
                                       const json& input) const {
     return json::object();

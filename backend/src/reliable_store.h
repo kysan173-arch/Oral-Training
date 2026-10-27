@@ -508,7 +508,22 @@ class ReliableDatabase {
     if (rows.empty() || rows[0]["is_active"].as<bool>()) {
       return {{"applied", false}, {"reason", rows.empty() ? "SCENARIO_MISSING" : "SCENARIO_PUBLISHED"}};
     }
-    const auto data = validateGeneratedScenario(candidate, scenario_id,
+    /* 模型生成的 focus 偶尔超过 20 字，直接落库会被 validateScenarioPayload 判死。
+       这里只对 AI 骨架做保守截断，不改变手工编辑的严格校验。 */
+    json sanitized = candidate;
+    if (sanitized.contains("focus") && sanitized["focus"].is_array()) {
+      json focus = json::array();
+      for (const auto& item : sanitized["focus"]) {
+        if (!item.is_string()) continue;
+        auto text = trim(item.get<std::string>());
+        if (text.empty()) continue;
+        if (utf8Length(text) > 20) text = utf8Truncate(text, 20);
+        if (focus.size() < 6) focus.push_back(text);
+      }
+      if (focus.empty()) focus.push_back("沟通与合规");
+      sanitized["focus"] = focus;
+    }
+    const auto data = validateGeneratedScenario(sanitized, scenario_id,
                                                rows[0]["sort_order"].as<int>(), false);
     /* ⚠️ 占位符编号必须与下面的实参顺序一一对应（1=场景 id，2=任务 id，3 起是内容）。
        曾经这里从 $4 起编号、实参却从第 3 个开始，于是 $3 既没被 SQL 引用又被绑了值，
@@ -5068,8 +5083,12 @@ class ReliableRoleplayDatabase {
       auto supplied = summary;
       supplied.erase("modelVersion");
       supplied.erase("promptVersion");
-      if (supplied != expected)
-        throw ApiError(503, "RAG_UNAVAILABLE", "复盘不匹配已公开证据");
+      // 允许模型生成 summary/coveredTopics/keyPrinciples/nextPracticeSuggestions，
+      // 但引用的公开事实必须和确定性证据逐字一致，避免编造。
+      for (const auto* key : {"schemaVersion", "knowledgeManifestHash", "groundedFacts", "citations"}) {
+        if (!supplied.contains(key) || supplied[key] != expected[key])
+          throw ApiError(503, "RAG_UNAVAILABLE", "复盘引用的公开依据不匹配");
+      }
     }
     tx.exec_params(R"(
       INSERT INTO roleplay_summaries

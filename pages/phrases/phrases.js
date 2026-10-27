@@ -61,8 +61,13 @@ Page({
     }).then(data => {
       if (requestVersion !== this.phraseRequestVersion) return;
       const sceneCategories = data.sceneCategories || this.data.sceneCategories;
+      const phrases = (data.items || []).map(item => Object.assign({}, item, {
+        /* 参考答案来源说明不在话术锦囊里展示。 */
+        reason: item.reason && item.reason.indexOf('来自参考答案对比') === -1 &&
+                item.reason.indexOf('可收藏到话术锦囊') === -1 ? item.reason : ''
+      }));
       this.setData({
-        phrases: data.items || [],
+        phrases,
         sceneCategories,
         emptyCopy: buildEmptyCopy(sceneCategories, this.data.sceneCategory, this.data.favoritesOnly),
         loading: false

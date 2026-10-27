@@ -43,7 +43,8 @@ inline void evolvePatientState(json& state, bool promise, bool conflict, bool su
   state["riskTriggered"]=state.value("riskTriggered",false)||promise;
 }
 
-inline json initializeGroundedPatient(const json& source, const json& context, const json& evidence) {
+inline json initializeGroundedPatient(const json& source, const json& context, const json& evidence,
+                                      const json& scenario = json::object()) {
   EvidenceValidator validator(context,evidence,"initialization");
   if (!source.is_object() || !validator.valid()) throw std::runtime_error("patient initialization evidence mismatch");
   // Model selects a bounded fictional persona, never free-form clinic capabilities or secret instructions.
@@ -58,18 +59,46 @@ inline json initializeGroundedPatient(const json& source, const json& context, c
     {"时间","你好，想问下做这个得花多长时间？"},
     {"服务流程","你好，想了解一下做这个要经过哪些步骤？"},
     {"恢复安排","你好，想问下做完以后恢复起来麻不麻烦？"}};
-  return {{"publicProfile",{{"displayName",name},{"ageRange",age},{"initialEmotion",emotion}}},
+  /* 场景已经有 hidden.opening / hidden / initialState 时，以场景为准。
+     v2 初始化不能再按模型选的 concern 套通用开场白，否则术后不适会被写成普通怕疼咨询。 */
+  std::string opening;
+  json concerns = json::array({concern});
+  std::string initial_emotion = emotion;
+  int initial_emotion_level = 0;
+  int initial_trust = 50;
+  if (scenario.is_object() && scenario.contains("hidden") && scenario["hidden"].is_object()) {
+    const auto& hidden = scenario["hidden"];
+    if (hidden.contains("opening") && hidden["opening"].is_string()) {
+      const auto text = hidden["opening"].get<std::string>();
+      if (!text.empty()) opening = text;
+    }
+    if (hidden.contains("hidden") && hidden["hidden"].is_array()) {
+      json from_scenario = json::array();
+      for (const auto& item : hidden["hidden"]) {
+        if (item.is_string() && !item.get<std::string>().empty()) from_scenario.push_back(item);
+      }
+      if (!from_scenario.empty()) concerns = from_scenario;
+    }
+    if (hidden.contains("initialState") && hidden["initialState"].is_object()) {
+      const auto& state = hidden["initialState"];
+      initial_emotion = state.value("emotion", initial_emotion);
+      initial_emotion_level = state.value("emotionLevel", initial_emotion_level);
+      initial_trust = state.value("trustLevel", initial_trust);
+    }
+  }
+  if (opening.empty()) opening = openings.at(concern);
+  return {{"publicProfile",{{"displayName",name},{"ageRange",age},{"initialEmotion",initial_emotion}}},
       {"privateProfile",{{"consultationGoal","了解所选服务的适用范围与安排"},
         {"serviceRevisionId",context.at("serviceRevisionId")},{"budget",budget},
-        {"concerns",json::array({concern})},
+        {"concerns",concerns},
         {"hiddenInformation",json::array({"正在比较另外两家诊所"})},
         {"objections",json::array({"担心费用超出个人预算","对绝对化疗效承诺持怀疑态度"})},
         {"revealPolicy",{{"budget","only_when_asked"},{"competitor","round_3_or_when_asked"}}}}},
-      {"patientState",{{"emotion",emotion},{"emotionLevel",0},{"trustLevel",50},
+      {"patientState",{{"emotion",initial_emotion},{"emotionLevel",initial_emotion_level},{"trustLevel",initial_trust},
         {"revealedInformation",json::array()},{"triggeredObjections",json::array()},
         {"patienceRounds",0},
         {"riskTriggered",false},{"endingReason",nullptr}}},
-      {"opening",openings.at(concern)}};
+      {"opening",opening}};
 }
 
 inline bool patientClosingInvitation(const std::string& question) {

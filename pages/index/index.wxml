@@ -12,7 +12,7 @@
   <view class="scene-header">
     <view class="header-title-row">
       <view>
-        <text class="eyebrow">{{trainingMode === 'patient_simulation' ? '自由模拟' : '场景选择'}}</text>
+        <text class="eyebrow">服务训练</text>
         <text class="page-title">{{trainingMode === 'patient_simulation' ? '患者模拟训练' : '选择训练场景'}}</text>
       </view>
     </view>
@@ -25,10 +25,9 @@
     <view class="mode-option {{trainingMode === 'patient_simulation' ? 'selected' : ''}}" bindtap="switchMode" data-mode="patient_simulation">患者模拟</view>
   </view>
 
-  <view class="service-picker service-picker-narrow card">
-    <button class="quiet-button {{starting ? 'is-disabled' : ''}}" bindtap="toggleLegacy" disabled="{{starting}}">{{legacyMode ? '切换到服务训练' : '进入旧版通用训练'}}</button>
-  </view>
-  <block wx:if="{{!legacyMode && services.length && !scenariosFailed}}">
+  <!-- 客服训练只保留服务训练；旧版通用训练入口已下线。 -->
+  <!-- 患者模拟只保留服务训练；客服训练在服务版下也显示服务选择。 -->
+  <block wx:if="{{((trainingMode === 'patient_simulation' && !legacyMode) || (trainingMode === 'customer_service' && !customerLegacy)) && services.length && !scenariosFailed}}">
     <view class="service-picker card">
       <text class="service-picker-label">本次训练服务</text>
       <picker range="{{services}}" range-key="name" bindchange="onServiceChange" disabled="{{starting}}">
@@ -38,12 +37,14 @@
     </view>
   </block>
   <view class="category-empty" wx:if="{{catalogLoading}}">正在加载服务与场景…</view>
-  <view class="role-blocked-card" wx:if="{{!legacyMode && !catalogLoading && !scenariosFailed && !services.length}}">
+  <!-- 两条服务相关的空态都只在患者模拟下可能出现：客服训练已固定走旧版通用训练，
+       不再加载服务目录，若保留原条件会在客服训练下弹出「暂无已发布服务」这类无意义提示。 -->
+  <view class="role-blocked-card" wx:if="{{((trainingMode === 'patient_simulation' && !legacyMode) || (trainingMode === 'customer_service' && !customerLegacy)) && !catalogLoading && !scenariosFailed && !services.length}}">
     <text class="blocked-title">暂无已发布服务</text>
-    <text class="blocked-desc">请联系管理员发布服务，或进入旧版通用训练；已有会话可从历史记录继续。</text>
+    <text class="blocked-desc">请联系管理员发布服务；已有会话可从历史记录继续。</text>
     <button class="quiet-button" bindtap="retryScenarios">刷新目录</button>
   </view>
-  <view class="category-empty" wx:if="{{!legacyMode && selectedServiceId && !catalogLoading && !scenariosFailed && !scenarios.length}}">该服务暂无兼容场景，请切换服务或联系管理员。</view>
+  <view class="category-empty" wx:if="{{((trainingMode === 'patient_simulation' && !legacyMode) || (trainingMode === 'customer_service' && !customerLegacy)) && selectedServiceId && !catalogLoading && !scenariosFailed && !scenarios.length}}">该服务暂无兼容场景，请切换服务或联系管理员。</view>
   <!-- 培训计划提醒：最紧急的待办计划摘要（标题 / 剩余时间 / 达标差额 / 进度），
        主体点击进该计划明细，右上角「全部 N 个」进列表看全量。
        只在「客服训练」模式展示：计划只统计 sessions（客服训练）里 standard 档的已完成报告，
@@ -183,9 +184,11 @@
             <button class="primary-button scenario-button" disabled="{{starting || catalogLoading}}" bindtap="openTraining" data-id="{{scenario.id}}" data-mode="{{scenario.activeSession ? 'continue' : 'new'}}">
               {{scenario.actionText}}
             </button>
-            <text class="restart-link" wx:if="{{legacyMode && scenario.activeSession}}" bindtap="restartTraining" data-id="{{scenario.id}}">重新开始</text>
+            <!-- 这两个入口只属于客服训练（分类卡内），故读 customerLegacy 而非 legacyMode：
+                 后者现在只服务患者模拟，客服训练下恒为 false，读它会让入口消失。 -->
+            <text class="restart-link" wx:if="{{customerLegacy && scenario.activeSession}}" bindtap="restartTraining" data-id="{{scenario.id}}">重新开始</text>
             <!-- 与「重新开始」互斥：有进行中会话时不给挑战入口，避免必然 409 -->
-            <text class="advanced-link" wx:if="{{legacyMode && scenario.canChallenge}}" bindtap="challengeAdvanced" data-id="{{scenario.id}}">挑战进阶档 ›</text>
+            <text class="advanced-link" wx:if="{{customerLegacy && scenario.canChallenge}}" bindtap="challengeAdvanced" data-id="{{scenario.id}}">挑战进阶档 ›</text>
           </view>
         </view>
       </view>

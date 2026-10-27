@@ -9,12 +9,12 @@
         </view>
       </view>
     </view>
-    <text class="score-caption">{{evaluation.hasTotalScore ? '本次训练总分' : '知识依据不足，暂不形成综合分'}}</text>
+    <text class="score-caption">{{evaluation.hasTotalScore ? (evaluation.scoreBasis === 'communication_only' ? '沟通四维参考分（知识依据不足）' : '本次训练总分') : '知识依据不足，暂不形成综合分'}}</text>
     <view class="level-badge {{level.key}}"><text>{{level.name}}</text></view>
     <text class="result-time">{{session.rangeText}}</text>
   </view>
 
-  <view class="section-title-row"><text class="section-title">五维能力</text></view>
+  <view class="section-title-row"><text class="section-title">{{evaluation.scoreBasis === 'communication_only' ? '四维沟通能力' : '五维能力'}}</text></view>
   <view class="radar-card card" wx:if="{{dimensions.length >= 3}}"><radar-chart dimensions="{{dimensions}}" canvas-width="300" canvas-height="260"></radar-chart></view>
   <view class="dimensions-card card">
     <view class="dimension-row" wx:for="{{dimensions}}" wx:key="key">
@@ -58,11 +58,11 @@
     <view class="fold-more" wx:if="{{violationsExpanded}}" bindtap="toggleViolations">收起严重违规 ▴</view>
   </block>
 
-  <view class="section-title-row">
+  <view class="section-title-row" wx:if="{{!evaluation.comparison}}">
     <text class="section-title">关键轮次点评</text>
     <text class="section-caption fold-toggle" wx:if="{{roundCommentsExpanded}}" bindtap="toggleRoundComments">收起</text>
   </view>
-  <block wx:if="{{evaluation.roundComments.length}}">
+  <block wx:if="{{!evaluation.comparison && evaluation.roundComments.length}}">
     <view class="round-card card" wx:for="{{visibleRoundComments}}" wx:key="round">
       <view class="round-head">
         <view class="round-badge"><text class="round-label">第 {{item.round}} 轮</text></view>
@@ -85,16 +85,74 @@
     <view class="fold-more" wx:if="{{roundCommentsExpanded}}" bindtap="toggleRoundComments">收起关键轮次点评 ▴</view>
   </block>
 
-  <view class="section-title-row"><text class="section-title">本次优秀话术</text></view>
-  <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>本次暂无评优话术，完成更多训练后可在话术锦囊中回顾。</text></view>
+  <block wx:if="{{evaluation.comparison}}">
+    <view class="section-title-row">
+      <text class="section-title">参考答案对比</text>
+      <text class="section-caption fold-toggle" wx:if="{{comparisonExpanded}}" bindtap="toggleComparison">收起</text>
+    </view>
+    <view class="comparison-note card" wx:if="{{evaluation.comparison.totalScore !== null}}">
+      <text>按评分量表对本场逐轮核算，综合 {{evaluation.comparison.totalScore}} 分。</text>
+    </view>
+    <view class="comparison-note card" wx:if="{{evaluation.comparison.totalScore === null}}">
+      <text>本次对比证据不足或缺少评分维度，暂不形成对比总分；下方为对比维度分与逐轮点评。</text>
+    </view>
+    <view class="section-title-row" wx:if="{{evaluation.comparison.dimensions.length}}"><text class="section-title">对比维度分</text></view>
+    <view class="dimensions-card card" wx:if="{{evaluation.comparison.dimensions.length}}">
+      <view class="dimension-row" wx:for="{{evaluation.comparison.dimensions}}" wx:key="key">
+        <view class="dimension-head">
+          <text class="dim-name">{{item.name}}</text>
+          <text class="dim-score">{{item.display}}</text>
+        </view>
+        <view class="score-bar"><view class="score-fill fill-main" style="width: {{item.percent}}%;"></view></view>
+      </view>
+    </view>
+    <view class="round-card card" wx:for="{{visibleComparisonRounds}}" wx:key="round">
+      <view class="round-head">
+        <view class="round-badge"><text class="round-label">{{item.roundLabel}}</text></view>
+        <text class="round-flag" wx:if="{{item.hasGap}}">有改进空间</text>
+        <text class="round-flag round-flag-ok" wx:else>要点已覆盖</text>
+        <text class="round-flag" wx:if="{{item.hasViolation}}">该轮含违规</text>
+      </view>
+      <view class="comparison-question" wx:if="{{item.patientQuestion}}">
+        <text class="comparison-question-label">患者问的是</text>
+        <text class="comparison-question-text">{{item.patientQuestion}}</text>
+      </view>
+      <view class="compare-pane compare-you" wx:if="{{item.learnerAnswer}}">
+        <text class="pane-label">你当时说的</text>
+        <text class="pane-text">“{{item.learnerAnswer}}”</text>
+      </view>
+      <view class="compare-pane compare-better" wx:if="{{item.referenceAnswer}}">
+        <text class="pane-label">标准答案</text>
+        <text class="pane-text">{{item.referenceAnswer}}</text>
+      </view>
+      <view class="round-comment-row" wx:if="{{item.reviewText}}">
+        <text class="round-comment-tag">本轮点评</text>
+        <text class="round-comment">{{item.reviewText}}</text>
+      </view>
+    </view>
+    <view class="fold-more" wx:if="{{!comparisonExpanded && evaluation.comparison.rounds.length > visibleComparisonRounds.length}}" bindtap="toggleComparison">还有 {{evaluation.comparison.rounds.length - visibleComparisonRounds.length}} 轮，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{comparisonExpanded}}" bindtap="toggleComparison">收起参考答案对比 ▴</view>
+    <view class="section-title-row" wx:if="{{evaluation.comparison.learnerBetter.length}}"><text class="section-title">你比标准答案更好的地方</text></view>
+    <view class="round-card card" wx:for="{{evaluation.comparison.learnerBetter}}" wx:for-item="item" wx:key="name">
+      <view class="round-head">
+        <view class="round-badge"><text class="round-label">{{item.roundLabel}}</text></view>
+        <text class="round-flag round-flag-ok">学员更优</text>
+      </view>
+      <text class="comparison-better-name">{{item.name}}</text>
+      <text class="comparison-better-reason">{{item.reason}}</text>
+    </view>
+  </block>
+
+  <view class="section-title-row"><text class="section-title">可复用话术</text><text class="section-caption">可到话术锦囊收藏</text></view>
+  <view class="empty-card card" wx:if="{{evaluation.recommendedPhrases.length === 0}}"><text>本场暂无可复用话术；参考答案对比生成后可到这里查看。</text></view>
   <block wx:else>
     <view class="phrase-card card" wx:for="{{visiblePhrases}}" wx:key="phraseKey">
       <text class="phrase-patient" wx:if="{{item.patientSays}}">患者：{{item.patientSays}}</text>
       <text class="phrase-copy">{{item.csReply}}</text>
-      <text class="phrase-reason">{{item.reason}}</text>
+      <text class="phrase-reason" wx:if="{{item.reason}}">{{item.reason}}</text>
     </view>
-    <view class="fold-more" wx:if="{{!phrasesExpanded && evaluation.recommendedPhrases.length > visiblePhrases.length}}" bindtap="togglePhrases">还有 {{evaluation.recommendedPhrases.length - visiblePhrases.length}} 条优秀话术，展开查看 ›</view>
-    <view class="fold-more" wx:if="{{phrasesExpanded}}" bindtap="togglePhrases">收起优秀话术 ▴</view>
+    <view class="fold-more" wx:if="{{!phrasesExpanded && evaluation.recommendedPhrases.length > visiblePhrases.length}}" bindtap="togglePhrases">还有 {{evaluation.recommendedPhrases.length - visiblePhrases.length}} 条可复用话术，展开查看 ›</view>
+    <view class="fold-more" wx:if="{{phrasesExpanded}}" bindtap="togglePhrases">收起可复用话术 ▴</view>
   </block>
 </view>
 

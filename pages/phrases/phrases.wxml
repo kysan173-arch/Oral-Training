@@ -31,7 +31,7 @@
       <view class="phrase-head"><text class="scene-name">{{item.scenarioName}}</text><text class="round-tag">第 {{item.round}} 轮</text></view>
       <view class="patient-box" wx:if="{{item.patientSays}}"><text class="patient-label">患者关切</text><text class="patient-text">{{item.patientSays}}</text></view>
       <view class="phrase-box"><text class="phrase-label">推荐表达</text><text class="phrase-text">{{item.csReply}}</text></view>
-      <text class="reason-text">{{item.reason}}</text>
+      <text class="reason-text" wx:if="{{item.reason}}">{{item.reason}}</text>
       <view class="phrase-actions">
         <text class="favorite-action {{item.favorited ? 'active' : ''}}" bindtap="toggleFavorite" data-session-id="{{item.sessionId}}" data-phrase-key="{{item.phraseKey}}">{{favoriteBusyId === item.id ? '处理中…' : item.favorited ? '★ 已收藏' : '☆ 收藏'}}</text>
         <view class="phrase-action-right">

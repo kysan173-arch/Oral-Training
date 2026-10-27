@@ -136,8 +136,16 @@ Page({
     profileGenderOptions: PROFILE_GENDER_OPTIONS,
     profileDraftHasInput: false,
     descMaxLength: DESC_MAX_LENGTH,
-    // 服务维度（master 可选接入）：仅当后端返回非空列表才展示选择器
+    /* 服务维度（master 可选接入）：仅当后端返回非空列表才展示选择器。
+       注意本字段现在**只服务「患者模拟」模式**（控制自由提问面板 vs 服务场景列表）；
+       客服训练侧改用下方的 customerLegacy。两者语义不同，不要合并成一个。 */
     legacyMode: false,
+    /* 客服训练是否走旧版通用训练。当前恒为 true —— 服务训练已暂停：
+       实测该链路的报告评分连续失败（error_message「沟通优势必须引用客服原话」），
+       故客服训练固定走不带 serviceId 的旧版链路。
+       之所以与 legacyMode 拆开：switchMode 不重置 legacyMode，若合并，
+       从客服训练切到患者模拟时会把后者一并带进自由提问面板。 */
+    customerLegacy: false,
     catalogLoading: false,
     starting: false,
     services: [],
@@ -214,8 +222,12 @@ Page({
     const requestVersion = this.scenarioRequestVersion;
     const requestedMode = this.data.trainingMode;
     const isRoleplay = requestedMode === 'patient_simulation';
-    const serviceId = this.data.legacyMode ? '' : this.data.selectedServiceId;
-    if (!this.data.legacyMode && !serviceId) return;
+    /* 两种模式的 legacy 语义不同，必须分开取：客服训练用 customerLegacy
+       （当前恒 true，即固定旧版通用训练、拉全部通用场景、不带 serviceId）；
+       患者模拟沿用 legacyMode，行为与改动前完全一致。 */
+    const legacy = isRoleplay ? this.data.legacyMode : this.data.customerLegacy;
+    const serviceId = legacy ? '' : this.data.selectedServiceId;
+    if (!legacy && !serviceId) return;
     this.setData({ catalogLoading: true, scenarios: [], categories: [] });
     const request = isRoleplay ? api.getRoleplayScenarios(serviceId) : api.getScenarios(serviceId);
     request.then(data => {
@@ -296,6 +308,14 @@ Page({
     if (this.data.starting) return;
     this.setData({ legacyMode: !this.data.legacyMode, scenarios: [], categories: [], roleplayScenarios: [] });
     this.loadServices();
+  },
+
+  /* 客服训练：旧版通用训练 / 服务训练切换。服务版带 serviceId，走后端 v2。 */
+  toggleCustomerLegacy() {
+    if (this.data.starting) return;
+    this.setData({ customerLegacy: !this.data.customerLegacy, scenarios: [], categories: [] });
+    if (this.data.customerLegacy) this.loadScenarios();
+    else this.loadServices();
   },
 
   startServiceSession(scenario, prompt = '') {
@@ -443,7 +463,10 @@ Page({
       this.goTraining(scenario.activeSession.id);
       return;
     }
-    if (!this.data.legacyMode) { this.startServiceSession(scenario); return; }
+    /* 客服训练固定走旧版通用训练（customerLegacy 当前恒 true），因此这里不再
+       创建带 serviceId 的会话。判断保留而非删掉，是为了日后恢复服务训练时
+       只改 data 里的 customerLegacy 一处即可。 */
+    if (!this.data.customerLegacy) { this.startServiceSession(scenario); return; }
     // 已填过画像 → 直接开始；否则弹层引导（可跳过用默认画像）
     if (this.hasProfileInput(id)) {
       this.startWithCustomProfile(id);
@@ -609,7 +632,9 @@ Page({
   },
 
   restartTraining(e) {
-    if (!this.data.legacyMode || this.data.starting) return;
+    /* 入口只绑在客服训练的分类卡上（index.wxml:186），患者模拟走不到这里，
+       因此固定读 customerLegacy。 */
+    if (!this.data.customerLegacy || this.data.starting) return;
     const id = e.currentTarget.dataset.id;
     const isRoleplay = this.data.trainingMode === 'patient_simulation';
     wx.showModal({

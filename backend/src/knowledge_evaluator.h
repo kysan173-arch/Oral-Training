@@ -381,6 +381,19 @@ inline json applyKnowledgeScores(json report,const json& assessment,int pass_sco
     const int total=static_cast<int>(std::lround(score.get<int>()*.25+d["medicalCompliance"].get<int>()*.25+
         d["empathy"].get<int>()*.20+d["needsDiscovery"].get<int>()*.20+d["serviceEtiquette"].get<int>()*.10));
     report["totalScore"]=total; report["passed"]=total>=pass_score;
+    report["scoreBasis"]="full";
+    report["scoreLabel"]="本次训练总分";
+  } else {
+    // 知识依据不足时不再让总分完全空白：按四维沟通分的原始权重归一化，
+    // 给一个“沟通四维参考分”，但不判 passed，避免伪装成完整五维结论。
+    const double communication = d["medicalCompliance"].get<int>()*.25 +
+        d["empathy"].get<int>()*.20 + d["needsDiscovery"].get<int>()*.20 +
+        d["serviceEtiquette"].get<int>()*.10;
+    const int total=static_cast<int>(std::lround(communication / 0.75));
+    report["totalScore"]=total;
+    report["passed"]=nullptr;
+    report["scoreBasis"]="communication_only";
+    report["scoreLabel"]="沟通四维参考分（知识依据不足）";
   }
   return report;
 }

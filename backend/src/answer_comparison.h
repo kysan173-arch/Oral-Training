@@ -256,12 +256,16 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
        *   referenceQuote 只是佐证材料，抄错它不代表判定本身错了，仅标记留痕供审计。
        * 早期实现把两者塞进同一个标志后统一归零，导致模型引用能力波动时分数被
        * 系统性压低——实测引用核验通过率一度只有 0.60。 */
-      const bool user_quote_verified =
+      const bool has_learner_answer = !learner_corpus.empty();
+      const bool model_quote_verified =
           user_quote.empty() || textContains(learner_corpus, user_quote);
       const bool reference_quote_verified =
           reference_quote.empty() || textContains(reference_corpus, reference_quote);
-      quote_verified = user_quote_verified;
-      if (!user_quote_verified) level = 0;
+      /* B 方案：评分绑定该轮真实学员回答，不再采信模型抄写的 userQuote。
+         有真实回答即可评分；模型抄错/改写只记录 modelQuoteVerified，不再把 level 归零。
+         没有真实回答的检查项才排除。 */
+      quote_verified = has_learner_answer;
+      if (!has_learner_answer) applicable = false;
 
       // 不适用必须给出指名患者原话的依据，且该原话须能在患者消息中逐字找到
       // （整场项在全部患者消息中查找）。这条同时实现「标准答案缺失某项要求
@@ -291,15 +295,10 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
         const std::string numeric_reference =
             scope == "whole" ? reference_corpus
                              : (reference_text.count(round) ? reference_text.at(round) : reference_corpus);
-        if (numericAgreement(user_quote, numeric_reference) == 0) level = 0;
+        if (numericAgreement(learner_corpus, numeric_reference) == 0) level = 0;
       }
 
-      if (!user_quote_verified) {
-        level = 0;
-        level_adjusted = true;
-      } else {
-        level = clampLevelForDifference(difference_type, level, &level_adjusted);
-      }
+      level = clampLevelForDifference(difference_type, level, &level_adjusted);
 
       // 同一问题不重复扣分：事实/边界错误按评分项去重，后续出现仅保留明细。
       if (difference_type == "factual_or_boundary_error") {
@@ -325,6 +324,7 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
                         {"differenceType", difference_type},
                         {"reason", reason},
                         {"quoteVerified", quote_verified},
+                        {"modelQuoteVerified", model_quote_verified},
                         {"referenceQuoteVerified", reference_quote_verified},
                         {"source", source},
                         {"repeatOfRound", repeat_of_round},
@@ -348,7 +348,8 @@ inline json computeComparisonScores(const json& checks) {
   std::map<std::string, int> applicable_count;
   std::map<std::string, int> excluded_count;
   int total_checks = 0, verified_checks = 0, reference_verified_checks = 0;
-  int defect_count = 0, duplicate_count = 0;
+  int model_verified_checks = 0;
+  int defect_count = 0, duplicate_count = 0, unverified_excluded = 0;
   json by_difference_type = json::object();
   json level_histogram = json::object();
 
@@ -359,6 +360,7 @@ inline json computeComparisonScores(const json& checks) {
       // 学员引用的核验通过率是判定可信度的主指标；
       // 标准答案引用的核验通过率只是佐证质量，不决定分数。
       if (jsonFlag(check, "quoteVerified", true)) ++verified_checks;
+      if (jsonFlag(check, "modelQuoteVerified", true)) ++model_verified_checks;
       if (jsonFlag(check, "referenceQuoteVerified", true)) ++reference_verified_checks;
       const auto difference_type = jsonText(check, "differenceType");
       if (!difference_type.empty()) by_difference_type[difference_type] = by_difference_type.value(difference_type, 0) + 1;
@@ -369,6 +371,13 @@ inline json computeComparisonScores(const json& checks) {
       if (difference_type == "reference_defect") { ++defect_count; ++excluded_count[dimension]; continue; }
       if (jsonInt(check, "repeatOfRound", 0) > 0) { ++duplicate_count; continue; }
       if (!jsonFlag(check, "applicable", true)) { ++excluded_count[dimension]; continue; }
+      // 学员原话没有逐字核验通过时，不能把 level=0 当成“0 分”参与维度平均；
+      // 应排除该项并让维度进入 missing/未形成，否则一个引用偏差就会把整维打到 0。
+      if (!jsonFlag(check, "quoteVerified", true)) {
+        ++unverified_excluded;
+        ++excluded_count[dimension];
+        continue;
+      }
 
       const double importance = jsonReal(check, "importance", 1.0);
       earned[dimension] += importance * level;
@@ -401,10 +410,12 @@ inline json computeComparisonScores(const json& checks) {
           {"summary", {{"checksTotal", total_checks},
                        {"checksVerified", verified_checks},
                        {"quoteVerificationRate", total_checks ? static_cast<double>(verified_checks) / total_checks : 0.0},
+                       {"modelQuoteVerificationRate", total_checks ? static_cast<double>(model_verified_checks) / total_checks : 0.0},
                        {"referenceVerifiedChecks", reference_verified_checks},
                        {"referenceQuoteVerificationRate", total_checks ? static_cast<double>(reference_verified_checks) / total_checks : 0.0},
                        {"excludedByDimension", excluded_count},
-                       {"excludedTotal", defect_count + duplicate_count},
+                       {"unverifiedExcluded", unverified_excluded},
+                       {"excludedTotal", defect_count + duplicate_count + unverified_excluded},
                        {"referenceDefectCount", defect_count},
                        {"duplicateErrorCount", duplicate_count},
                        {"applicableByDimension", applicable_count},

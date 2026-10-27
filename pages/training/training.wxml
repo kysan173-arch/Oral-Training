@@ -43,7 +43,6 @@
     <view id="message-bottom"></view>
   </scroll-view>
 
-  <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
   <view class="assist-panel">
     <view class="assist-guide" wx:if="{{showAssistGuide}}"><text>首次训练已为你展开辅助面板：对话卡住时可点「获取提示」，共 {{hintLimit}} 次、每轮限 1 次。</text></view>
     <view class="assist-head" bindtap="toggleAssist">
