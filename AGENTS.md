@@ -28,6 +28,10 @@ Run client syntax/JSON checks with `backend/tests/static_checks.ps1`. Use `backe
 
 Open the repository root in WeChat DevTools for simulator/device validation. Before committing, run `git diff --check` and manually cover both training modes, resume, history and result polling.
 
+## Default generation model
+
+User preference recorded on 2026-10-27: use `MiniMax-M3.1-Flash` for future generation-model configuration, development and validation instead of `MiniMax-M2.7`. The official OpenAI-compatible base URL is `https://api.minimax.cn/v1`; use the user's valid M Plan subscription key without exposing it. This preference does not replace EmbeddingGemma or explicitly configured fine-tuned models. Before declaring an existing deployment migrated, verify its saved model configuration, thinking/output-token limits, timeouts and structured report output. The existing MiniMax primary account configuration and probe defaults were updated to this model on 2026-10-27. Basic API availability was verified; historical M2.7 validation reports are not M3.1 validation evidence.
+
 ## Code conventions
 
 Use two-space indentation, single quotes and semicolons in JavaScript. Use existing C++ formatting (two-space indentation, RAII, short transactions). Page folders/files are lowercase; JavaScript uses `camelCase`; WXML classes use descriptive `kebab-case`.

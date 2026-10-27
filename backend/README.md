@@ -223,7 +223,7 @@ EmbeddingGemma 应与后端运行在同一台机器上；`127.0.0.1` 指后端�
 MiniMax 生成模型使用既有个人 OpenAI 兼容网关配置（页面仍名为“LiteLLM 模型配置”）：
 
 - Base URL：`https://api.minimax.cn/v1`
-- 模型：`MiniMax-M2.7`（也可填写该账号可用的其他模型）
+- 模型：`MiniMax-M3.1-Flash`（也可填写该账号可用的其他模型）
 - API Key：个人 MiniMax M Plan Key；仍沿用现有加密保存和账号隔离，不能填入 embedding 配置。
 
 参考 [M Plan 介绍](https://platform.minimax.cn/docs/m-plan/intro) 和

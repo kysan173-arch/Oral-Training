@@ -14,7 +14,7 @@ struct LiveModelFixture {
     if (!key || !*key) throw std::runtime_error("Missing live model credential");
     const auto* name = std::getenv("LIVE_MODEL_NAME");
     if (!name) name = std::getenv("MINIMAX_MODEL");
-    model = name ? name : "MiniMax-M2.7";
+    model = name ? name : "MiniMax-M3.1-Flash";
     const auto* endpoint = std::getenv("LIVE_MODEL_BASE_URL");
     base_url = endpoint ? endpoint : "https://api.minimax.cn/v1";
   }

@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
       "基础档种植体、标准基台、国产全瓷冠加手术和一次CBCT，示例总价是多少？",
       "谢谢，我先考虑一下。"};
     json history = json::array();
-    const std::string model = std::getenv("MINIMAX_MODEL") ? std::getenv("MINIMAX_MODEL") : "MiniMax-M2.7";
+    const std::string model = std::getenv("MINIMAX_MODEL") ? std::getenv("MINIMAX_MODEL") : "MiniMax-M3.1-Flash";
     int calls = 0;
     for (size_t i=0; i<questions.size(); ++i) {
       const auto started = std::chrono::steady_clock::now();
