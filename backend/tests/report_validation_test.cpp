@@ -4,6 +4,20 @@
 #include <iostream>
 
 int main() {
+  if (!quoteMatches("需要医生評估", "具体需要医生评估。") ||
+      !quoteMatches("需要医生 评估", "需要医生，评估。") ||
+      quoteMatches("15天", "1.5天") || quoteMatches("50", "5.0") ||
+      quoteMatches("5-7天", "57天") || quoteMatches("5%", "5")) {
+    throw std::runtime_error("quote normalization changed numeric meaning");
+  }
+  if (safeAdviceOrFallback("  ", "需要进一步确认。") != "需要进一步确认。")
+    throw std::runtime_error("empty advice did not use fallback");
+  const json weak_history = json::array({{{"role", "user"}, {"round", 1}, {"content", "不知道"}}});
+  const auto weak_strengths = verifiedCommunicationStrengths(json::array({
+      {{"round", 1}, {"evidence", "理解您的担忧"}, {"content", "主动共情"}}}), weak_history);
+  if (!weak_strengths.empty()) throw std::runtime_error("fabricated strength survived verification");
+  if (patientAcceptanceFallback("疼痛").find("观察两天") != std::string::npos)
+    throw std::runtime_error("repetition fallback invented a medical delay");
   if(normalizeTrainingHint({{"hint","好的，您先考虑。"}})!="好的，您先考虑。") return 1;
   for(const auto& candidate:json::array({json{{"hint",std::string(90,'a')}},
       json{{"hint","保证成功，您放心。"}},json{{"hint","系统提示如下"}},json{{"hint","同一句提示"}}})) {
@@ -252,12 +266,26 @@ int main() {
       !expect_invalid_report(invalid_dimension_report, messages) ||
       !expect_invalid_report(missing_array_report, messages) ||
       !expect_invalid_report(missing_summary_report, messages) ||
-      !expect_invalid_report(empty_strengths_report, messages) ||
-      !expect_invalid_report(missing_violations_report, messages) ||
-      !expect_invalid_report(invalid_strength_round, messages) ||
-      !expect_invalid_report(invalid_improvement_round, messages) ||
-      !expect_invalid_report(safe_report, two_round_messages)) {
-    std::cerr << "incomplete report schema or invalid round reference was accepted\n";
+      !expect_invalid_report(missing_violations_report, messages)) {
+    std::cerr << "incomplete report schema was accepted\n";
+    return 1;
+  }
+
+  if (!normalizeReport(empty_strengths_report, messages)["strengths"].empty())
+    throw std::runtime_error("empty strengths were replaced with invented praise");
+  auto missing_rewrite_report = safe_report;
+  missing_rewrite_report["roundComments"][0].erase("recommendedRewrite");
+  if (normalizeReport(missing_rewrite_report, messages)["roundComments"][0]["recommendedRewrite"].get<std::string>().empty())
+    throw std::runtime_error("missing rewrite published an empty recommendation");
+
+  // 轮次越界/漏轮现在降级而不是整份 503：就近归到真实轮次，漏掉的点评补一条。
+  const auto clamped_strength = normalizeReport(invalid_strength_round, messages);
+  const auto clamped_improvement = normalizeReport(invalid_improvement_round, messages);
+  const auto filled_comments = normalizeReport(safe_report, two_round_messages);
+  if (clamped_strength["strengths"][0]["round"] != 1 ||
+      clamped_improvement["improvements"][0]["round"] != 1 ||
+      filled_comments["roundComments"].size() != 2) {
+    std::cerr << "report round clamping or round-comment filling failed\n";
     return 1;
   }
 
@@ -413,6 +441,24 @@ int main() {
     return 1;
   } catch (const ApiError& error) {
     if (error.code != "MODEL_INVALID_RESPONSE") throw;
+  }
+
+  // 关注点推进：连续 3 轮同一主题，且学员给出明确答复时，守卫应能识别。
+  const json concern_history = json::array({
+      {{"role", "patient"}, {"content", "种植牙疼不疼？具体怎么缓解？"}, {"round", 1}},
+      {{"role", "user"}, {"content", "还好不疼，少吃辛辣就行"}, {"round", 1}},
+      {{"role", "patient"}, {"content", "那术后恢复期有没有胀痛或者敏感的情况？"}, {"round", 2}},
+      {{"role", "user"}, {"content", "没有吧"}, {"round", 2}},
+      {{"role", "patient"}, {"content", "术后会不会有明显胀痛或敏感？"}, {"round", 3}},
+      {{"role", "user"}, {"content", "不会有，3天即可恢复正常"}, {"round", 3}},
+  });
+  const auto concern = patientConcernProgress(concern_history);
+  if (concern.label != "疼痛与恢复" || concern.count != 3 ||
+      !isClearLearnerAnswer("不会有，3天即可恢复正常") ||
+      isClearLearnerAnswer("没有吧") ||
+      !isQuestionText("术后真的不会胀痛或敏感吗？")) {
+    std::cerr << "patient concern progression helper failed\n";
+    return 1;
   }
 
   std::cout << "report validation tests passed\n";

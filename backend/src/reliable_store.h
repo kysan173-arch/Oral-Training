@@ -508,7 +508,22 @@ class ReliableDatabase {
     if (rows.empty() || rows[0]["is_active"].as<bool>()) {
       return {{"applied", false}, {"reason", rows.empty() ? "SCENARIO_MISSING" : "SCENARIO_PUBLISHED"}};
     }
-    const auto data = validateGeneratedScenario(candidate, scenario_id,
+    /* 模型生成的 focus 偶尔超过 20 字，直接落库会被 validateScenarioPayload 判死。
+       这里只对 AI 骨架做保守截断，不改变手工编辑的严格校验。 */
+    json sanitized = candidate;
+    if (sanitized.contains("focus") && sanitized["focus"].is_array()) {
+      json focus = json::array();
+      for (const auto& item : sanitized["focus"]) {
+        if (!item.is_string()) continue;
+        auto text = trim(item.get<std::string>());
+        if (text.empty()) continue;
+        if (utf8Length(text) > 20) text = utf8Truncate(text, 20);
+        if (focus.size() < 6) focus.push_back(text);
+      }
+      if (focus.empty()) focus.push_back("沟通与合规");
+      sanitized["focus"] = focus;
+    }
+    const auto data = validateGeneratedScenario(sanitized, scenario_id,
                                                rows[0]["sort_order"].as<int>(), false);
     /* ⚠️ 占位符编号必须与下面的实参顺序一一对应（1=场景 id，2=任务 id，3 起是内容）。
        曾经这里从 $4 起编号、实参却从第 3 个开始，于是 $3 既没被 SQL 引用又被绑了值，
@@ -1640,6 +1655,20 @@ class ReliableDatabase {
     return {{"userMessage", messageJson(message_id, "user", cleaned_content, round)},
             {"patientMessage", nullptr}, {"isComplete", false}, {"round", round},
             {"attemptToken", token}};
+  }
+
+  bool renewReplyLease(const std::string& session_id, int round, const std::string& token) const {
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      UPDATE messages SET reply_lease_until = clock_timestamp() + ($4 * INTERVAL '1 second')
+      WHERE session_id = $1 AND round = $2 AND role = 'user'
+        AND reply_status = 'generating' AND reply_attempt_token = $3
+        AND reply_lease_until > clock_timestamp()
+      RETURNING id
+    )", session_id, round, token, kReplyLeaseSeconds);
+    tx.commit();
+    return !rows.empty();
   }
 
   void markReplyFailed(const std::string& session_id, int round, const std::string& token,
@@ -4797,6 +4826,20 @@ class ReliableRoleplayDatabase {
             {"attemptToken", token}};
   }
 
+  bool renewReplyLease(const std::string& session_id, int round, const std::string& token) const {
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      UPDATE roleplay_messages SET reply_lease_until = clock_timestamp() + ($4 * INTERVAL '1 second')
+      WHERE session_id = $1 AND round = $2 AND role = 'learner_patient'
+        AND reply_status = 'generating' AND reply_attempt_token = $3
+        AND reply_lease_until > clock_timestamp()
+      RETURNING id
+    )", session_id, round, token, kReplyLeaseSeconds);
+    tx.commit();
+    return !rows.empty();
+  }
+
   void markReplyFailed(const std::string& session_id, int round, const std::string& token,
                        const std::string& error_type) const noexcept {
     try {
@@ -4864,11 +4907,12 @@ class ReliableRoleplayDatabase {
     }
     if (status != "in_progress") throw ApiError(409, "ROLEPLAY_SESSION_FINISHED", "患者模拟已结束");
     const auto input = tx.exec_params(R"(
-      SELECT id, reply_attempt_token FROM roleplay_messages
+      SELECT id, reply_attempt_token, reply_lease_until > clock_timestamp() AS lease_active FROM roleplay_messages
       WHERE session_id = $1 AND role = 'learner_patient' AND round = $2 FOR UPDATE
     )", session_id, round);
     if (input.empty() || input[0]["reply_attempt_token"].is_null() ||
-        std::string(input[0]["reply_attempt_token"].c_str()) != token) {
+        std::string(input[0]["reply_attempt_token"].c_str()) != token ||
+        input[0]["lease_active"].is_null() || !input[0]["lease_active"].as<bool>()) {
       throw ApiError(409, "ROLEPLAY_RESPONSE_PENDING", "该回复生成租约已失效，请查询会话后重试");
     }
     const auto message_id = makeId("rpmsg");
@@ -5068,8 +5112,12 @@ class ReliableRoleplayDatabase {
       auto supplied = summary;
       supplied.erase("modelVersion");
       supplied.erase("promptVersion");
-      if (supplied != expected)
-        throw ApiError(503, "RAG_UNAVAILABLE", "复盘不匹配已公开证据");
+      // 允许模型生成 summary/coveredTopics/keyPrinciples/nextPracticeSuggestions，
+      // 但引用的公开事实必须和确定性证据逐字一致，避免编造。
+      for (const auto* key : {"schemaVersion", "knowledgeManifestHash", "groundedFacts", "citations"}) {
+        if (!supplied.contains(key) || supplied[key] != expected[key])
+          throw ApiError(503, "RAG_UNAVAILABLE", "复盘引用的公开依据不匹配");
+      }
     }
     tx.exec_params(R"(
       INSERT INTO roleplay_summaries

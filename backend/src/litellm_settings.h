@@ -113,11 +113,22 @@ struct GatewaySettings {
   std::string model;
   std::string encrypted_key;
   long long revision = 0;
+  /* 可选的「微调槽位」（见迁移 037）。三项同时非空且密钥可解密时才启用；
+     任一项为空即视为不启用，此时全部功能走主槽，行为与单槽位完全一致。 */
+  std::string tuned_base_url;
+  std::string tuned_model;
+  std::string tuned_encrypted_key;
   bool configured() const { return !base_url.empty() && !model.empty() && !encrypted_key.empty(); }
+  bool tuned_configured() const {
+    return configured() && !tuned_base_url.empty() && !tuned_model.empty() && !tuned_encrypted_key.empty();
+  }
   json status() const {
     return {{"provider", "litellm"}, {"scope", "personal"}, {"configured", configured()}, {"canEdit", true},
             {"baseUrl", base_url}, {"model", model},
-            {"hasApiKey", !encrypted_key.empty()}, {"revision", revision}};
+            {"hasApiKey", !encrypted_key.empty()}, {"revision", revision},
+            {"tunedConfigured", tuned_configured()},
+            {"tunedBaseUrl", tuned_base_url}, {"tunedModel", tuned_model},
+            {"hasTunedApiKey", !tuned_encrypted_key.empty()}};
   }
 };
 
@@ -138,6 +149,10 @@ class GatewaySettingsStore {
         !body.contains("model") || !body["model"].is_string() ||
         (body.contains("apiKey") && !body["apiKey"].is_string())))
       throw ApiError(400, "INVALID_ARGUMENT", "网关地址、模型名称和 API Key 必须为文本");
+    for (const auto* field : {"tunedBaseUrl", "tunedModel", "tunedApiKey"}) {
+      if (!clear && body.contains(field) && !body[field].is_string())
+        throw ApiError(400, "INVALID_ARGUMENT", "微调槽位配置必须为文本");
+    }
     auto connection = pool_->acquire();
     pqxx::work tx(connection.get());
     tx.exec_params("INSERT INTO user_model_gateway_settings(user_id) VALUES($1) ON CONFLICT DO NOTHING", actor);
@@ -146,6 +161,7 @@ class GatewaySettingsStore {
       throw ApiError(409, "MODEL_CONFIG_CONFLICT", "配置已被更新，请重新加载后保存");
     if (clear) {
       settings.base_url.clear(); settings.model.clear(); settings.encrypted_key.clear();
+      settings.tuned_base_url.clear(); settings.tuned_model.clear(); settings.tuned_encrypted_key.clear();
     } else {
       auto url = trim(jsonString(body, "baseUrl"));
       while (!url.empty() && url.back() == '/') url.pop_back();
@@ -162,14 +178,45 @@ class GatewaySettingsStore {
         throw ApiError(400, "INVALID_ARGUMENT", "首次配置或更换网关地址时必须输入 API Key");
       }
       settings.base_url = url; settings.model = model;
+
+      /* 微调槽位（迁移 037）：地址留空即表示「不启用」，此时整体清空，
+         避免出现「地址填了但密钥没填」这类半配置状态。 */
+      auto tuned_url = trim(jsonString(body, "tunedBaseUrl", settings.tuned_base_url));
+      while (!tuned_url.empty() && tuned_url.back() == '/') tuned_url.pop_back();
+      if (tuned_url.empty()) {
+        settings.tuned_base_url.clear();
+        settings.tuned_model.clear();
+        settings.tuned_encrypted_key.clear();
+      } else {
+        gatewayEndpoint(tuned_url);
+        const auto tuned_model = trim(jsonString(body, "tunedModel", settings.tuned_model));
+        if (tuned_model.empty() || tuned_model.size() > 200 ||
+            tuned_model.find_first_of("\r\n\t ") != std::string::npos)
+          throw ApiError(400, "INVALID_ARGUMENT", "启用微调槽位时必须填写其模型名称");
+        const auto tuned_key = jsonString(body, "tunedApiKey");
+        if (!tuned_key.empty()) {
+          if (tuned_key.size() > 2048 || std::any_of(tuned_key.begin(), tuned_key.end(),
+                                                     [](unsigned char c) { return c < 33 || c > 126; }))
+            throw ApiError(400, "INVALID_ARGUMENT", "微调槽位 API Key 含空格或无效字符");
+          settings.tuned_encrypted_key = protectGatewayKey(tuned_key);
+        } else if (settings.tuned_encrypted_key.empty() || tuned_url != settings.tuned_base_url) {
+          throw ApiError(400, "INVALID_ARGUMENT", "首次配置微调槽位或更换其网关地址时必须输入 API Key");
+        }
+        settings.tuned_base_url = tuned_url;
+        settings.tuned_model = tuned_model;
+      }
     }
     ++settings.revision;
     tx.exec_params("UPDATE user_model_gateway_settings SET base_url=$1, model=$2, api_key_encrypted=$3, "
-                   "revision=$4, updated_at=NOW() WHERE user_id=$5",
-                   settings.base_url, settings.model, settings.encrypted_key, settings.revision, actor);
-    tx.exec_params("INSERT INTO user_model_gateway_settings_audit(revision,base_url,model,action,user_id) "
-                   "VALUES($1,$2,$3,$4,$5)", settings.revision, settings.base_url, settings.model,
-                   clear ? "clear" : "save", actor);
+                   "tuned_base_url=$4, tuned_model=$5, tuned_api_key_encrypted=$6, "
+                   "revision=$7, updated_at=NOW() WHERE user_id=$8",
+                   settings.base_url, settings.model, settings.encrypted_key,
+                   settings.tuned_base_url, settings.tuned_model, settings.tuned_encrypted_key,
+                   settings.revision, actor);
+    tx.exec_params("INSERT INTO user_model_gateway_settings_audit"
+                   "(revision,base_url,model,tuned_base_url,tuned_model,action,user_id) "
+                   "VALUES($1,$2,$3,$4,$5,$6,$7)", settings.revision, settings.base_url, settings.model,
+                   settings.tuned_base_url, settings.tuned_model, clear ? "clear" : "save", actor);
     tx.commit();
     return settings;
   }
@@ -177,8 +224,17 @@ class GatewaySettingsStore {
   static GatewaySettings fromRows(const pqxx::result& rows) {
     if (rows.empty()) return {};
     const auto row = rows[0];
-    return {row["base_url"].c_str(), row["model"].c_str(), row["api_key_encrypted"].c_str(),
-            row["revision"].as<long long>()};
+    GatewaySettings settings;
+    settings.base_url = row["base_url"].c_str();
+    settings.model = row["model"].c_str();
+    settings.encrypted_key = row["api_key_encrypted"].c_str();
+    settings.revision = row["revision"].as<long long>();
+    /* 037 之前的库没有这三列；用 is_null 兜住，旧数据读出空串即「不启用微调槽位」。 */
+    if (!row["tuned_base_url"].is_null()) settings.tuned_base_url = row["tuned_base_url"].c_str();
+    if (!row["tuned_model"].is_null()) settings.tuned_model = row["tuned_model"].c_str();
+    if (!row["tuned_api_key_encrypted"].is_null())
+      settings.tuned_encrypted_key = row["tuned_api_key_encrypted"].c_str();
+    return settings;
   }
   std::shared_ptr<DatabasePool> pool_;
 };

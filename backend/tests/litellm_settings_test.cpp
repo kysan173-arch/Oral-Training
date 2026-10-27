@@ -42,17 +42,17 @@ int main() try {
   // Wire-level fixture verifies the platform HTTP implementation, not a mock of it.
   if (const char* base = std::getenv("LITELLM_TEST_TRANSPORT_URL")) {
     auto endpoint = gatewayEndpoint(base);
-    auto redirect = postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-redirect"})");
+    auto redirect = postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-redirect"})", 60000);
     checkSetting(redirect.status == 307, "HTTP redirect was not preserved");
     bool failed = false;
-    try { postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-truncated"})"); }
+    try { postLiteLlm(endpoint, "sk-offline-key-12345", R"({"model":"transport-truncated"})", 60000); }
     catch (const ApiError& error) { failed = error.code == "MODEL_TIMEOUT"; }
     checkSetting(failed, "Truncated HTTP body was not rejected as MODEL_TIMEOUT");
   }
 #ifndef _WIN32
   if (const char* base = std::getenv("LITELLM_TEST_UNTRUSTED_TLS_URL")) {
     bool failed = false;
-    try { postLiteLlm(gatewayEndpoint(base), "sk-offline-key-12345", R"({"model":"transport-tls"})"); }
+    try { postLiteLlm(gatewayEndpoint(base), "sk-offline-key-12345", R"({"model":"transport-tls"})", 60000); }
     catch (const ApiError& error) { failed = error.code == "MODEL_TIMEOUT"; }
     checkSetting(failed);
   }
@@ -96,6 +96,43 @@ int main() try {
       gateway.forUser("unconfigured-user")->groundedPatientReply(json::object(), json::array(), json::array());
       throw std::runtime_error("missing personal config was not rejected");
     } catch (const ApiError& error) { checkSetting(error.code == "MODEL_NOT_CONFIGURED"); }
+    // Exercise the optional tuned slot on the real HTTP transport, then restore
+    // the primary slot for the surrounding lifecycle harness.
+    auto current = store.load(owner);
+    json body = {{"revision",current.revision},{"baseUrl",saved.base_url},{"model","ds-primary"},
+                 {"tunedBaseUrl",saved.base_url},{"tunedModel","tuned-test"},{"tunedApiKey","sk-offline-key-12345"}};
+    auto tuned = store.save(body,owner);
+    checkSetting(tuned.tuned_configured() && tuned.status().dump().find("sk-offline") == std::string::npos);
+    checkSetting(unprotectGatewayKey(tuned.tuned_encrypted_key)=="sk-offline-key-12345");
+    Config tuned_config;
+    tuned_config.model_tuned_context_tokens = 16384;
+    tuned_config.model_context_tokens = 16384;
+    ModelGateway tuned_gateway(tuned_config,pool,owner);
+    const json scenario={{"public",json::object()},{"serviceGuidance",json::object()}};
+    checkSetting(tuned_gateway.standardServiceReply(scenario,json::array())["userMarker"]=="tuned-test",
+                 "standard service reply did not route to tuned slot");
+    body["revision"]=tuned.revision; body["tunedModel"]="tuned-unavailable";
+    tuned=store.save(body,owner);
+    checkSetting(tuned_gateway.standardServiceReply(scenario,json::array())["userMarker"]=="ds-primary",
+                 "unavailable tuned slot did not fall back to primary");
+    body["revision"]=tuned.revision; body["tunedModel"]="tuned-test";
+    tuned=store.save(body,owner);
+    const json history=json::array({
+      {{"role","patient"},{"round",0},{"content","多少钱？"}},
+      {{"role","user"},{"round",1},{"content","6000元。"}},
+      {{"role","patient"},{"round",1},{"content","需要多久？"}},
+      {{"role","user"},{"round",2},{"content","1小时。"}},
+      {{"role","patient"},{"round",2},{"content","还能预约吗？"}}});
+    const auto references=tuned_gateway.idealServiceReplies(scenario,history)["rounds"];
+    checkSetting(references.size()==3 && references[0]["round"]==1 && references[1]["round"]==2 &&
+                 references[2]["round"]==0,"per-round and whole references were not distinct");
+    checkSetting(references[0]["referenceAnswer"]=="3800—8800元。" &&
+                 references[1]["referenceAnswer"]=="1小时。","reference generator used the wrong patient question");
+    const auto comparison=tuned_gateway.compareAnswersAgainstReference(scenario,history,references);
+    checkSetting(comparison["aligned"]==true,"comparison payload misaligned learner and question");
+    checkSetting(store.load("litellm-test-admin").tuned_model.empty(),"tuned slot leaked to peer");
+    body["revision"]=tuned.revision; body["tunedBaseUrl"]="";
+    checkSetting(!store.save(body,owner).tuned_configured(),"clearing tuned slot failed");
   }
   std::cout << "LiteLLM configuration tests passed\n";
   return 0;

@@ -130,6 +130,7 @@ int main() {
       };
       const json unscored_v2_report = {
           {"schemaVersion", 2}, {"totalScore", nullptr}, {"passed", nullptr},
+          {"communicationReferenceScore", 85}, {"scoreBasis", "communication_only"},
           {"dimensionScores", {{"knowledgeAccuracy", nullptr}, {"medicalCompliance", 90},
                                {"empathy", 85}, {"needsDiscovery", 75},
                                {"serviceEtiquette", 95}}},

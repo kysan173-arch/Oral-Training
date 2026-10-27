@@ -111,6 +111,8 @@ Content-Type: application/json
 
 首次保存和修改 Base URL 必须输入 Key；地址不变时省略或留空 apiKey 保留原密钥。revision 使用 GET 获得的个人版本，成功递增；过期版本返回 409 `MODEL_CONFIG_CONFLICT`。字段非法返回 400 `INVALID_ARGUMENT`，未登录返回 401。保存不发起模型请求，不表示连接验证通过。
 
+迁移 037 增加可选微调槽位。PUT 可传 `tunedBaseUrl`、`tunedModel`、`tunedApiKey`；GET 追加 `tunedBaseUrl`、`tunedModel`、`tunedConfigured`、`hasTunedApiKey`，不返回密钥。地址与模型省略时保留已保存值；明确传空 `tunedBaseUrl` 清除微调槽位。首次启用或更换地址必须提供密钥，地址不变时空密钥保留原值。字段类型必须为字符串。主槽与微调槽使用同一个个人 revision，原子保存并审计。标准客服、参考答案和训练提示可使用微调槽；未配置或调用失败时回退本人主槽。
+
 `DELETE /config/litellm`：清除本人的配置；请求 `{"revision":1}`，递增个人版本并保留配置变更审计，不影响其他账号。本账号后续生成返回 `MODEL_NOT_CONFIGURED`，已有模型调用完成其原配置快照。不会回退到系统变量或其他人的 Key。
 
 配置和不含密钥的变更审计按 user_id 隔离，在同一事务内保存。凭据在 Windows 上由 DPAPI 按后端运行账号加密，在 Linux 上由独立的 `MODEL_KEY_FILE` 主密钥使用 AES-256-GCM 加密，重启仍有效。Linux 主密钥必须是运行账号独占的 32 字节文件（0600）；跨平台迁移或丢失原密钥导致无法解密时返回 `MODEL_CONFIG_UNREADABLE`，需本人重新保存 Key。旧机构配置及审计原样保留，迁移 035 只向最后保存者复制配置，不向其他用户分发 Key。后台模型任务从数据库中的会话所有者或知识生成任务创建者确定用户。后端不再读取 DEEPSEEK_API_KEY、DEEPSEEK_MODEL、ALLOW_RUNTIME_API_KEY。`POST /config/deepseek-key` 在鉴权后返回 410 `MODEL_CONFIG_MOVED`。
@@ -648,6 +650,8 @@ API 和 Worker 运行在同一个便携程序中。Worker 默认并发 1，可�
   },
   "totalScore":null,
   "passed":null,
+  "communicationReferenceScore":85,
+  "scoreBasis":"communication_only",
   "knowledgeAssessment":{
     "status":"insufficient_evidence",
     "knowledgeAccuracy":null,
@@ -759,7 +763,11 @@ N03 替代上述 N02 阶段限制：个人模型网关支持患者初始化和�
 
 ### N06：服务训练评分报告 v2
 
-`GET /api/sessions/:id/evaluation` 对 `contextVersion=2` 的会话返回 `schemaVersion=2` 报告。知识核验固定使用会话 manifest，沟通四维单独评价；总分固定权重为知识 25%、合规 25%、共情 20%、需求 20%、礼仪 10%。知识无法核验时 `knowledgeAccuracy/totalScore/passed` 为 `null`，不重分配权重；`knowledgeAssessment.nullReason` 解释原因。
+`GET /api/sessions/:id/evaluation` 对 `contextVersion=2` 的会话返回 `schemaVersion=2` 报告。知识核验固定使用会话 manifest，沟通四维单独评价；总分固定权重为知识 25%、合规 25%、共情 20%、需求 20%、礼仪 10%。知识无法核验时 `knowledgeAccuracy/totalScore/passed` 为 `null`，不重分配权重；`knowledgeAssessment.nullReason` 解释原因。另外返回 `communicationReferenceScore`（四项沟通分按原权重除以 0.75 计算）和 `scoreBasis=communication_only`，仅供结果页显示“沟通四维参考分”，不写入会话 `total_score`，不参与达标、最佳分、均分及培训计划总分统计。知识可核验时 `scoreBasis=full`，`communicationReferenceScore=null`。
+
+设置 `ANSWER_COMPARISON_ENABLED=true` 后，报告增加独立的 `answerComparison` 区块；默认关闭。区块包含 `status`、`rounds`、`checks`、`dimensionScores`、`totalScore`、`complete`、`missingDimensions`、`delta` 和版本字段。逐轮编号使用学员回答的 round：`patient(0) → user(1)` 对应第 1 轮，`patient(1) → user(2)` 对应第 2 轮；末尾尚未被回答的患者消息不产生评分轮次。参考答案只读取待评分回答之前的历史，round 0 专用于整场参考。每个量表项每轮最多计分一次（包括别名），服务端数值冲突判定优先于模型差异标签。模型引文抄写质量单独审计，评分绑定真实学员回答。对比评分不覆盖正式成绩，delta 对照最终知识核验后的成绩；证据不足的维度不产生 delta。对比失败返回 `status=failed`，原评分报告仍可完成。可选 `roundReviews` 提供按学员轮次生成的点评。
+
+客服训练与患者模拟的同步回复均使用 180 秒消息租约，生成期间每 60 秒续期。续期与提交必须持有原 attempt token 且租约未过期，过期租约不能复活；模型调用和租约续期使用独立的短事务。
 
 新增报告字段：`serviceRevisionId`、`knowledgeManifestHash`、`knowledgeAssessment`（status、knowledgeAccuracy、assessableCount、unassessableCount、coverage、rubricVersion、nullReason）、`knowledgeChecks`、`deferredTopics`。每条核验包含原始轮次和原句、verdict、reason、evidenceRefs、evidenceTexts、recommendedRewrite、scoringUnit、correctedInLaterRound。未回答项单独保留患者问题，不伪造客服原句。`learningMistakes` 只包含有引用、仍计分且未被后续纠正的 contradicted 项。
 

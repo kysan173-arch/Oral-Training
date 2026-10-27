@@ -73,8 +73,21 @@ inline json parseModelJsonContent(std::string content) {
   throw ApiError(503, "MODEL_INVALID_RESPONSE", "模型未返回可解析 JSON");
 }
 
+struct SamplingParams {
+  double repeat_penalty = 1.08;
+  int repeat_last_n = 512;
+  double frequency_penalty = 0.15;
+  double presence_penalty = 0.15;
+  double top_p = 0.9;
+  int top_k = 40;
+  double min_p = 0.05;
+  // 这些是 llama.cpp 扩展字段；云端 OpenAI 兼容网关不认，不能无条件下发。
+  bool enabled = true;
+};
+
 inline json buildCompletionRequest(const std::string& model, const json& messages, int max_tokens,
-                            double temperature, bool json_output) {
+                            double temperature, bool json_output,
+                            const SamplingParams& sampling = SamplingParams{}) {
   json request = {
       {"model", model},
       {"messages", messages},
@@ -82,6 +95,15 @@ inline json buildCompletionRequest(const std::string& model, const json& message
       {"temperature", temperature},
       {"max_tokens", max_tokens},
   };
+  if (sampling.enabled) {
+    request["repeat_penalty"] = sampling.repeat_penalty;
+    request["repeat_last_n"] = sampling.repeat_last_n;
+    request["frequency_penalty"] = sampling.frequency_penalty;
+    request["presence_penalty"] = sampling.presence_penalty;
+    request["top_p"] = sampling.top_p;
+    request["top_k"] = sampling.top_k;
+    request["min_p"] = sampling.min_p;
+  }
   if (json_output) request["response_format"] = {{"type", "json_object"}};
   if (model.rfind("MiniMax-", 0) == 0) {
     request["reasoning_split"] = true;

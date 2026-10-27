@@ -96,7 +96,7 @@ class Gateway(BaseHTTPRequestHandler):
         assert self.headers['Authorization'] == 'Bearer ' + key
         assert not {'thinking', 'user_id'} & body.keys()
         calls.append(body)
-        if body['model'] == 'worker-owner':
+        if body['model'] in ('worker-owner', 'tuned-unavailable'):
             # A terminal upstream failure lets us verify worker credential routing
             # without manufacturing a valid dental evaluation or charging a model.
             self.send_response(401)
@@ -108,6 +108,24 @@ class Gateway(BaseHTTPRequestHandler):
         if body.get('messages', [{}])[-1].get('content') == '谢谢':
             content = json.dumps({'reply': '不客气。', 'replyKind': 'conversation', 'evidenceIds': [],
                                   'learningPoints': [], 'complianceBoundary': '', 'shouldEnd': False}, ensure_ascii=False)
+        messages = body.get('messages', [])
+        if messages and messages[-1].get('content') == '请给出理想客服在本轮的答复。':
+            context = messages[1:-1]
+            question = context[-1]['content']
+            assert question in ('多少钱？', '需要多久？')
+            if question == '多少钱？':
+                assert len(context) == 1, 'First reference leaked learner answer or future context'
+            else:
+                assert len(context) == 3 and context[-2]['content'] == '6000元。'
+            content = json.dumps({'referenceAnswer': '3800—8800元。' if question == '多少钱？' else '1小时。', 'serviceActions': []})
+        elif messages and '整体标准应对参考' in messages[0].get('content', ''):
+            content = json.dumps({'referenceAnswer': '请核实项目费用与适用条件，再确认具体安排。'})
+        elif messages and '对比评估器' in messages[0].get('content', ''):
+            rounds = {item['round']: item for item in json.loads(messages[-1]['content'])}
+            assert rounds[1]['patientQuestion'] == '多少钱？' and rounds[1]['learnerAnswer'] == '6000元。'
+            assert rounds[2]['patientQuestion'] == '需要多久？' and rounds[2]['learnerAnswer'] == '1小时。'
+            assert '6000元。' in rounds[0]['learnerAnswer'] and '1小时。' in rounds[0]['learnerAnswer']
+            content = json.dumps({'checks': [], 'aligned': True})
         if body['model'] == 'json-repair' and 'response_format' in body:
             content = 'invalid-json'
         payload = json.dumps({'model': 'fixture-model-v1', 'choices': [
@@ -245,14 +263,15 @@ try:
         env['LITELLM_TEST_UNTRUSTED_TLS_URL'] = f'https://localhost:{tls_gateway.server_port}/v1'
     run([args.bin_dir / executable('litellm_settings_test')])
     assert not transport_targets, 'Redirect forwarded credentials'
-    assert len(calls) == 7 and calls[4]['temperature'] == 0 and 'response_format' not in calls[4]
+    assert len(calls) > 7 and calls[4]['temperature'] == 0 and 'response_format' not in calls[4]
+    routing_start = len(calls)
     training = api('POST', '/sessions', {'scenarioId': 'implant-basic'}, learner, 201)['session']['id']
     api('POST', f'/sessions/{training}/messages',
         {'clientMessageId': 'personal-training', 'content': '您好，请问您想先了解哪些流程？'}, learner)
     roleplay = api('POST', '/roleplay/sessions', {'scenarioId': 'implant-basic'}, learner, 201)['session']['id']
     api('POST', f'/roleplay/sessions/{roleplay}/messages',
         {'clientMessageId': 'personal-roleplay', 'content': '我想了解种植牙的咨询流程。'}, learner)
-    assert len(calls) == 9 and all(call['model'] == 'ds-primary' for call in calls[7:])
+    assert len(calls) == routing_start + 2 and all(call['model'] == 'ds-primary' for call in calls[routing_start:])
     social = api('POST', f'/roleplay/sessions/{roleplay}/messages',
                  {'clientMessageId': 'personal-social', 'content': '谢谢'}, learner)['standardCustomerMessage']
     assert social['content'] == '不客气。' and social['learningPoints'] == [] and not social['complianceBoundary']
@@ -285,6 +304,22 @@ try:
     saved = api('GET', '/config/litellm', token=learner)
     api('PUT', '/config/litellm', {**config, 'revision': saved['revision'], 'apiKey': '',
                                  'baseUrl': 'https://other.example/v1'}, learner, 400)
+    tuned_body = {**config, 'revision': saved['revision'], 'tunedBaseUrl': config['baseUrl'],
+                  'tunedModel': 'tuned-test', 'tunedApiKey': 'sk-offline-key-12345'}
+    saved = api('PUT', '/config/litellm', tuned_body, learner)
+    assert saved['tunedConfigured'] and saved['hasTunedApiKey'] and 'tunedApiKey' not in saved
+    for field in ['tunedBaseUrl', 'tunedModel', 'tunedApiKey']:
+        api('PUT', '/config/litellm', {**tuned_body, 'revision': saved['revision'], field: 123}, learner, 400)
+    # Older clients can update primary settings without silently erasing the tuned slot.
+    saved = api('PUT', '/config/litellm', {**config, 'revision': saved['revision']}, learner)
+    assert saved['tunedConfigured']
+    raw_tuned = run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-Atc',
+                    "SELECT tuned_api_key_encrypted FROM user_model_gateway_settings WHERE user_id='demo-user-001'"])
+    assert raw_tuned and 'sk-offline' not in raw_tuned
+    run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-v', 'ON_ERROR_STOP=1', '-f',
+         ROOT / 'backend/migrations/037_personal_gateway_tuned_slot.sql'])
+    assert api('GET', '/config/litellm', token=learner) == saved, 'Migration rerun changed tuned settings'
+    assert not api('GET', '/config/litellm', token=admin)['tunedConfigured']
     raw = run([args.pg_bin / executable('psql'), '--dbname', database_url, '-X', '-Atc', 'SELECT api_key_encrypted FROM user_model_gateway_settings'])
     assert raw and 'sk-offline' not in raw
     cleared = api('DELETE', '/config/litellm', {'revision': saved['revision'], 'userId': 'litellm-test-admin'}, learner)

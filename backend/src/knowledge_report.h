@@ -26,7 +26,35 @@ inline json prepareKnowledgeReport(json report, const json& assessment, const js
   report["knowledgeAssessment"]["nullReason"] = report["totalScore"].is_null()
       ? "没有可核验的知识计分项；未知或冲突不按错误扣分，也不重分配权重。" : "";
   report["learningMistakes"] = json::array();
-  report["recommendedPhrases"] = json::array();
+  /* v1 的 recommendedPhrases 由 normalizeReport 从逐轮点评提取；v2 之前在这里被清空，
+     导致“可复用话术”永远为空。现在保留已有提取结果，并在为空时从参考答案对比里
+     取标准表达，供话术锦囊收藏。 */
+  if (report.value("recommendedPhrases", json::array()).empty() &&
+      report.contains("answerComparison") && report["answerComparison"].is_object()) {
+    const auto& comparison = report["answerComparison"];
+    if (comparison.value("status", std::string()) == "ready" &&
+        comparison.contains("rounds") && comparison["rounds"].is_array()) {
+      json phrases = json::array();
+      int index = 0;
+      for (const auto& round : comparison["rounds"]) {
+        if (!round.is_object()) continue;
+        ++index;
+        if (!round.contains("referenceAnswer") || !round["referenceAnswer"].is_string()) continue;
+        const auto reply = round["referenceAnswer"].get<std::string>();
+        if (reply.empty()) continue;
+        phrases.push_back({
+          {"phraseKey", "reference-" + std::to_string(index)},
+          {"round", round.contains("round") && round["round"].is_number_integer()
+              ? round["round"].get<int>() : 0},
+          {"patientSays", round.contains("patientQuestion") && round["patientQuestion"].is_string()
+              ? round["patientQuestion"].get<std::string>() : std::string()},
+          {"csReply", reply},
+          {"reason", std::string()},
+        });
+      }
+      if (!phrases.empty()) report["recommendedPhrases"] = phrases;
+    }
+  }
   for (auto& check : report["knowledgeChecks"]) {
     std::string expression;
     check["evidenceTexts"] = json::array();

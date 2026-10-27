@@ -43,6 +43,15 @@ class IModelGateway {
     return standardServiceReply(scenario, history);
   }
   virtual json roleplaySummary(const json& scenario, const json& history) const = 0;
+  // v2：带公开证据的复盘；默认回退到无证据版本，测试网关无需改动。
+  virtual json groundedRoleplaySummary(const json& scenario, const json& history,
+                                       const json& evidence) const {
+    return roleplaySummary(scenario, history);
+  }
+  // 参考答案对比完成后，按轮生成“本轮点评”；默认空，测试网关无需实现。
+  virtual json roundReviews(const json& comparison, const json& round_comments) const {
+    return json::array();
+  }
   virtual json generateKnowledgeDraft(const std::string& kind,
                                       const json& input) const {
     return json::object();
@@ -70,6 +79,26 @@ class IModelGateway {
   // 模型只负责「选哪些场景、目标定多少」，最终数值边界仍由 store 层再 clamp 一次。
   virtual json trainingPlanDraft(const json& learner_profile,
                                  const json& scenario_candidates) const {
+    return json::object();
+  }
+
+  // 供 /api/health 展示「哪个功能走哪个模型」。云端模式没有路由概念，返回空对象。
+  virtual json modelRoutes() const { return json::object(); }
+
+  // ── 参考答案对比评分（对练舱）────────────────────────────────────────
+  // 逐轮生成「理想客服答复」作为对比基准。每一轮的输入只包含该轮之前的
+  // 真实对话与患者本轮发言：不含学员本轮答案，也不含后续对话，前文更不
+  // 替换为此前生成的标准答案。患者下一轮问什么由学员上一轮答什么决定，
+  // 若把生成的标准答案塞回上下文，会与真实的患者发言自相矛盾，模型可能
+  // 生成纠正性内容而不再回答该轮问题——对齐静默断裂且不会报错。
+  virtual json idealServiceReplies(const json& scenario, const json& history) const {
+    return json::object();
+  }
+
+  // 对比定位。只允许返回「评分项编号 + 等级 + 差异类型 + 两侧原文引用」，
+  // 不得返回任何分数或聚合结果：分值与汇总由 answer_comparison.h 按量表公式算出。
+  virtual json compareAnswersAgainstReference(const json& scenario, const json& history,
+                                              const json& references) const {
     return json::object();
   }
 };

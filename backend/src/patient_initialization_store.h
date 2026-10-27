@@ -186,7 +186,8 @@ class PatientInitializationStore {
     return readPatientProfiles(tx,id);
   }
 
-  void save(const AiJob& job, json output, const std::string& model_version) const {
+  void save(const AiJob& job, json output, const std::string& model_version,
+            const json& scenario = json::object()) const {
     // N03 supplies grounded generation. This boundary only accepts structured, bounded output.
     if (!output.is_object() || !output.contains("publicProfile") || !output["publicProfile"].is_object() ||
         !output.contains("privateProfile") || !output["privateProfile"].is_object() ||
@@ -207,7 +208,7 @@ class PatientInitializationStore {
     if(output.contains("selection")) {
       const auto context=readPatientProfiles(tx,job.target_id)["context"];
       const auto evidence=output.at("evidenceBundle");
-      output=oral_training::rag::initializeGroundedPatient(output["selection"],context,evidence);
+      output=oral_training::rag::initializeGroundedPatient(output["selection"],context,evidence,scenario);
       public_profile=output["publicProfile"];
       tx.exec_params(R"(
         INSERT INTO rag_traces(id,context_id,purpose,round,attempt_token,evidence_json,model_version,is_public)

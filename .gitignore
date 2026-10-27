@@ -55,3 +55,8 @@ docs/*汇报版*.md
 .vscode/
 .project/
 *.log
+
+# 第四环境（merge-20260929）本机私有配置与运行日志
+merge29-local/merge29.env
+merge29-local/merge29.env.local-backup
+merge29-local/logs/

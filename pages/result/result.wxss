@@ -107,3 +107,20 @@
 .retry-button { width: 100%; margin-top: 30rpx; }
 /* 从 master 并入：结果页五维雷达图外框 */
 .radar-card { padding: 18rpx 20rpx 22rpx; margin: 0 24rpx 28rpx; }
+
+/* 参考答案对比：沿用既有 .compare-pane 上下双栏（配色与左色条一律不动，
+   理由见上方 .compare-you / .compare-better 的注释），本板块只补四样独有样式。 */
+.comparison-note { padding: 22rpx 26rpx; margin: 0 24rpx 22rpx; color: var(--text-body); font-size: 24rpx; line-height: 1.6; background: #fff; border-radius: 20rpx; border: 1rpx solid var(--color-border); }
+
+/* 患者问题：既不是学员的话，也不是建议话术，所以不能用 .compare-you / .compare-better。
+   用最轻的底色只作情境交代，让紧接其后的两个对照框仍是视觉重点。 */
+.comparison-question { padding: 16rpx 18rpx; margin-top: 14rpx; border-radius: 14rpx; background: var(--color-bg, #F7F9FC); border: 1rpx solid var(--color-border); }
+.comparison-question-label { display: block; margin-bottom: 6rpx; color: var(--text-muted); font-size: 20rpx; font-weight: 600; }
+.comparison-question-text { display: block; color: var(--text-secondary); font-size: 24rpx; line-height: 1.55; }
+
+/* 正向标记（要点已覆盖 / 学员更优）：违规用 --color-danger，这里必须换成 success，
+   否则同一位置同一颜色既表违规又表达标，标记就失去意义。 */
+.round-flag-ok { color: var(--color-success); background: var(--color-success-light); }
+
+.comparison-better-name { display: block; margin-top: 14rpx; color: var(--text-strong); font-size: 26rpx; font-weight: 600; }
+.comparison-better-reason { display: block; margin-top: 8rpx; color: var(--text-body); font-size: 24rpx; line-height: 1.6; }

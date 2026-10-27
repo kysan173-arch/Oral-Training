@@ -36,7 +36,6 @@
     <view id="message-bottom"></view>
   </scroll-view>
 
-  <view class="training-note">请勿输入真实患者姓名、电话、病历或其他隐私信息。</view>
   <view class="input-area">
     <view class="input-wrap">
       <textarea class="input-field input-textarea" auto-height maxlength="1000" placeholder="以患者身份输入问题…" value="{{inputValue}}" bindinput="onInputChange" disabled="{{sending || finishing || pendingClientMessageId}}" adjust-position cursor-spacing="16" show-confirm-bar="{{false}}" />

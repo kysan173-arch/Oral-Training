@@ -12,12 +12,19 @@ Page({
     baseUrl: '',
     model: '',
     apiKey: '',
-    revision: 0
+    revision: 0,
+    /* 可选的「微调槽位」：留空即不启用，此时所有功能走主槽（与单实例完全一致）。
+       本机部署时通常填第二个实例（如 8002 / sft-v4），用于话术类功能。 */
+    tunedConfigured: false,
+    hasTunedApiKey: false,
+    tunedBaseUrl: '',
+    tunedModel: '',
+    tunedApiKey: ''
   },
 
   onShow() { return this.loadSettings(); },
-  onHide() { this.setData({ apiKey: '' }); },
-  onUnload() { this.setData({ apiKey: '' }); },
+  onHide() { this.setData({ apiKey: '', tunedApiKey: '' }); },
+  onUnload() { this.setData({ apiKey: '', tunedApiKey: '' }); },
 
   applySettings(settings) {
     this.setData({
@@ -27,7 +34,12 @@ Page({
       baseUrl: settings.baseUrl || '',
       model: settings.model || '',
       revision: settings.revision,
-      apiKey: ''
+      apiKey: '',
+      tunedConfigured: settings.tunedConfigured === true,
+      hasTunedApiKey: settings.hasTunedApiKey === true,
+      tunedBaseUrl: settings.tunedBaseUrl || '',
+      tunedModel: settings.tunedModel || '',
+      tunedApiKey: ''
     });
   },
 
@@ -42,20 +54,34 @@ Page({
 
   onInput(event) {
     const field = event.currentTarget.dataset.field;
-    if (!this.data.canEdit || this.data.saving || !['baseUrl', 'model', 'apiKey'].includes(field)) return;
+    const editable = ['baseUrl', 'model', 'apiKey', 'tunedBaseUrl', 'tunedModel', 'tunedApiKey'];
+    if (!this.data.canEdit || this.data.saving || !editable.includes(field)) return;
     this.setData({ [field]: event.detail.value, notice: '', error: '' });
   },
 
   saveSettings() {
     if (!this.data.canEdit || this.data.saving || this.data.loading) return Promise.resolve();
+    const tunedBaseUrl = this.data.tunedBaseUrl.trim().replace(/\/+$/, '');
     const payload = {
       baseUrl: this.data.baseUrl.trim().replace(/\/+$/, ''),
       model: this.data.model.trim(),
       apiKey: this.data.apiKey.trim(),
-      revision: this.data.revision
+      revision: this.data.revision,
+      /* 微调槽位：地址留空即表示「不启用」，后端会清空该槽位。 */
+      tunedBaseUrl,
+      tunedModel: this.data.tunedModel.trim(),
+      tunedApiKey: this.data.tunedApiKey.trim()
     };
     if (!/^https?:\/\/\S+$/.test(payload.baseUrl) || !payload.model || (!this.data.hasApiKey && !payload.apiKey)) {
       this.setData({ error: '请填写网关地址、模型名称和 API Key' });
+      return Promise.resolve();
+    }
+    if (tunedBaseUrl && !payload.tunedModel) {
+      this.setData({ error: '微调槽位填了网关地址就必须同时填模型名称；若不需要，请把它留空' });
+      return Promise.resolve();
+    }
+    if (tunedBaseUrl && !this.data.hasTunedApiKey && !payload.tunedApiKey) {
+      this.setData({ error: '首次配置微调槽位需要填它的 API Key；若不需要，请把它留空' });
       return Promise.resolve();
     }
     this.setData({ saving: true, error: '', notice: '' });
@@ -66,7 +92,7 @@ Page({
     }).catch(error => {
       this.setData({ error: error.message || '保存失败，请重试' });
       if (error.code === 'MODEL_CONFIG_CONFLICT') this.setData({ canEdit: false });
-    }).finally(() => this.setData({ saving: false, apiKey: '' }));
+    }).finally(() => this.setData({ saving: false, apiKey: '', tunedApiKey: '' }));
   },
 
   clearSettings() {
