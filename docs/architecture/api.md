@@ -29,6 +29,9 @@ Content-Type: application/json
 
 ## 2. 登录、角色与数据范围
 
+Demo 模式的 `POST /auth/switch-role` 接收 `{ "role": "learner" | "admin", "userId": "目标账号 ID（可选）" }`。客户端从 `GET /demo/learners` 按目标角色筛选有效账号，只有一个时直接切换，多个时要求选择。省略 `userId` 时，同角色保留当前账号；跨角色仅在目标角色恰有一个有效账号时自动选择。无候选返回 `404 NO_DEMO_ACCOUNT`，多候选返回 `409 ACCOUNT_SELECTION_REQUIRED`。指定账号不存在或停用返回 `404 USER_NOT_FOUND`，角色不匹配返回 `409 ROLE_MISMATCH`。服务端在同一事务中锁定并校验目标账号后创建会话，不修改用户角色；生产环境禁止此接口。
+
+
 ### `POST /auth/wechat`
 
 请求：
