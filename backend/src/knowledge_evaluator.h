@@ -374,6 +374,7 @@ inline json applyKnowledgeScores(json report,const json& assessment,int pass_sco
   // 信任度正向评价：只在此处结算，不影响 dimensionScores 与 totalScore。
   report["trustSummary"]=summarizeTrustBuilding(assessment,patient_state);
   report["totalScore"]=nullptr; report["passed"]=nullptr;
+  report["communicationReferenceScore"]=nullptr;
   const auto& d=report.at("dimensionScores");
   for(const auto* key:{"medicalCompliance","empathy","needsDiscovery","serviceEtiquette"})
     if(!d.contains(key)||!d[key].is_number_integer()||d[key]<0||d[key]>100) throw std::runtime_error("invalid communication score");
@@ -384,13 +385,13 @@ inline json applyKnowledgeScores(json report,const json& assessment,int pass_sco
     report["scoreBasis"]="full";
     report["scoreLabel"]="本次训练总分";
   } else {
-    // 知识依据不足时不再让总分完全空白：按四维沟通分的原始权重归一化，
+    // 知识依据不足时单独展示参考分，正式总分保持空值：按四维沟通分的原始权重归一化，
     // 给一个“沟通四维参考分”，但不判 passed，避免伪装成完整五维结论。
     const double communication = d["medicalCompliance"].get<int>()*.25 +
         d["empathy"].get<int>()*.20 + d["needsDiscovery"].get<int>()*.20 +
         d["serviceEtiquette"].get<int>()*.10;
     const int total=static_cast<int>(std::lround(communication / 0.75));
-    report["totalScore"]=total;
+    report["communicationReferenceScore"]=total;
     report["passed"]=nullptr;
     report["scoreBasis"]="communication_only";
     report["scoreLabel"]="沟通四维参考分（知识依据不足）";

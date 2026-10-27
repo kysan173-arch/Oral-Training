@@ -23,10 +23,9 @@
  *     Model candidates only identify an existing source span and a field.
  *     Scores, verdicts, numeric values and offsets supplied by the model are ignored.
  *
- * 为什么引用必须逐字校验：
- *   模型可以"记得"学员说过某句话而实际上并没有说。凡是引用不能在对应
- *   原文里逐字定位的条目，一律按未覆盖处理并留痕（不是静默丢弃——
- *   判定质量本身是结题报告要统计的指标）。
+ * 引文质量与评分输入分离：
+ *   评分绑定服务端保存的真实学员回答；模型抄写的 userQuote/referenceQuote
+ *   仅用于解释与审计，抄错不自动归零，也不能改变用于数值核验的原文。
  *
  * 为什么数值类必须服务器重判：
  *   模型对数字不稳（「一万二」与「一万多」都可能被判成一致）。涉及价格、
@@ -68,6 +67,28 @@ inline bool jsonFlag(const json& value, const char* key, bool fallback = false) 
 // ── 文本与引用的基础工具 ────────────────────────────────────────────────
 inline bool textContains(const std::string& haystack, const std::string& needle) {
   return !needle.empty() && haystack.find(needle) != std::string::npos;
+}
+
+// Persisted order is patient(0), user(1), patient(1), user(2), ... .
+// A learner round answers the preceding patient message, not patient(round).
+// Keep the pre-answer history here so reference generation cannot see the answer
+// it is grading or a subsequent patient question. Round zero is whole-session only.
+inline json comparisonTurns(const json& history) {
+  json turns = json::array(), prefix = json::array();
+  std::string patient;
+  if (!history.is_array()) return turns;
+  for (const auto& message : history) {
+    const auto role = jsonText(message, "role");
+    if (role == "patient") patient = jsonText(message, "content");
+    if (role == "user" && jsonInt(message, "round") > 0) {
+      turns.push_back({{"round", jsonInt(message, "round")},
+                       {"patientQuestion", patient},
+                       {"learnerAnswer", jsonText(message, "content")},
+                       {"historyBeforeAnswer", prefix}});
+    }
+    if (role == "patient" || role == "user") prefix.push_back(message);
+  }
+  return turns;
 }
 
 /* 从「不适用理由」里提取判定者引用的患者原话。
@@ -173,15 +194,10 @@ inline int clampLevelForDifference(const std::string& difference_type, int level
 inline json normalizeComparisonChecks(const json& candidates, const json& history, const json& references) {
   std::map<int, std::string> learner_text;  // round -> 该轮学员原话
   std::map<int, std::string> patient_text;  // round -> 该轮患者原话
-  if (history.is_array()) {
-    for (const auto& message : history) {
-      if (!message.is_object()) continue;
-      const int round = jsonInt(message, "round", 0);
-      const auto role = jsonText(message, "role");
-      const auto content = jsonText(message, "content");
-      if (role == "user") learner_text[round] += content + "\n";
-      else if (role == "patient") patient_text[round] += content + "\n";
-    }
+  for (const auto& turn : comparisonTurns(history)) {
+    const int round = jsonInt(turn, "round");
+    learner_text[round] = jsonText(turn, "learnerAnswer");
+    patient_text[round] = jsonText(turn, "patientQuestion");
   }
   std::map<int, std::string> reference_text;  // round -> 该轮标准答案
   if (references.is_array()) {
@@ -194,18 +210,20 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
   json checks = json::array();
   json dropped = json::array();
   std::set<std::string> whole_seen;               // 整场项只计一次
+  std::set<std::pair<int, std::string>> round_seen;
   std::map<std::string, int> error_first_round;   // 事实/边界错误首次扣分轮次
 
   if (candidates.is_array()) {
     for (const auto& candidate : candidates) {
       if (!candidate.is_object()) continue;
-      const auto criterion_id = jsonText(candidate, "criterionId");
+      auto criterion_id = jsonText(candidate, "criterionId");
       const auto* criterion = findCriterion(criterion_id);
       if (!criterion) {
         // 模型自造的编号一律丢弃：量表是硬契约，不允许临时增加扣分要求。
         dropped.push_back({{"criterionId", criterion_id}, {"reason", "criterion_not_in_rubric"}});
         continue;
       }
+      criterion_id = std::string(criterion->id);
       const std::string scope(criterion->scope);
       const std::string dimension(criterion->dimension);
 
@@ -222,11 +240,16 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
                            {"round", jsonInt(candidate, "round", 0)}});
         continue;
       }
+      if (scope != "whole" && !round_seen.emplace(round, criterion_id).second) {
+        dropped.push_back({{"criterionId", criterion_id}, {"round", round},
+                           {"reason", "round_item_duplicated"}});
+        continue;
+      }
 
       const auto user_quote = jsonText(candidate, "userQuote");
       const auto reference_quote = jsonText(candidate, "referenceQuote");
-      const auto difference_type = jsonText(candidate, "differenceType");
-      const auto reason = jsonText(candidate, "reason");
+      auto difference_type = jsonText(candidate, "differenceType");
+      auto reason = jsonText(candidate, "reason");
       auto applicable = jsonFlag(candidate, "applicable", true);
       auto not_applicable_reason = jsonText(candidate, "notApplicableReason");
       auto level = jsonInt(candidate, "level", 0);
@@ -243,19 +266,13 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
        *                不决定分数归到哪一轮，模型跨轮引用不应被判成编造。 */
       std::string learner_corpus, reference_corpus;
       if (scope == "whole") {
-        for (const auto& entry : learner_text) learner_corpus += entry.second;
+        for (const auto& entry : learner_text) learner_corpus += entry.second + "\n";
       } else if (learner_text.count(round)) {
         learner_corpus = learner_text.at(round);
       }
-      for (const auto& entry : reference_text) reference_corpus += entry.second;
+      for (const auto& entry : reference_text) reference_corpus += entry.second + "\n";
 
-      /* 两处引用的承重不同，核验后果必须分开：
-       *   userQuote 是判定成立的前提——「学员说过这句」站不住，整条判定就不可信，
-       *             因此归零，且不再参与「差异类型—等级」自洽钳制（否则 equivalent
-       *             的保底规则会把一条根本验证不了的判定抬到 3 分）。
-       *   referenceQuote 只是佐证材料，抄错它不代表判定本身错了，仅标记留痕供审计。
-       * 早期实现把两者塞进同一个标志后统一归零，导致模型引用能力波动时分数被
-       * 系统性压低——实测引用核验通过率一度只有 0.60。 */
+      // Transcribed quotes are audited independently from the actual scoring input.
       const bool has_learner_answer = !learner_corpus.empty();
       const bool model_quote_verified =
           user_quote.empty() || textContains(learner_corpus, user_quote);
@@ -275,7 +292,7 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
         const auto cited = extractQuotedPatientSpeech(not_applicable_reason);
         std::string patient_corpus;
         if (scope == "whole") {
-          for (const auto& entry : patient_text) patient_corpus += entry.second;
+          for (const auto& entry : patient_text) patient_corpus += entry.second + "\n";
         } else if (patient_text.count(round)) {
           patient_corpus = patient_text.at(round);
         }
@@ -295,7 +312,11 @@ inline json normalizeComparisonChecks(const json& candidates, const json& histor
         const std::string numeric_reference =
             scope == "whole" ? reference_corpus
                              : (reference_text.count(round) ? reference_text.at(round) : reference_corpus);
-        if (numericAgreement(learner_corpus, numeric_reference) == 0) level = 0;
+        if (numericAgreement(learner_corpus, numeric_reference) == 0) {
+          level = 0;
+          difference_type = "factual_or_boundary_error";
+          reason = "学员回答中的数值或单位与本轮标准答案不符，已由服务器校验。";
+        }
       }
 
       level = clampLevelForDifference(difference_type, level, &level_adjusted);
@@ -444,17 +465,10 @@ inline json applyAnswerComparison(const json& normalized, const json& history, c
                        {"checks", json::array()}};
     return rounds[round];
   };
-  if (history.is_array()) {
-    for (const auto& message : history) {
-      if (!message.is_object()) continue;
-      const int round = jsonInt(message, "round", 0);
-      const auto role = jsonText(message, "role");
-      if (role != "patient" && role != "user") continue;
-      auto& bucket = ensure_round(round);
-      const auto content = jsonText(message, "content");
-      auto& slot = role == "patient" ? bucket["patientQuestion"] : bucket["learnerAnswer"];
-      slot = slot.get<std::string>() + (slot.get<std::string>().empty() ? "" : "\n") + content;
-    }
+  for (const auto& turn : comparisonTurns(history)) {
+    auto& bucket = ensure_round(jsonInt(turn, "round"));
+    bucket["patientQuestion"] = turn["patientQuestion"];
+    bucket["learnerAnswer"] = turn["learnerAnswer"];
   }
   if (references.is_array()) {
     for (const auto& reference : references) {

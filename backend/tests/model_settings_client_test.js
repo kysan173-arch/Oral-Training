@@ -20,10 +20,16 @@ const page = () => Object.assign({}, definition, {
   let payload;
   api.saveModelSettings = async value => {
     payload = value;
-    return { ...value, apiKey: undefined, canEdit: true, configured: true, hasApiKey: true, revision: 1 };
+    return { ...value, apiKey: undefined, canEdit: true, configured: true, hasApiKey: true, tunedConfigured: true, hasTunedApiKey: true, revision: 1 };
   };
+  editor.onInput({ currentTarget: { dataset: { field: 'tunedBaseUrl' } }, detail: { value: 'https://tuned.example/v1' } });
+  editor.onInput({ currentTarget: { dataset: { field: 'tunedModel' } }, detail: { value: 'tuned-model' } });
+  editor.onInput({ currentTarget: { dataset: { field: 'tunedApiKey' } }, detail: { value: 'sk-tuned-key' } });
   await editor.saveSettings();
   assert.strictEqual(payload.apiKey, 'sk-test-key');
+  assert.strictEqual(payload.tunedModel, 'tuned-model');
+  assert.strictEqual(payload.tunedApiKey, 'sk-tuned-key');
+  assert.strictEqual(editor.data.tunedApiKey, '', 'tuned secret cleared after save');
   assert.strictEqual(payload.model, 'ds-primary');
   assert.strictEqual(editor.data.apiKey, '', 'secret must be cleared after save');
   assert.strictEqual(editor.data.configured, true);
@@ -48,8 +54,10 @@ const page = () => Object.assign({}, definition, {
   settings.canEdit = true;
   await editor.loadSettings();
   editor.data.apiKey = 'not-persisted';
+  editor.data.tunedApiKey = 'also-not-persisted';
   editor.onHide();
   assert.strictEqual(editor.data.apiKey, '', 'leaving clears secret');
+  assert.strictEqual(editor.data.tunedApiKey, '', 'leaving clears tuned secret');
   api.clearModelSettings = async revision => ({ canEdit: true, configured: false, hasApiKey: false, revision: revision + 1 });
   await editor.confirmClear();
   assert.strictEqual(editor.data.configured, false);

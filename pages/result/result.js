@@ -20,6 +20,7 @@ const dimensionsFrom = score => [
 ].filter(item => typeof item.score === 'number').map(item => Object.assign(item, { tier: scoreTier(item.score) }));
 
 const totalScoreFrom = (evaluation, sessionTotalScore) => {
+  if (evaluation.scoreBasis === 'communication_only') return null;
   if (evaluation.totalScore !== undefined && evaluation.totalScore !== null) {
     return Math.round(scoreFrom(evaluation.totalScore));
   }
@@ -167,6 +168,10 @@ const answerComparisonFrom = (raw, roundCommentByRound, violationRounds, roundRe
 
 const normalizeEvaluation = (evaluation, sessionTotalScore) => {
   const totalScore = totalScoreFrom(evaluation, sessionTotalScore);
+  const referenceScore = evaluation.scoreBasis === 'communication_only'
+    ? scoreFrom(evaluation.communicationReferenceScore === undefined
+      ? evaluation.totalScore : evaluation.communicationReferenceScore) : null;
+  const displayScore = totalScore === null ? referenceScore : totalScore;
   /* 违规轮次集合：用来在轮次点评上标注「该轮含违规」，把两个区块的关系讲清楚。
      刻意不把重复轮次从点评区删掉——点评里的 comment 是违规区没有的信息，删了就丢了。
      两处都保留、并标明它们说的是同一轮，比删一处更安全。 */
@@ -189,6 +194,8 @@ const normalizeEvaluation = (evaluation, sessionTotalScore) => {
   return Object.assign({}, evaluation, {
     totalScore,
     hasTotalScore: totalScore !== null,
+    displayScore,
+    hasDisplayScore: displayScore !== null,
     dimensionScores: Object.assign({}, evaluation.dimensionScores || {}),
     strengths: (evaluation.strengths || []).map(item => item.content || item.evidence || item),
     improvements: (evaluation.improvements || []).map(item => item.content || item),
@@ -288,14 +295,15 @@ Page({
       const action = resultStateAction(report.status, this.data.session.status);
       if (action === 'ready' && report.evaluation) {
         const evaluation = normalizeEvaluation(report.evaluation, this.data.session.totalScore);
-        const hasTotalScore = evaluation.totalScore !== null;
-        const scorePercent = hasTotalScore ? Math.max(0, Math.min(100, evaluation.totalScore)) : 0;
-        const scoreText = hasTotalScore ? String(evaluation.totalScore) : '—';
+        const scorePercent = evaluation.hasDisplayScore ? evaluation.displayScore : 0;
+        const scoreText = evaluation.hasDisplayScore ? String(evaluation.displayScore) : '—';
         this.setData({
           evaluation,
           dimensions: dimensionsFrom(evaluation.dimensionScores),
           loading: false,
-          level: levelFrom(evaluation.totalScore),
+          level: evaluation.scoreBasis === 'communication_only'
+            ? { key: 'unscored', name: '沟通参考 · 暂不判定达标', scoreColor: '#1F3864' }
+            : levelFrom(evaluation.totalScore),
           retryable: false,
           timedOut: false,
           scorePercent,

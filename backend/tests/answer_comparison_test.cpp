@@ -30,14 +30,53 @@ int main() {
 
     // 基准对话：患者问价，学员答错（编造单一价格并承诺疗效）。
     const json history = json::array({
-        {{"round", 1}, {"role", "patient"}, {"content", "种植牙多少钱？"}},
+        {{"round", 0}, {"role", "patient"}, {"content", "种植牙多少钱？"}},
         {{"round", 1}, {"role", "user"}, {"content", "一口价一万二，包好。"}},
-        {{"round", 2}, {"role", "patient"}, {"content", "能便宜点吗？"}},
+        {{"round", 1}, {"role", "patient"}, {"content", "能便宜点吗？"}},
         {{"round", 2}, {"role", "user"}, {"content", "价格统一，另外要拍片检查。"}}});
     const json references = json::array({
         {{"round", 1}, {"referenceAnswer", "单颗种植包含术前检查，区间大致3800—8800元，需医生面诊评估。"}},
         {{"round", 2}, {"referenceAnswer", "价格按项目固定，不含额外项目，需医生面诊确认。"}}});
 
+
+    // Stored message rounds differ across speakers. Ignore the final unanswered patient message.
+    {
+      const json stored = json::array({
+        {{"round",0},{"role","patient"},{"content","多少钱？"}},
+        {{"round",1},{"role","user"},{"content","6000元。"}},
+        {{"round",1},{"role","patient"},{"content","需要多久？"}},
+        {{"round",2},{"role","user"},{"content","1小时。"}},
+        {{"round",2},{"role","patient"},{"content","可以预约吗？"}}});
+      const auto turns = comparisonTurns(stored);
+      check(turns.size() == 2 && turns[0]["round"] == 1 && turns[1]["round"] == 2,
+            "only answered learner rounds should be generated");
+      check(turns[0]["patientQuestion"] == "多少钱？" && turns[1]["patientQuestion"] == "需要多久？",
+            "learner aligned with preceding question");
+      check(turns[0]["historyBeforeAnswer"].size() == 1 && turns[1]["historyBeforeAnswer"].size() == 3,
+            "reference context leaked current answer or future question");
+      const json refs = json::array({{{"round",1},{"referenceAnswer","3800—8800元。"}},
+                                    {{"round",2},{"referenceAnswer","1小时。"}}});
+      const json item = {{"round",1},{"criterionId","knowledge.factual_accuracy"},
+                         {"level",4},{"differenceType","equivalent"}};
+      auto normalized = normalizeComparisonChecks(json::array({item,item,item}), stored, refs);
+      check(normalized["checks"].size() == 1 && normalized["dropped"].size() == 2,
+            "duplicate round item changed denominator");
+      const auto once = computeComparisonScores(normalized["checks"]);
+      check(once["dimensionScores"]["knowledgeAccuracy"] == 100, "in-range answer scored against next question");
+      auto bad = stored; bad[1]["content"] = "12000元。";
+      for (const auto* type : {"equivalent", "learner_better"}) {
+        auto candidate = item; candidate["differenceType"] = type;
+        const auto checked = normalizeComparisonChecks(json::array({candidate}),bad,refs)["checks"][0];
+        check(checked["level"] == 0 && checked["differenceType"] == "factual_or_boundary_error",
+              "model classification overrode server numeric mismatch");
+      }
+      auto alias = item; alias["criterionId"] = "knowledgeAccuracy.factual_accuracy";
+      check(normalizeComparisonChecks(json::array({item,alias}),stored,refs)["checks"].size()==1,
+            "criterion alias bypassed deduplication");
+      const auto block = applyAnswerComparison(normalized,stored,refs,json::object(),json::object());
+      check(block["rounds"].size()==2 && block["rounds"][0]["patientQuestion"]=="多少钱？" &&
+            block["rounds"][1]["learnerAnswer"]=="1小时。", "report pair differs from scored pair");
+    }
     // ── 2. 引用逐字校验：取不到即按未覆盖处理并留痕 ──────────────────────
     {
       const json candidates = json::array({
@@ -45,9 +84,10 @@ int main() {
            {"level", 4}, {"userQuote", "这句话学员根本没说过"}, {"referenceQuote", ""},
            {"differenceType", "equivalent"}, {"reason", ""}}});
       const auto normalized = normalizeComparisonChecks(candidates, history, references);
-      check(normalized["checks"][0]["quoteVerified"] == false, "unverifiable quote flagged");
-      // 引用验证不了即整体不可信：按未覆盖处理，且不得被 equivalent 的保底规则抬分。
-      check(normalized["checks"][0]["level"] == 0, "unverifiable quote drops to zero");
+      check(normalized["checks"][0]["quoteVerified"] == true &&
+          normalized["checks"][0]["modelQuoteVerified"] == false, "answer binding and quote audit separated");
+      // The complete real answer is the scoring input; transcription quality is audited separately.
+      check(normalized["checks"][0]["level"] == 4, "transcription error must not zero actual answer");
     }
 
     // ── 2b. 佐证引用（referenceQuote）抄错只标记，不归零 ────────────────
@@ -89,7 +129,7 @@ int main() {
     {
       // 学员价格超出标准答案区间 → 覆盖为错误档（用阿拉伯数字以便被抽取）
       const json price_history = json::array({
-          {{"round", 1}, {"role", "patient"}, {"content", "多少钱？"}},
+          {{"round", 0}, {"role", "patient"}, {"content", "多少钱？"}},
           {{"round", 1}, {"role", "user"}, {"content", "一口价12000元。"}}});
       const json price_reference = json::array({
           {{"round", 1}, {"referenceAnswer", "区间大致3800—8800元。"}}});
@@ -104,7 +144,7 @@ int main() {
     {
       // 学员数值落在区间内 → 保留模型等级（服务器只校验，不武断加分）
       const json short_history = json::array({
-          {{"round", 1}, {"role", "patient"}, {"content", "多少钱？"}},
+          {{"round", 0}, {"role", "patient"}, {"content", "多少钱？"}},
           {{"round", 1}, {"role", "user"}, {"content", "大概6000元。"}}});
       const json short_reference = json::array({
           {{"round", 1}, {"referenceAnswer", "区间大致3800—8800元。"}}});
@@ -121,7 +161,7 @@ int main() {
       const json short_reference = json::array({
           {{"round", 1}, {"referenceAnswer", "区间大致3800—8800元。"}}});
       const json out_of_range_history = json::array({
-          {{"round", 1}, {"role", "patient"}, {"content", "多少钱？"}},
+          {{"round", 0}, {"role", "patient"}, {"content", "多少钱？"}},
           {{"round", 1}, {"role", "user"}, {"content", "一口价12000元。"}}});
       const json out_of_range = json::array({
           {{"criterionId", "knowledge.factual_accuracy"}, {"round", 1}, {"applicable", true},
@@ -134,7 +174,7 @@ int main() {
       check(zeroed["checks"][0]["referenceQuoteVerified"] == false, "bad reference quote marked");
 
       const json in_range_history = json::array({
-          {{"round", 1}, {"role", "patient"}, {"content", "多少钱？"}},
+          {{"round", 0}, {"role", "patient"}, {"content", "多少钱？"}},
           {{"round", 1}, {"role", "user"}, {"content", "大概6000元。"}}});
       const json in_range = json::array({
           {{"criterionId", "knowledge.factual_accuracy"}, {"round", 1}, {"applicable", true},

@@ -245,22 +245,23 @@ inline RepetitionFinding detectRepetition(const std::string& reply, const json& 
   return finding;
 }
 
-// 报告 quote 校验用：去掉空白/标点、繁简归一后比较。
+// 报告 quote 校验用：忽略句读、空白和繁简差异，保留数值相关符号。
 // 这样「是否需要拔牙，要由医生评估」和「是否需要拔牙 要由医生评估」可以匹配，
 // 但不会把完全不同的句子误判为同一条。
 inline std::string normalizeForQuoteMatch(const std::string& text) {
   const auto normalized = normalizeCjkVariants(text);
   static const std::set<std::string> marks = {
-      "。", "，", "、", "；", "：", "！", "？", "…", "—", "～", "·",
+      "。", "，", "、", "；", "！", "？", "…",
       "“", "”", "‘", "’", "（", "）", "《", "》", "【", "】", "　",
       "\xD8\x8C", "\xD8\x9F", "\xD8\x9B",
-      ".", ",", ";", ":", "!", "?", "-", "(", ")", "\"", "'", "\n", "\r", "\t", " "};
+      ",", ";", "!", "?", "(", ")", "\"", "'", "\n", "\r", "\t", " "};
   std::string output;
   output.reserve(normalized.size());
   for (const auto& character : splitUtf8Chars(normalized)) {
+    if (marks.count(character)) continue;
     if (character.size() == 1) {
       const auto byte = static_cast<unsigned char>(character[0]);
-      if (std::isalnum(byte)) output.push_back(static_cast<char>(std::tolower(byte)));
+      output.push_back(static_cast<char>(std::tolower(byte)));
       continue;
     }
     if (marks.count(character) == 0) output += character;

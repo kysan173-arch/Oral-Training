@@ -149,6 +149,10 @@ class GatewaySettingsStore {
         !body.contains("model") || !body["model"].is_string() ||
         (body.contains("apiKey") && !body["apiKey"].is_string())))
       throw ApiError(400, "INVALID_ARGUMENT", "网关地址、模型名称和 API Key 必须为文本");
+    for (const auto* field : {"tunedBaseUrl", "tunedModel", "tunedApiKey"}) {
+      if (!clear && body.contains(field) && !body[field].is_string())
+        throw ApiError(400, "INVALID_ARGUMENT", "微调槽位配置必须为文本");
+    }
     auto connection = pool_->acquire();
     pqxx::work tx(connection.get());
     tx.exec_params("INSERT INTO user_model_gateway_settings(user_id) VALUES($1) ON CONFLICT DO NOTHING", actor);
@@ -177,7 +181,7 @@ class GatewaySettingsStore {
 
       /* 微调槽位（迁移 037）：地址留空即表示「不启用」，此时整体清空，
          避免出现「地址填了但密钥没填」这类半配置状态。 */
-      auto tuned_url = trim(jsonString(body, "tunedBaseUrl"));
+      auto tuned_url = trim(jsonString(body, "tunedBaseUrl", settings.tuned_base_url));
       while (!tuned_url.empty() && tuned_url.back() == '/') tuned_url.pop_back();
       if (tuned_url.empty()) {
         settings.tuned_base_url.clear();
@@ -185,7 +189,7 @@ class GatewaySettingsStore {
         settings.tuned_encrypted_key.clear();
       } else {
         gatewayEndpoint(tuned_url);
-        const auto tuned_model = trim(jsonString(body, "tunedModel"));
+        const auto tuned_model = trim(jsonString(body, "tunedModel", settings.tuned_model));
         if (tuned_model.empty() || tuned_model.size() > 200 ||
             tuned_model.find_first_of("\r\n\t ") != std::string::npos)
           throw ApiError(400, "INVALID_ARGUMENT", "启用微调槽位时必须填写其模型名称");

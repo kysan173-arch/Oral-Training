@@ -1657,6 +1657,20 @@ class ReliableDatabase {
             {"attemptToken", token}};
   }
 
+  bool renewReplyLease(const std::string& session_id, int round, const std::string& token) const {
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      UPDATE messages SET reply_lease_until = clock_timestamp() + ($4 * INTERVAL '1 second')
+      WHERE session_id = $1 AND round = $2 AND role = 'user'
+        AND reply_status = 'generating' AND reply_attempt_token = $3
+        AND reply_lease_until > clock_timestamp()
+      RETURNING id
+    )", session_id, round, token, kReplyLeaseSeconds);
+    tx.commit();
+    return !rows.empty();
+  }
+
   void markReplyFailed(const std::string& session_id, int round, const std::string& token,
                        const std::string& error_type) const noexcept {
     try {
@@ -4812,6 +4826,20 @@ class ReliableRoleplayDatabase {
             {"attemptToken", token}};
   }
 
+  bool renewReplyLease(const std::string& session_id, int round, const std::string& token) const {
+    auto connection = database_pool_->acquire();
+    pqxx::work tx(connection.get());
+    const auto rows = tx.exec_params(R"(
+      UPDATE roleplay_messages SET reply_lease_until = clock_timestamp() + ($4 * INTERVAL '1 second')
+      WHERE session_id = $1 AND round = $2 AND role = 'learner_patient'
+        AND reply_status = 'generating' AND reply_attempt_token = $3
+        AND reply_lease_until > clock_timestamp()
+      RETURNING id
+    )", session_id, round, token, kReplyLeaseSeconds);
+    tx.commit();
+    return !rows.empty();
+  }
+
   void markReplyFailed(const std::string& session_id, int round, const std::string& token,
                        const std::string& error_type) const noexcept {
     try {
@@ -4879,11 +4907,12 @@ class ReliableRoleplayDatabase {
     }
     if (status != "in_progress") throw ApiError(409, "ROLEPLAY_SESSION_FINISHED", "患者模拟已结束");
     const auto input = tx.exec_params(R"(
-      SELECT id, reply_attempt_token FROM roleplay_messages
+      SELECT id, reply_attempt_token, reply_lease_until > clock_timestamp() AS lease_active FROM roleplay_messages
       WHERE session_id = $1 AND role = 'learner_patient' AND round = $2 FOR UPDATE
     )", session_id, round);
     if (input.empty() || input[0]["reply_attempt_token"].is_null() ||
-        std::string(input[0]["reply_attempt_token"].c_str()) != token) {
+        std::string(input[0]["reply_attempt_token"].c_str()) != token ||
+        input[0]["lease_active"].is_null() || !input[0]["lease_active"].as<bool>()) {
       throw ApiError(409, "ROLEPLAY_RESPONSE_PENDING", "该回复生成租约已失效，请查询会话后重试");
     }
     const auto message_id = makeId("rpmsg");

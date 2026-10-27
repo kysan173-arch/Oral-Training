@@ -126,6 +126,19 @@ const verifyRequestTimeouts = async () => {
   assert.strictEqual(evaluationRepairs, 1);
   assert.strictEqual(evaluationPolls, 2);
 
+  for (const evaluation of [
+    { schemaVersion: 2, scoreBasis: 'communication_only', totalScore: null, communicationReferenceScore: 85 },
+    { schemaVersion: 2, scoreBasis: 'communication_only', totalScore: 85 }
+  ]) {
+    api.getEvaluation = () => Promise.resolve({ status: 'ready', evaluation });
+    resultPage.pollReport();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(resultPage.data.evaluation.totalScore, null);
+    assert.strictEqual(resultPage.data.evaluation.hasTotalScore, false);
+    assert.strictEqual(resultPage.data.scoreText, '85');
+    assert.strictEqual(resultPage.data.level.name, '沟通参考 · 暂不判定达标');
+  }
+
   let summaryPolls = 0;
   let summaryRepairs = 0;
   api.getRoleplaySummary = () => {

@@ -28,6 +28,8 @@ json initOutput() {
 }
 class InitGateway final : public oral_training::IModelGateway {
  public:
+  explicit InitGateway(bool invalid_strength = false) : invalid_strength_(invalid_strength) {}
+  bool invalid_strength_;
   bool configured() const override { return true; }
   std::string modelVersion() const override { return "offline-init-fixture"; }
   void setRuntimeKey(const std::string&) override {}
@@ -39,11 +41,28 @@ class InitGateway final : public oral_training::IModelGateway {
     for(const auto& message:history) if(message["role"]=="user") quote=message["content"].get<std::string>();
     return {{"dimensionScores",{{"medicalCompliance",80},{"empathy",80},{"needsDiscovery",80},{"serviceEtiquette",80}}},
         {"summary","Fixture communication report"},
-        {"strengths",json::array({{{"round",1},{"evidence",quote},{"content","Clear expression"}}})},
+        {"strengths",json::array({{{"round",1},{"evidence",invalid_strength_ ? std::string("模型编造的引文") : quote},{"content","Clear expression"}}})},
         {"improvements",json::array({{{"round",1},{"content","Ask about concerns"}}})},
         {"violations",json::array()},
         {"roundComments",json::array({{{"round",1},{"comment","Listen first"},
           {"recommendedRewrite","您好，我理解您的担忧，请问您最关注哪些方面？"}}})}};
+  }
+  json idealServiceReplies(const json&,const json& history) const override {
+    json rounds=json::array();
+    for (const auto& turn:oral_training::compare::comparisonTurns(history))
+      rounds.push_back({{"round",turn["round"]},{"referenceAnswer","3980元起每颗，检查后确认。"}});
+    rounds.push_back({{"round",0},{"referenceAnswer","请核实具体条件，再确认下一步。"}});
+    return {{"rounds",rounds}};
+  }
+  json compareAnswersAgainstReference(const json&,const json&,const json&) const override {
+    json checks=json::array();
+    for(const auto* id:{"knowledge.factual_accuracy","compliance.no_diagnosis","empathy.acknowledge_concern",
+                       "needs.identify_current_demand","etiquette.clear_expression"})
+      checks.push_back({{"criterionId",id},{"round",1},{"level",4},{"differenceType","equivalent"}});
+    return {{"checks",checks}};
+  }
+  json roundReviews(const json&,const json&) const override {
+    return json::array({{{"round",1},{"review","先核实价格适用条件，再说明安排。"}}});
   }
   json standardServiceReply(const json&,const json&) const override { throw std::runtime_error("unexpected model call"); }
   json roleplaySummary(const json&,const json&) const override { throw std::runtime_error("unexpected model call"); }
@@ -249,12 +268,17 @@ int main() {
                   "round or private state projection wrong");
       requireInit(store.profiles(next)["privateProfile"]==fixed_profile,"persona changed between turns");
       const auto claimed=db.claimUserMessage("init-user",next,"n03-expired","继续说明");
+      requireInit(!db.renewReplyLease(next,4,"stale-token"),"stale reply token renewed lease");
+      requireInit(db.renewReplyLease(next,4,claimed["attemptToken"].get<std::string>()),
+                  "owned reply lease did not renew");
       {
         pqxx::work tx(control);
         tx.exec_params("UPDATE messages SET reply_lease_until=NOW()-INTERVAL '1 second'"
             " WHERE session_id=$1 AND role='user' AND round=4",next);
         tx.commit();
       }
+      requireInit(!db.renewReplyLease(next,4,claimed["attemptToken"].get<std::string>()),
+                  "expired reply lease was resurrected");
       expectInitError([&]{db.savePatientReply("init-user",next,4,claimed["attemptToken"].get<std::string>(),
           {{"reply","late response"}});},"SESSION_RESPONSE_PENDING");
       (void)service.sendMessage("init-user",next,"n03-expired","继续说明");
@@ -346,6 +370,7 @@ int main() {
       db.saveEvaluation(*evaluation_job,report,"fixture");
       const auto saved=db.getEvaluation("init-user",final_id);
       requireInit(saved["status"]=="ready" && saved["evaluation"]["totalScore"].is_null(),"null report not readable");
+      requireInit(saved["evaluation"]["communicationReferenceScore"]==80,"reference score not persisted separately");
       requireInit(saved["evaluation"]["learningMistakes"].empty(),"unknown entered mistake book");
       expectInitError([&]{db.saveEvaluation(*evaluation_job,report,"late");},"JOB_LEASE_LOST");
       {
@@ -382,7 +407,8 @@ int main() {
         oral_training::rag::groundedPatientReply(json::object(),store.profiles(scored_id),scored_evidence,makeId("trace"),"费用5000元。",1));
     {
       Config offline{};offline.worker_concurrency=0;offline.knowledge_worker_concurrency=0;
-      Service service(offline,pool,std::make_unique<InitGateway>(),stubEmbeddings());
+      offline.answer_comparison_enabled=true;
+      Service service(offline,pool,std::make_unique<InitGateway>(true),stubEmbeddings());
       const auto assessment=service.assessTrainingKnowledge(scored_id);
       const auto job=*queue.claim("n06-score");
       json report={{"schemaVersion",2},{"_knowledgeAssessment",assessment},
@@ -401,6 +427,16 @@ int main() {
       requireInit(own+concurrent.get()==1,"concurrent reports did not have exactly one winner");
       const auto saved=db.getEvaluation("init-user",scored_id)["evaluation"];
       requireInit(saved["totalScore"]==60 && saved["learningMistakes"].size()==1,"scored report wrong");
+      requireInit(saved["strengths"].empty(),"unverified strength was fabricated during publication");
+      requireInit(saved["answerComparison"]["status"]=="ready" && saved["answerComparison"]["complete"]==true,
+                  "enabled comparison was not persisted with evaluation");
+      requireInit(saved["answerComparison"]["totalScore"]==75 && saved["totalScore"]==60,
+                  "comparison overwrote official score");
+      requireInit(saved["answerComparison"]["delta"]["knowledgeAccuracy"]==0 &&
+                  saved["answerComparison"]["delta"]["totalScore"]==15,
+                  "delta used temporary knowledge score");
+      requireInit(saved["roundReviews"][0]["review"]=="先核实价格适用条件，再说明安排。",
+                  "generated round review was lost");
       const auto ref=saved["knowledgeChecks"][0]["evidenceRefs"][0];
       const auto trace=ref["traceId"].get<std::string>();
       requireInit(db.getEvidence("init-user",scored_id,trace)["citations"][0]["citation"]==ref,"public citation mismatch");
@@ -446,7 +482,19 @@ int main() {
     expectInitError([&]{paused_roleplay.createSession("init-user","implant-basic","","init-service","n07-blocked");},"RAG_NEW_SESSIONS_PAUSED");
     expectInitError([&]{paused_roleplay.restartSession("init-user",rps,"n07-restart");},"RAG_NEW_SESSIONS_PAUSED");
     requireInit(paused_roleplay.getSession("init-user",rps)["session"]["status"]=="in_progress","pause abandoned original roleplay");
-    paused_roleplay.claimLearnerMessage("init-user",rps,"n07-continue","我想了解费用");
+    const auto rp_claim=paused_roleplay.claimLearnerMessage("init-user",rps,"n07-continue","我想了解费用");
+    const auto rp_token=rp_claim["attemptToken"].get<std::string>();
+    requireInit(roleplay.renewReplyLease(rps,1,rp_token),"roleplay lease renewal failed");
+    requireInit(!roleplay.renewReplyLease(rps,1,"stale-token"),"stale roleplay token renewed lease");
+    {
+      pqxx::work tx(control);
+      tx.exec_params("UPDATE roleplay_messages SET reply_lease_until=NOW()-INTERVAL '1 second' WHERE session_id=$1",rps);
+      tx.commit();
+    }
+    requireInit(!roleplay.renewReplyLease(rps,1,rp_token),"expired roleplay lease revived");
+    expectInitError([&]{roleplay.saveStandardCustomerReply("init-user",rps,1,rp_token,
+        {{"reply","您好，请问您的需求是什么？"},{"learningPoints",json::array({"确认需求","说明边界"})},
+         {"complianceBoundary","具体情况需由医生评估"}});},"ROLEPLAY_RESPONSE_PENDING");
     requireInit(paused_roleplay.getHistory(rps).size()==1,"paused roleplay cannot continue old session");
     const auto restored_training=store.create("init-other","implant-basic","init-service","n07-restored");
     requireInit(!restored_training.empty(),"restored training gate cannot create");

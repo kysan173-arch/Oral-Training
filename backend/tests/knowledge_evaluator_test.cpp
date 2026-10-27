@@ -100,6 +100,10 @@ int main() {
     const auto unscored=applyKnowledgeScores(report,none);
     check(unscored["totalScore"].is_null() && unscored["passed"].is_null() &&
         unscored["dimensionScores"]["knowledgeAccuracy"].is_null(),"null scores reweighted");
+    check(unscored["communicationReferenceScore"]==80 && unscored["scoreBasis"]=="communication_only",
+        "communication reference score missing");
+    check(applyKnowledgeScores(report,bad)["communicationReferenceScore"].is_null(),
+        "full assessment retained reference score");
     check(applyKnowledgeScores(report,bad)["totalScore"]==60,"fixed weights wrong");
     auto ranged=price;ranged["type"]="range";ranged["minimumMinor"]=398000;ranged["maximumMinor"]=598000;
     check(compareKnowledgeFact("price","3980—5980元每颗，检查后确认",ranged)=="supported","price range");

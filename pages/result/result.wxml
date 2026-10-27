@@ -5,11 +5,11 @@
       <view class="score-ring-fill" style="background: conic-gradient({{level.scoreColor}} {{scorePercent}}%, #E3E9F2 0);">
         <view class="score-ring-hole">
           <text class="score-value" style="color: {{level.scoreColor}}">{{scoreText}}</text>
-          <text class="score-unit" wx:if="{{evaluation.hasTotalScore}}">/ 100</text>
+          <text class="score-unit" wx:if="{{evaluation.hasDisplayScore}}">/ 100</text>
         </view>
       </view>
     </view>
-    <text class="score-caption">{{evaluation.hasTotalScore ? (evaluation.scoreBasis === 'communication_only' ? '沟通四维参考分（知识依据不足）' : '本次训练总分') : '知识依据不足，暂不形成综合分'}}</text>
+    <text class="score-caption">{{evaluation.hasDisplayScore ? (evaluation.scoreBasis === 'communication_only' ? '沟通四维参考分（知识依据不足）' : '本次训练总分') : '知识依据不足，暂不形成综合分'}}</text>
     <view class="level-badge {{level.key}}"><text>{{level.name}}</text></view>
     <text class="result-time">{{session.rangeText}}</text>
   </view>
@@ -32,7 +32,7 @@
   <knowledge-report report="{{evaluation}}" session-id="{{session.id}}"></knowledge-report>
 
   <view class="feedback-grid">
-    <view class="feedback-card feedback-good"><text class="feedback-icon">✓</text><view class="feedback-copy"><text class="feedback-title positive">做得好的地方</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view></view>
+    <view class="feedback-card feedback-good"><text class="feedback-icon">✓</text><view class="feedback-copy"><text class="feedback-title positive">做得好的地方</text><text class="feedback-item" wx:if="{{!evaluation.strengths.length}}">暂无足够证据确认具体优势。</text><text class="feedback-item" wx:for="{{evaluation.strengths}}" wx:key="*this">• {{item}}</text></view></view>
     <view class="feedback-card feedback-improve"><text class="feedback-icon">→</text><view class="feedback-copy"><text class="feedback-title improve">下一步改进</text><text class="feedback-item" wx:for="{{evaluation.improvements}}" wx:key="*this">• {{item}}</text></view></view>
   </view>
 
