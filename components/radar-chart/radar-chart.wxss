@@ -5,9 +5,8 @@
   margin: 0 auto;
 }
 
-.radar-canvas {
-  display: block;
-}
+.radar-image { display: block; width: 100%; height: 100%; }
+.radar-placeholder { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--text-muted); font-size: 24rpx; }
 
 /* 多系列对比时的图例；只渲染有 compare 数据的场景，向后兼容 */
 .radar-legend {

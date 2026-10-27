@@ -44,6 +44,8 @@
 .list-action { display: flex; align-items: center; justify-content: center; gap: 10rpx; margin: 14rpx 0 6rpx; padding: 16rpx; border-radius: 14rpx; background: var(--color-primary-light); color: var(--color-primary); font-size: 22rpx; }
 .list-action-hover { opacity: .7; }
 .dimensions-card { padding: 26rpx; margin-bottom: 28rpx; }
+.chart-placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 24rpx; }
+.trend-placeholder { height: 200px; }
 /* 五维横条（统一主色） */
 .dimension-row { margin-bottom: 20rpx; }
 .dimension-row:last-child { margin-bottom: 0; }

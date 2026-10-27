@@ -63,23 +63,17 @@ global.wx = { showToast() {}, getStorageSync() { return ''; } };
   adminPage.applySupervisor({ dimensionAverages: partialDimensions }, { members: [] });
   assert(adminPage.data.teamWarnings.some(item => item.title.includes('知识准确性')));
 
-  // Canvas must not turn a missing dimension into a central zero-score point.
-  let component;
-  global.Component = definition => { component = definition; };
-  require('../../components/radar-chart/radar-chart.js');
-  const labels = [];
-  let points = 0;
-  const ctx = new Proxy({}, { get(target, key) {
-    if (key === 'fillText') return text => labels.push(text);
-    if (key === 'arc') return () => { points += 1; };
-    return () => {};
-  } });
-  component.methods.render.call({ properties: { compare: [null, 80, 80, 80, 80] } }, ctx, 300, 260,
-    [{ name: '知识', score: null }, { name: '合规', score: 80 }, { name: '共情', score: 80 },
-      { name: '需求', score: 80 }, { name: '礼仪', score: 80 }]);
-  assert(labels.includes('未评估'));
-  assert(!labels.includes('0'));
-  assert.strictEqual(points, 4);
+  // 图片渲染仍须保留缺失分数，不能变成中心的零分点。
+  const { radarImage } = require('../../utils/radar-image.js');
+  const image = radarImage([
+    { name: '知识', score: null }, { name: '合规', score: 80 }, { name: '共情', score: 80 },
+    { name: '需求', score: 80 }, { name: '礼仪', score: 80 }
+  ], [null, 80, 80, 80, 80], 300, 260);
+  const svg = Buffer.from(image.split(',')[1], 'base64').toString('utf8')
+    .replace(/&#(\d+);/g, (_, value) => String.fromCodePoint(Number(value)));
+  assert(svg.includes('未评估'));
+  assert(!svg.includes('>0</text>'));
+  assert.strictEqual((svg.match(/<circle /g) || []).length, 4);
 
   const serviceEditor = capture('pages/service-editor/service-editor.js');
   serviceEditor.data.form.dataOrigin = 'manual';

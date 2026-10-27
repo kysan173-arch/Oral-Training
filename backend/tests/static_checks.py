@@ -17,6 +17,6 @@ for path in ROOT.rglob('*'):
     elif path.suffix == '.json':
         json.loads(path.read_text(encoding='utf-8-sig'))
         count['json'] += 1
-for name in ['client_recovery', 'patient_client', 'knowledge_report_client', 'audit_client_regression']:
+for name in ['client_recovery', 'patient_client', 'knowledge_report_client', 'audit_client_regression', 'member_detail_loading', 'radar_image']:
     subprocess.run(['node', str(ROOT / 'backend/tests' / (name + '_test.js'))], check=True)
 print(json.dumps({'result': 'passed', **count}))
